@@ -1,0 +1,9 @@
+(module hello)
+
+(export [increment-all])
+
+^{:doc {"zh-CN" "将每个整数加一。"
+        "en" "Increment every integer."}}
+(defn ^{:type (Vector Int)} increment-all
+  [^{:type (Vector Int)} values]
+  (for [value values] (+ value 1)))

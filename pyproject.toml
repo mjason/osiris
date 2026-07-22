@@ -1,0 +1,36 @@
+[project]
+name = "osiris"
+dynamic = ["version"]
+description = "The osr Lisp compiler"
+readme = "README.md"
+authors = [
+    { name = "MJ", email = "tywf91@gmail.com" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+osr = "osiris:main"
+
+[tool.maturin]
+module-name = "osiris._core"
+python-packages = ["osiris", "osiris_build"]
+python-source = "src"
+features = ["python"]
+
+[tool.osiris]
+source = ["examples"]
+target-python = "3.9"
+strict = true
+extensions = []
+build-groups = []
+display-locale = "zh-CN"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"

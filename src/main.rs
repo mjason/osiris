@@ -1,0 +1,26 @@
+use std::{
+    env,
+    io::{self, Write},
+    process::ExitCode,
+};
+
+fn main() -> ExitCode {
+    let arguments = env::args_os()
+        .skip(1)
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    if arguments.as_slice() == ["lsp"] {
+        return match _core::lsp_stdio::run_stdio() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                let _ = writeln!(io::stderr().lock(), "osr: LSP transport failed: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    let outcome = _core::cli::run_cli(&arguments);
+
+    let _ = io::stdout().lock().write_all(outcome.stdout.as_bytes());
+    let _ = io::stderr().lock().write_all(outcome.stderr.as_bytes());
+    ExitCode::from(outcome.exit_code)
+}
