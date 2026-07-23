@@ -1,0 +1,126 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Osiris",
+  "scopeName": "source.osiris",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#constants" },
+    { "include": "#keywords" },
+    { "include": "#metadata" },
+    { "include": "#declarations" },
+    { "include": "#control" },
+    { "include": "#function-call" },
+    { "include": "#delimiters" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.osiris",
+          "match": ";.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.osiris",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.osiris",
+              "match": "\\\\(?:[\\\\\"nrtbf]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.osiris",
+          "match": "(?<![^\\s\\(\\[\\{])[-+]?(?:0[xX][0-9A-Fa-f]+|0[bB][01]+|(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?)(?![^\\s\\)\\]\\}])"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.osiris",
+          "match": "(?<![^\\s\\(\\[\\{])(?:true|false|none)(?![^\\s\\)\\]\\}])"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "constant.other.keyword.osiris",
+          "match": ":[^\\s\\(\\)\\[\\]\\{\\}\",;]+"
+        }
+      ]
+    },
+    "metadata": {
+      "patterns": [
+        {
+          "name": "keyword.operator.reader.osiris",
+          "match": "(?:~@|[#'`~@^])"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.osiris",
+          "match": "(?<=\\()(?:module|import|import-for-syntax|py/import|py/decorate|export|extern|alias|def|defn|defn-|defstruct|defmacro|defn-for-syntax|defstatic-schema|static-record)(?=\\s|\\))"
+        },
+        {
+          "name": "entity.name.function.osiris",
+          "match": "(?<=\\((?:defn|defn-|defmacro|defn-for-syntax)\\s)(?:[^\\s\\(\\)\\[\\]\\{\\}\",;]+)"
+        },
+        {
+          "name": "entity.name.type.osiris",
+          "match": "(?<=\\(defstruct\\s)(?:[^\\s\\(\\)\\[\\]\\{\\}\",;]+)"
+        }
+      ]
+    },
+    "control": {
+      "patterns": [
+        {
+          "name": "keyword.control.osiris",
+          "match": "(?<=\\()(?:let|letfn|fn|if|do|try|catch|finally|raise|throw|loop|recur|for|doseq|dotimes|while|when|when-not|if-not|cond|case|condp|if-let|when-let|if-some|when-some|when-first|binding|with-open|locking|lazy-seq|comment|assert|time)(?=\\s|\\))"
+        },
+        {
+          "name": "keyword.operator.osiris",
+          "match": "(?<=\\()(?:->|->>|cond->|cond->>|some->|some->>|as->|doto)(?=\\s|\\))"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "support.function.osiris",
+          "match": "(?<=\\()[^\\s\\(\\)\\[\\]\\{\\}\",;]+(?=\\s|\\))"
+        }
+      ]
+    },
+    "delimiters": {
+      "patterns": [
+        {
+          "name": "punctuation.section.parens.osiris",
+          "match": "[()]"
+        },
+        {
+          "name": "punctuation.section.brackets.osiris",
+          "match": "[\\[\\]]"
+        },
+        {
+          "name": "punctuation.section.braces.osiris",
+          "match": "[{}]"
+        }
+      ]
+    }
+  }
+}

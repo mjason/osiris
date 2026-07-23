@@ -1,0 +1,45 @@
+name: Release VS Code extension
+
+on:
+  push:
+    tags:
+      - "vscode-v[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and attach VSIX
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - name: Match tag to extension version
+        shell: bash
+        run: |
+          version="$(node --print 'require("./package.json").version')"
+          test "vscode-v${version}" = "${GITHUB_REF_NAME}"
+      - run: npm ci
+      - run: npm run check
+      - name: Build VSIX
+        shell: bash
+        run: |
+          version="$(node --print 'require("./package.json").version')"
+          npm run package -- --out "osiris-vscode-${version}.vsix"
+      - name: Create GitHub Release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          editors/vscode/osiris-vscode-*.vsix
+          --title "Osiris VS Code ${GITHUB_REF_NAME#vscode-v}"
+          --generate-notes

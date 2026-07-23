@@ -1,0 +1,128 @@
+{
+  "name": "osiris",
+  "displayName": "Osiris",
+  "description": "Language support for the Osiris Lisp-to-Python compiler",
+  "version": "0.1.0",
+  "publisher": "mjason",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "osiris",
+    "osr",
+    "lisp",
+    "python",
+    "lsp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mjason/osiris.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mjason/osiris/issues"
+  },
+  "homepage": "https://github.com/mjason/osiris#readme",
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:osiris",
+    "onCommand:osiris.restartLanguageServer"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "osiris",
+        "aliases": [
+          "Osiris",
+          "osr"
+        ],
+        "extensions": [
+          ".osr",
+          ".osri"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "osiris",
+        "scopeName": "source.osiris",
+        "path": "./syntaxes/osiris.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "osiris.restartLanguageServer",
+        "title": "Osiris: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "Osiris",
+      "properties": {
+        "osiris.server.path": {
+          "type": "string",
+          "default": "osr",
+          "scope": "machine-overridable",
+          "description": "Path to the osr executable."
+        },
+        "osiris.server.arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "lsp"
+          ],
+          "scope": "window",
+          "description": "Arguments used to start the Osiris language server."
+        },
+        "osiris.server.siteRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "window",
+          "description": "Optional installed-package roots used to resolve locked Osiris extensions."
+        },
+        "osiris.displayLocale": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Locale used for Rich Metadata names and documentation. Empty uses the VS Code UI locale."
+        },
+        "osiris.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "scope": "window",
+          "description": "Trace communication between VS Code and osr lsp."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit && node scripts/validate-manifest.mjs",
+    "compile": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "package": "npm run check && npm run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "vscode-languageclient": "^9.0.1"
+  }
+}

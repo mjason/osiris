@@ -126,6 +126,16 @@ The Python package embeds the same Rust core through PyO3 and installs an
 Osiris source distributions; Python dependencies continue to be declared in
 `pyproject.toml` and locked by `uv`.
 
+The PyPI distribution is named `osiris-lang` because the `osiris` project name
+is already occupied. The installed Python package remains `osiris`:
+
+```console
+uv tool install osiris-lang
+osr --version
+```
+
+For repository development:
+
 ```console
 uv sync
 uv run osr --version
@@ -135,6 +145,19 @@ The package version is defined once in `Cargo.toml`; maturin supplies it to the
 Python package during the build. The Python console script delegates to the
 same Rust CLI dispatcher as the native executable, so parsing and diagnostics
 do not diverge.
+
+## VS Code
+
+The extension lives in [`editors/vscode`](editors/vscode) and delegates all
+semantic behavior to `osr lsp`. Until Marketplace publishing is enabled, open
+the repository's [GitHub Releases](https://github.com/mjason/osiris/releases),
+select the latest `vscode-vX.Y.Z` release, download its `.vsix`, and run
+**Extensions: Install from VSIX...** in VS Code.
+
+Maintainers publish Python releases with a `vX.Y.Z` tag and VS Code releases
+with a separate `vscode-vX.Y.Z` tag. Both tags must match the corresponding
+package version committed in the repository. Trusted Publisher fields and the
+full tag procedure are documented in [`docs/releasing.md`](docs/releasing.md).
 
 The current language design is in
 [`docs/language-design.md`](docs/language-design.md). Compiler ownership and

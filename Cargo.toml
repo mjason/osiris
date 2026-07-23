@@ -6,6 +6,9 @@ rust-version = "1.85"
 authors = ["MJ <tywf91@gmail.com>"]
 description = "The osr Lisp compiler"
 readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/mjason/osiris"
+repository = "https://github.com/mjason/osiris"
 publish = false
 
 [lib]
