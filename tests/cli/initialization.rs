@@ -55,7 +55,14 @@ exit 9
         fs::read_to_string(project.join(".uv-add-invocation")).unwrap(),
         "add --dev osiris-lang\n"
     );
-    assert!(project.join("src/main.osr").is_file());
+    let starter = project.join("src/main.osr");
+    assert!(starter.is_file());
+    let check = osr(&["check", path_argument(&starter)]);
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
 }
 
 #[test]

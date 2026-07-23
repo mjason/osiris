@@ -10,9 +10,11 @@ use super::*;
 
 const STARTER_SOURCE: &str = r#"(module main)
 
-;; `uv run osr run src/main.osr` 会编译并执行这个入口。
-(defn main []
-  (py.print "Hello from Osiris"))
+;; Python 互操作保持显式；编译阶段不会导入或执行 Python 模块。
+(py/import builtins :as py)
+
+;; `uv run osr run src/main.osr` 会编译并执行顶层表达式。
+(py.print "Hello from Osiris")
 "#;
 
 pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
