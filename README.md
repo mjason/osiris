@@ -38,6 +38,29 @@ not claim Clojure compatibility.
 
 ## Project Quick Start
 
+Create a new uv project with an Osiris source root and starter module:
+
+```console
+osr init my-project
+cd my-project
+uv run osr run src/main.osr
+```
+
+To add Osiris to an existing uv project, run this from its root (or pass the
+directory explicitly):
+
+```console
+osr init --existing
+osr init --existing path/to/project
+```
+
+`init` preserves the existing `pyproject.toml` layout, comments, project
+metadata, and dependencies. It adds missing `[tool.osiris]` defaults, creates
+`src/main.osr` only when that file does not exist, and asks `uv` to add
+`osiris-lang` to the development dependency group. Re-running the command is
+safe. A new project path must not already exist; use `--existing` when joining
+an established uv project.
+
 Osiris discovers the nearest `pyproject.toml` containing a `[tool.osiris]`
 table. The smallest project configuration for the checked-in example is:
 

@@ -57,6 +57,8 @@ fn path_argument(path: &Path) -> &str {
 mod compilation;
 #[path = "cli/execution.rs"]
 mod execution;
+#[path = "cli/initialization.rs"]
+mod initialization;
 #[path = "cli/inspection.rs"]
 mod inspection;
 #[path = "cli/protocol.rs"]
