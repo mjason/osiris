@@ -101,8 +101,9 @@ fn uv_init(root: &Path) -> Result<(), String> {
 }
 
 fn uv_add_osiris(root: &Path) -> Result<(), String> {
+    let requirement = format!("osiris-lang>={}", crate::version());
     let output = Command::new("uv")
-        .args(["add", "--dev", "osiris-lang"])
+        .args(["add", "--dev", &requirement])
         .current_dir(root)
         .output()
         .map_err(|error| format!("could not run uv: {error}"))?;
@@ -204,7 +205,9 @@ fn array_item<const N: usize>(entries: [&str; N]) -> Item {
 }
 
 fn has_osiris_dependency(document: &DocumentMut) -> bool {
-    dependency_items(document).any(|dependency| dependency_name(dependency) == "osiris-lang")
+    dependency_items(document).any(|dependency| {
+        dependency_name(dependency) == "osiris-lang" && dependency.contains(crate::version())
+    })
 }
 
 fn dependency_items(document: &DocumentMut) -> impl Iterator<Item = &str> {
@@ -276,5 +279,21 @@ mod tests {
     fn recognizes_normalized_requirements() {
         assert_eq!(dependency_name("Osiris_Lang>=0.1.0"), "osiris-lang");
         assert_eq!(dependency_name("osiris-lang[build]"), "osiris-lang");
+    }
+
+    #[test]
+    fn only_the_current_compiler_requirement_skips_uv_add() {
+        let current = format!(
+            "[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n",
+            crate::version()
+        )
+        .parse::<DocumentMut>()
+        .unwrap();
+        let old = "[dependency-groups]\ndev = [\"osiris-lang>=0.2.1\"]\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+
+        assert!(has_osiris_dependency(&current));
+        assert!(!has_osiris_dependency(&old));
     }
 }

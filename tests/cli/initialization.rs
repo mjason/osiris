@@ -53,7 +53,7 @@ exit 9
     assert!(configured.contains("source = [\"src\"]"));
     assert_eq!(
         fs::read_to_string(project.join(".uv-add-invocation")).unwrap(),
-        "add --dev osiris-lang\n"
+        format!("add --dev osiris-lang>={}\n", env!("CARGO_PKG_VERSION"))
     );
     let starter = project.join("src/main.osr");
     assert!(starter.is_file());
@@ -71,18 +71,21 @@ fn init_existing_preserves_uv_project_and_is_idempotent() {
     let pyproject = fixture.directory.join("pyproject.toml");
     fs::write(
         &pyproject,
-        r#"# This comment belongs to the application.
+        format!(
+            r#"# This comment belongs to the application.
 [project]
 name = "existing-app"
 version = "2.3.4"
 dependencies = ["requests>=2"]
 
 [dependency-groups]
-dev = ["osiris-lang>=0.1.0", "pytest>=8"]
+dev = ["osiris-lang>={}", "pytest>=8"]
 
 [tool.example]
 keep = "unchanged"
 "#,
+            env!("CARGO_PKG_VERSION")
+        ),
     )
     .unwrap();
 
@@ -109,7 +112,7 @@ fn init_existing_does_not_replace_an_existing_starter() {
     let fixture = SourceFixture::new("none\n");
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang\"]\n",
+        format!("[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n", env!("CARGO_PKG_VERSION")),
     )
     .unwrap();
     let starter = fixture.write("src/main.osr", "(module main)\n(def answer 42)\n");
@@ -128,7 +131,7 @@ fn init_existing_uses_the_configured_source_root() {
     let fixture = SourceFixture::new("none\n");
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang\"]\n\n[tool.osiris]\nsource = [\"lisp\"]\n",
+        format!("[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n\n[tool.osiris]\nsource = [\"lisp\"]\n", env!("CARGO_PKG_VERSION")),
     )
     .unwrap();
 
