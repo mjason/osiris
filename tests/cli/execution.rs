@@ -37,9 +37,14 @@ fn run_compiles_the_project_workspace_before_executing_the_entry() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"workspace-run\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"workspace-run\"\nversion = \"1.0\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
 
     let output = osr(&["run", path_argument(&app)]);
 
@@ -75,9 +80,11 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
         .expect("extension source parent should be created");
     fs::write(
         extension_root.join("pyproject.toml"),
-        "[project]\nname = \"sample-ext\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"sample-ext\"\nversion = \"1.0\"\n",
     )
     .expect("extension project configuration should be written");
+    fs::write(extension_root.join("osiris.jsonc"), r#"{"source":["src"]}"#)
+        .expect("extension Osiris configuration should be written");
     fs::write(
         &extension_source,
         r#"(module sample.core)
@@ -134,13 +141,18 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
     .expect("extension marker should be written");
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\nextensions = [\"sample\"]\n",
+        "[project]\nname = \"demo\"\nversion = \"1.0\"\ndependencies = [\"sample-ext==1.0\"]\n",
     )
     .expect("project configuration should be written");
     fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+    fs::write(
         fixture.directory.join("uv.lock"),
         format!(
-            "version = 1\n\n[[package]]\nname = \"demo\"\nsource = {{ editable = \".\" }}\n\n[[package]]\nname = \"sample-ext\"\nversion = \"1.0\"\nsource = {{ registry = \"https://pypi.org/simple\", hash = \"{SOURCE_HASH}\" }}\n"
+            "version = 1\n\n[[package]]\nname = \"demo\"\nsource = {{ editable = \".\" }}\ndependencies = [{{ name = \"sample-ext\", version = \"1.0\" }}]\n\n[[package]]\nname = \"sample-ext\"\nversion = \"1.0\"\nsource = {{ registry = \"https://pypi.org/simple\", hash = \"{SOURCE_HASH}\" }}\n"
         ),
     )
     .expect("uv lock should be written");

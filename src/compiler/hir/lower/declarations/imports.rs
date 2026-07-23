@@ -94,8 +94,21 @@ impl<'a> Lowerer<'a> {
         for alias in &interface.aliases {
             if requested.contains(&alias.canonical) || requested.contains(&alias.spelling) {
                 if let Some(id) = bindings.get(&alias_target_canonical(&interface, alias)) {
-                    self.globals
-                        .insert(requested_alias_key(&requested, alias), id.clone());
+                    let local = requested_alias_key(&requested, alias);
+                    self.globals.insert(local.clone(), id.clone());
+                    if !self
+                        .aliases
+                        .iter()
+                        .any(|existing| existing.canonical == local && existing.target == *id)
+                    {
+                        self.aliases.push(Alias {
+                            spelling: local.clone(),
+                            canonical: local,
+                            target: id.clone(),
+                            span: import.span,
+                            public: false,
+                        });
+                    }
                 }
             }
         }

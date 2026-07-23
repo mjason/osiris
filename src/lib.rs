@@ -92,11 +92,20 @@ fn python_run_lsp_stdio() -> PyResult<()> {
 }
 
 #[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "_run_watch_stdio")]
+fn python_run_watch_stdio(py: Python<'_>, arguments: Vec<String>) -> PyResult<()> {
+    py.detach(|| cli::run_watch_stdio(&arguments))
+        .map_err(PyOSError::new_err)
+}
+
+#[cfg(feature = "python")]
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(python_version, m)?)?;
     m.add_function(wrap_pyfunction!(python_run_cli, m)?)?;
     m.add_function(wrap_pyfunction!(python_run_lsp_stdio, m)?)?;
+    m.add_function(wrap_pyfunction!(python_run_watch_stdio, m)?)?;
     Ok(())
 }
 

@@ -18,6 +18,18 @@ fn main() -> ExitCode {
             }
         };
     }
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "watch")
+    {
+        return match _core::cli::run_watch_stdio(&arguments[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                let _ = writeln!(io::stderr().lock(), "osr: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let outcome = _core::cli::run_cli(&arguments);
 
     let _ = io::stdout().lock().write_all(outcome.stdout.as_bytes());

@@ -3,7 +3,10 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{ExtensionError, discover, discover_reachable, normalize_distribution_name, sha256};
+use super::{
+    ExtensionError, discover, discover_reachable, discover_reachable_all,
+    normalize_distribution_name, sha256,
+};
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 
@@ -91,6 +94,21 @@ fn reachable_discovery_ignores_unrelated_installed_markers() {
     let graph = discover_reachable(
         std::slice::from_ref(&root),
         &["sample".to_owned()],
+        &["sample-ext".to_owned()],
+    )
+    .unwrap();
+    assert!(graph.extension("sample").is_some());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn automatic_discovery_ignores_unreachable_installed_markers() {
+    let root = fixture(&marker(None), None);
+    let unrelated = root.join("unrelated-9.0.dist-info");
+    fs::create_dir_all(&unrelated).unwrap();
+    fs::write(unrelated.join("osiris.toml"), "not valid TOML = [").unwrap();
+    let graph = discover_reachable_all(
+        std::slice::from_ref(&root),
         &["sample-ext".to_owned()],
     )
     .unwrap();

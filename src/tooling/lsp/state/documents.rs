@@ -174,6 +174,7 @@ impl LspState {
                     analysis,
                     function_interfaces: BTreeMap::new(),
                     macro_interfaces: BTreeMap::new(),
+                    display_locale: None,
                     workspace_symbols,
                 }
             });
@@ -200,6 +201,7 @@ impl LspState {
         for root in &project.source_roots {
             collect_workspace_sources(root, &mut paths).ok()?;
         }
+        paths.retain(|path| !project.is_excluded(path));
         paths.sort();
         paths.dedup();
 
@@ -277,6 +279,7 @@ impl LspState {
             analysis,
             function_interfaces,
             macro_interfaces,
+            display_locale: project.display_locale,
             workspace_symbols,
         })
     }

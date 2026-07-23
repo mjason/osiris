@@ -3,7 +3,7 @@ pub fn discover(
     site_roots: &[PathBuf],
     enabled: &[String],
 ) -> Result<ExtensionGraph, ExtensionError> {
-    discover_filtered(site_roots, enabled, None)
+    discover_filtered(site_roots, Some(enabled), None)
 }
 
 /// Discovers enabled extensions only from lock-reachable distributions. The
@@ -18,16 +18,30 @@ pub fn discover_reachable(
         .iter()
         .map(|name| normalize_distribution_name(name))
         .collect::<BTreeSet<_>>();
-    discover_filtered(site_roots, enabled, Some(&reachable))
+    discover_filtered(site_roots, Some(enabled), Some(&reachable))
+}
+
+/// Discovers every extension marker published by a lock-reachable
+/// distribution. Installed packages outside the effective dependency graph
+/// are ignored.
+pub fn discover_reachable_all(
+    site_roots: &[PathBuf],
+    reachable_distributions: &[String],
+) -> Result<ExtensionGraph, ExtensionError> {
+    let reachable = reachable_distributions
+        .iter()
+        .map(|name| normalize_distribution_name(name))
+        .collect::<BTreeSet<_>>();
+    discover_filtered(site_roots, None, Some(&reachable))
 }
 
 fn discover_filtered(
     site_roots: &[PathBuf],
-    enabled: &[String],
+    enabled: Option<&[String]>,
     reachable_distributions: Option<&BTreeSet<String>>,
 ) -> Result<ExtensionGraph, ExtensionError> {
-    let enabled = enabled.iter().cloned().collect::<BTreeSet<_>>();
-    if enabled.is_empty() {
+    let enabled = enabled.map(|values| values.iter().cloned().collect::<BTreeSet<_>>());
+    if enabled.as_ref().is_some_and(BTreeSet::is_empty) {
         return Ok(ExtensionGraph::default());
     }
     let mut candidates = Vec::new();
@@ -58,11 +72,12 @@ fn discover_filtered(
     let mut distributions = Vec::new();
     for (site_root, dist_info) in candidates {
         let distribution = load_distribution(&site_root, &dist_info)?;
-        if distribution
-            .extensions
-            .iter()
-            .any(|extension| enabled.contains(&extension.id))
-        {
+        if enabled.as_ref().is_none_or(|enabled| {
+            distribution
+                .extensions
+                .iter()
+                .any(|extension| enabled.contains(&extension.id))
+        }) {
             distributions.push(distribution);
         }
     }
@@ -74,7 +89,10 @@ fn discover_filtered(
     let mut by_id = BTreeMap::new();
     for (distribution_index, distribution) in distributions.iter().enumerate() {
         for (extension_index, extension) in distribution.extensions.iter().enumerate() {
-            if !enabled.contains(&extension.id) {
+            if enabled
+                .as_ref()
+                .is_some_and(|enabled| !enabled.contains(&extension.id))
+            {
                 continue;
             }
             if let Some((first_distribution, _)) =
@@ -88,9 +106,11 @@ fn discover_filtered(
             }
         }
     }
-    for id in enabled {
-        if !by_id.contains_key(&id) {
-            return Err(ExtensionError::MissingEnabled(id));
+    if let Some(enabled) = enabled {
+        for id in enabled {
+            if !by_id.contains_key(&id) {
+                return Err(ExtensionError::MissingEnabled(id));
+            }
         }
     }
 

@@ -4,12 +4,12 @@ use std::{
 };
 
 use super::{
-    DependencyError, SemanticInterfaceHash, UvLock, contract_trust_policy, marker_applies,
-    resolve_effective_extensions, trust_policy_hash,
+    DependencyError, SemanticInterfaceHash, TrustContract, UvLock, contract_trust_policy,
+    marker_applies, resolve_effective_extensions, trust_policy_hash,
 };
 use crate::{
     compiler::{self, CompileOptions},
-    project::{ProjectConfig, TrustContract},
+    project::ProjectConfig,
     types::PythonVersion,
 };
 
@@ -219,23 +219,14 @@ fn resolves_locked_marker_and_static_interface() {
         .unwrap();
     fs::write(
         root.join("pyproject.toml"),
-        format!(
-            r#"[project]
+        r#"[project]
 name = "demo"
 version = "1.0"
-
-[tool.osiris]
-extensions = ["sample"]
-
-[[tool.osiris.trust.contract]]
-distribution = "sample-ext"
-semantic-interface-hash = "{}"
-ids = ["sample.contract"]
+dependencies = ["sample-ext==1.0"]
 "#,
-            parsed.semantic_interface_hash()
-        ),
     )
     .unwrap();
+    fs::write(root.join("osiris.jsonc"), "{}").unwrap();
     fs::write(
         root.join("uv.lock"),
         format!(
@@ -244,7 +235,7 @@ ids = ["sample.contract"]
 [[package]]
 name = "demo"
 source = {{ editable = "." }}
-dependencies = [{{ name = "builder", version = "4.0" }}]
+dependencies = [{{ name = "sample-ext", version = "1.0" }}]
 
 [[package]]
 name = "sample-ext"

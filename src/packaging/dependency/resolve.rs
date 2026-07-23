@@ -12,8 +12,9 @@ pub fn resolve_effective_extensions(
         });
     }
     lock.validate_project(project)?;
-    let locked_names = lock.packages.keys().cloned().collect::<Vec<_>>();
-    let discovered = extension::discover_reachable(site_roots, &project.extensions, &locked_names)
+    let reachable_names =
+        effective_reachable_from(lock, project, std::slice::from_ref(&project.distribution))?;
+    let discovered = extension::discover_reachable_all(site_roots, &reachable_names)
         .map_err(DependencyError::Extension)?;
     for distribution in &discovered.distributions {
         let pin = lock
@@ -23,22 +24,11 @@ pub fn resolve_effective_extensions(
             })?;
         validate_marker_pin(distribution, pin)?;
     }
-    let mut roots = vec![project.distribution.clone()];
-    roots.extend(
-        discovered
-            .distributions
-            .iter()
-            .map(|distribution| distribution.metadata.normalized_name.clone()),
-    );
-    roots.sort();
-    roots.dedup();
-    let reachable_names = effective_reachable_from(lock, project, &roots)?;
     let reachable = reachable_names
         .iter()
         .filter_map(|name| lock.packages.get(name).cloned())
         .collect::<Vec<_>>();
 
-    let requested = project.extensions.iter().cloned().collect::<BTreeSet<_>>();
     let mut resolved = Vec::new();
     let mut semantic_hashes = Vec::new();
     for distribution in discovered.distributions {
@@ -53,9 +43,6 @@ pub fn resolve_effective_extensions(
             .ok_or_else(|| DependencyError::MissingPackage(normalized.clone()))?;
         let mut extensions = Vec::new();
         for resource in distribution.extensions {
-            if !requested.contains(&resource.id) {
-                continue;
-            }
             let source = fs::read_to_string(&resource.interface)
                 .map_err(|error| DependencyError::Io(resource.interface.clone(), error))?;
             let parsed = interface::read(&source).map_err(|error| DependencyError::Interface {
@@ -108,7 +95,7 @@ pub fn resolve_effective_extensions(
         }
     }
     edges.sort();
-    let trust_policy = contract_trust_policy(&project.trust_contracts, &semantic_hashes)?;
+    let trust_policy = contract_trust_policy(&[], &semantic_hashes)?;
     Ok(EffectiveExtensionGraph {
         target_python: lock.target_python,
         reachable_distributions: reachable,

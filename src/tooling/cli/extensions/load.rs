@@ -54,20 +54,14 @@ pub(super) fn load_external_interfaces(
             records_resolver: Vec::new(),
         });
     };
-    if project.extensions.is_empty() {
-        let trust_policy = dependency::contract_trust_policy(&project.trust_contracts, &[])
+    if site_roots.is_empty() {
+        let trust_policy = dependency::contract_trust_policy(&[], &[])
             .map_err(|error| format!("could not validate contract trust policy: {error}"))?;
         return Ok(LoadedExternalInterfaces {
             interfaces: BTreeMap::new(),
             trust_policy,
             records_resolver: Vec::new(),
         });
-    }
-    if site_roots.is_empty() {
-        return Err(format!(
-            "project enables static extensions ({}) but no installed-package --site-root was provided",
-            project.extensions.join(", ")
-        ));
     }
     let roots = site_roots.iter().map(PathBuf::from).collect::<Vec<_>>();
     let lock = project
@@ -85,9 +79,8 @@ pub(super) fn load_external_interfaces(
     // covers every interface in that wheel.  Discover the same lock-reachable
     // distributions once more so sidecar reconstruction includes disabled
     // (but still published) interfaces as well.
-    let discovered =
-        extension::discover_reachable(&roots, &project.extensions, &reachable_distributions)
-            .map_err(|error| format!("could not discover static extension interfaces: {error}"))?;
+    let discovered = extension::discover_reachable_all(&roots, &reachable_distributions)
+        .map_err(|error| format!("could not discover static extension interfaces: {error}"))?;
     let all_distributions = discovered
         .distributions
         .into_iter()

@@ -6,6 +6,7 @@ use std::{
 
 use serde::Deserialize;
 use unicode_normalization::UnicodeNormalization;
+use globset::{GlobSet, GlobSetBuilder};
 
 use crate::extension::{is_valid_distribution_name, normalize_distribution_name};
 
@@ -13,11 +14,12 @@ pub use crate::types::PythonVersion;
 
 impl PythonVersion {
     pub const MINIMUM: Self = Self { major: 3, minor: 9 };
+    pub const DEFAULT_TARGET: Self = Self { major: 3, minor: 11 };
 }
 
 impl Default for PythonVersion {
     fn default() -> Self {
-        Self::MINIMUM
+        Self::DEFAULT_TARGET
     }
 }
 
@@ -52,26 +54,18 @@ impl FromStr for PythonVersion {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TrustContract {
-    pub distribution: String,
-    pub semantic_interface_hash: String,
-    pub ids: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ProjectConfig {
     pub root: PathBuf,
     pub distribution: String,
     pub distribution_version: String,
     pub dependencies: Vec<String>,
     pub source_roots: Vec<PathBuf>,
+    pub output_dir: PathBuf,
+    exclude: GlobSet,
     pub target_python: PythonVersion,
     pub strict: bool,
-    pub extensions: Vec<String>,
-    pub build_groups: Vec<String>,
     pub display_locale: Option<String>,
-    pub trust_contracts: Vec<TrustContract>,
 }
 
 impl ProjectConfig {
@@ -83,21 +77,13 @@ impl ProjectConfig {
         };
 
         loop {
+            let jsonc = directory.join("osiris.jsonc");
             let candidate = directory.join("pyproject.toml");
-            if candidate.is_file() {
-                let contents = fs::read_to_string(&candidate)
-                    .map_err(|error| ConfigError::Io(candidate.clone(), error))?;
-                let document = contents
-                    .parse::<toml::Table>()
-                    .map_err(|error| ConfigError::Toml(candidate.clone(), error))?;
-                if document
-                    .get("tool")
-                    .and_then(toml::Value::as_table)
-                    .and_then(|tool| tool.get("osiris"))
-                    .is_some()
-                {
-                    return Self::load(&candidate);
+            if jsonc.is_file() {
+                if !candidate.is_file() {
+                    return Err(ConfigError::MissingConfig(candidate));
                 }
+                return Self::load(&candidate);
             }
 
             let Some(parent) = directory.parent() else {
@@ -115,10 +101,6 @@ impl ProjectConfig {
         let parsed: PyProject = toml::from_str(&contents)
             .map_err(|error| ConfigError::Toml(pyproject.to_path_buf(), error))?;
         let project = parsed.project.unwrap_or_default();
-        let raw = parsed
-            .tool
-            .and_then(|tool| tool.osiris)
-            .ok_or_else(|| ConfigError::MissingTable(pyproject.to_path_buf()))?;
         let parent = pyproject
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
@@ -127,8 +109,14 @@ impl ProjectConfig {
             std::env::current_dir()
                 .map_err(|error| ConfigError::Io(pyproject.to_path_buf(), error))?
         } else {
-            parent.to_path_buf()
+            fs::canonicalize(parent)
+                .map_err(|error| ConfigError::Io(pyproject.to_path_buf(), error))?
         };
+        let jsonc_path = root.join("osiris.jsonc");
+        if !jsonc_path.is_file() {
+            return Err(ConfigError::MissingConfig(jsonc_path));
+        }
+        let jsonc = load_jsonc_config(&jsonc_path)?;
         let distribution_name = project.name.unwrap_or_else(|| {
             root.file_name()
                 .and_then(|name| name.to_str())
@@ -154,11 +142,7 @@ impl ProjectConfig {
             ));
         }
 
-        let sources = if raw.source.is_empty() {
-            vec!["src".to_owned()]
-        } else {
-            raw.source
-        };
+        let sources = jsonc.source.unwrap_or_else(|| vec!["src".to_owned()]);
         let mut source_roots = Vec::with_capacity(sources.len());
         for source in sources {
             let relative = PathBuf::from(&source);
@@ -166,95 +150,24 @@ impl ProjectConfig {
             source_roots.push(root.join(relative));
         }
 
-        let target_python = raw.target_python.as_deref().unwrap_or("3.9").parse()?;
-        let mut extensions = raw.extensions;
-        if extensions
-            .iter()
-            .any(|extension| extension.trim().is_empty())
-        {
-            return Err(ConfigError::Invalid(
-                "[tool.osiris].extensions entries must not be empty".to_owned(),
-            ));
-        }
-        extensions.sort();
-        if extensions.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(ConfigError::Invalid(
-                "[tool.osiris].extensions must not contain duplicates".to_owned(),
-            ));
-        }
-        let mut build_groups = raw.build_groups;
-        if build_groups.iter().any(|group| group.trim().is_empty()) {
-            return Err(ConfigError::Invalid(
-                "[tool.osiris].build-groups entries must not be empty".to_owned(),
-            ));
-        }
-        build_groups.sort();
-        if build_groups.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(ConfigError::Invalid(
-                "[tool.osiris].build-groups must not contain duplicates".to_owned(),
-            ));
-        }
-        let mut trust_contracts = raw
-            .trust
-            .contract
-            .into_iter()
-            .map(|mut contract| {
-                let hash = contract
-                    .semantic_interface_hash
-                    .strip_prefix("sha256:")
-                    .ok_or_else(|| {
-                        ConfigError::Invalid(format!(
-                            "trust hash for `{}` must start with `sha256:`",
-                            contract.distribution
-                        ))
-                    })?;
-                if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                    return Err(ConfigError::Invalid(format!(
-                        "trust hash for `{}` must contain 64 hexadecimal digits",
-                        contract.distribution
-                    )));
-                }
-                if contract.ids.is_empty()
-                    || contract.ids.iter().any(|id| {
-                        id.is_empty()
-                            || id.chars().any(|character| {
-                                character.is_control() || character.is_whitespace()
-                            })
-                    })
-                {
-                    return Err(ConfigError::Invalid(format!(
-                        "trust contract for `{}` must list non-empty ids",
-                        contract.distribution
-                    )));
-                }
-                contract.ids.sort();
-                contract.ids.dedup();
-                if !is_valid_distribution_name(&contract.distribution) {
-                    return Err(ConfigError::Invalid(format!(
-                        "trust contract distribution `{}` is not a valid Python distribution name",
-                        contract.distribution
-                    )));
-                }
-                let distribution = normalize_distribution_name(&contract.distribution);
-                if distribution.is_empty() {
-                    return Err(ConfigError::Invalid(
-                        "trust contract distribution must not be empty".to_owned(),
-                    ));
-                }
-                Ok(TrustContract {
-                    distribution,
-                    semantic_interface_hash: format!("sha256:{}", hash.to_ascii_lowercase()),
-                    ids: contract.ids,
-                })
+        let target_python = jsonc
+            .target_python
+            .as_deref()
+            .unwrap_or("3.11")
+            .parse()?;
+        let display_locale = jsonc
+            .display_locale
+            .map(|locale| match locale.as_str() {
+                "en" | "zh-CN" => Ok(locale),
+                _ => Err(ConfigError::Invalid(format!(
+                    "unsupported displayLocale `{locale}`; expected `en` or `zh-CN`"
+                ))),
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        trust_contracts.sort_by(|left, right| {
-            (&left.distribution, &left.semantic_interface_hash, &left.ids).cmp(&(
-                &right.distribution,
-                &right.semantic_interface_hash,
-                &right.ids,
-            ))
-        });
+            .transpose()?;
+        let output_relative = PathBuf::from(jsonc.out_dir.unwrap_or_else(|| "target/osr".to_owned()));
+        validate_relative_path(&output_relative, "output directory")?;
+        let exclude = compile_exclude_patterns(jsonc.exclude.unwrap_or_default())?;
+        let output_dir = root.join(output_relative);
 
         Ok(Self {
             root,
@@ -262,18 +175,29 @@ impl ProjectConfig {
             distribution_version,
             dependencies,
             source_roots,
+            output_dir,
+            exclude,
             target_python,
-            strict: raw.strict,
-            extensions,
-            build_groups,
-            display_locale: raw.display_locale,
-            trust_contracts,
+            strict: jsonc.strict.unwrap_or(true),
+            display_locale,
         })
     }
 
     #[must_use]
     pub fn default_output_dir(&self) -> PathBuf {
-        self.root.join("target/osr")
+        self.output_dir.clone()
+    }
+
+    #[must_use]
+    pub fn is_excluded(&self, path: &Path) -> bool {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.root.join(path)
+        };
+        absolute
+            .strip_prefix(&self.root)
+            .is_ok_and(|relative| self.exclude.is_match(relative))
     }
 
     /// Maps an existing `.osr` source to its module name using exactly one
@@ -398,10 +322,4 @@ impl ProjectConfig {
         crate::dependency::resolve_effective_extensions(self, lock, site_roots)
     }
 
-    pub fn trust_policy_hash(
-        &self,
-        resolved: &[crate::dependency::SemanticInterfaceHash],
-    ) -> Result<String, crate::dependency::DependencyError> {
-        crate::dependency::trust_policy_hash(&self.trust_contracts, resolved)
-    }
 }

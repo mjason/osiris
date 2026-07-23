@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn project_config_controls_glob_exclusions_and_output() {
+    let fixture = SourceFixture::new("none\n");
+    let app = fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
+    fixture.write(
+        "src/pkg/generated/broken.osr",
+        "(module pkg.generated.broken\n",
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"configured\"\nversion = \"1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{
+          // The excluded invalid module must not enter compilation.
+          "source": ["src"],
+          "exclude": ["src/**/generated/**"],
+          "outDir": "build/python",
+          "targetPython": "3.11",
+        }"#,
+    )
+    .unwrap();
+
+    let output = osr(&["compile", path_argument(&app)]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let out = fixture.directory.join("build/python");
+    assert!(out.join("main.py").is_file());
+    assert!(out.join("main.osri").is_file());
+    assert!(out.join("main.py.map").is_file());
+    assert!(!out.join("pkg/generated/broken.py").exists());
+}
+
+#[test]
 fn compile_writes_parseable_python_and_source_map_atomically() {
     let fixture = SourceFixture::new(
         "(module sample)\n\
@@ -71,9 +110,14 @@ fn compile_project_entry_discovers_and_emits_dependency_modules() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"workspace-build\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"workspace-build\"\nversion = \"1.0\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
     let out_dir = fixture.directory.join("workspace-build");
 
     let output = osr(&[
@@ -166,9 +210,14 @@ fn compile_aggregates_multiple_modules_into_one_distribution_manifest() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo-osiris\"\nversion = \"1.2.3\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"demo-osiris\"\nversion = \"1.2.3\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
     let out_dir = fixture.directory.join("distribution-build");
     let output = osr(&[
         "compile",
@@ -233,9 +282,14 @@ fn compile_orders_sources_and_replays_dependency_macro_ir() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"macro-demo\"\nversion = \"1.0.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"macro-demo\"\nversion = \"1.0.0\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
     let out_dir = fixture.directory.join("macro-build");
 
     let output = osr(&[
@@ -318,12 +372,15 @@ fn compile_consumes_a_locked_static_extension_interface() {
         r#"[project]
 name = "demo"
 version = "1.0"
-
-[tool.osiris]
-extensions = ["sample"]
+dependencies = ["sample-ext==1.0"]
 "#,
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
     fs::write(
         fixture.directory.join("uv.lock"),
         format!(
@@ -332,6 +389,7 @@ extensions = ["sample"]
 [[package]]
 name = "demo"
 source = {{ editable = "." }}
+dependencies = [{{ name = "sample-ext", version = "1.0" }}]
 
 [[package]]
 name = "sample-ext"
@@ -382,9 +440,14 @@ fn project_compile_rejects_a_module_name_that_disagrees_with_its_path() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"demo\"\nversion = \"1.0\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
     let out_dir = fixture.directory.join("mismatch-build");
 
     let output = osr(&[

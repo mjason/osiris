@@ -55,24 +55,48 @@ osr init --existing path/to/project
 ```
 
 `init` preserves the existing `pyproject.toml` layout, comments, project
-metadata, and dependencies. It adds missing `[tool.osiris]` defaults, creates
-`src/main.osr` only when that file does not exist, and asks `uv` to add
+metadata, and dependencies. It creates `osiris.jsonc` and `src/main.osr` only
+when those files do not exist, and asks `uv` to add
 `osiris-lang` to the development dependency group. Re-running the command is
 safe. A new project path must not already exist; use `--existing` when joining
 an established uv project.
 
-Osiris discovers the nearest `pyproject.toml` containing a `[tool.osiris]`
-table. The smallest project configuration for the checked-in example is:
+Osiris discovers the nearest `osiris.jsonc`; the adjacent `pyproject.toml`
+continues to own Python package metadata and dependencies. JSONC comments and
+trailing commas are accepted. A typical configuration is deliberately small:
 
-```toml
-[tool.osiris]
-source = ["examples"]
-target-python = "3.9"
-strict = true
-extensions = []
-build-groups = []
-display-locale = "zh-CN"
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
+  "source": ["examples"],
+  "outDir": "target/osr",
+  "targetPython": "3.11",
+  "strict": true,
+  "displayLocale": "zh-CN"
+}
 ```
+
+`source` defines the complete project source scope. `exclude` contains
+project-root-relative glob rules shared by compilation and language tooling;
+a value without glob syntax, such as `src/generated`, also excludes its
+descendants.
+Patterns such as `src/**/generated/**` and `src/**/*_test.osr` can select files
+inside a source root when a project needs those rules. `outDir` is the default
+compile destination; artifact selection remains an explicit
+`osr compile --emit` option. One invocation targets one Python version.
+Changing `targetPython` invalidates target-sensitive analysis, interfaces,
+extension resolution, and build artifacts.
+
+`displayLocale` is a closed enum used by hover, completion, and signature
+help when Rich Metadata provides localized labels or documentation:
+
+- `"zh-CN"` displays Simplified Chinese labels and documentation when present.
+- `"en"` displays English labels and documentation when present.
+
+It changes tooling presentation, not binding identity or generated Python.
+An explicit locale sent by an LSP client takes precedence over the project
+value. `osr init` writes `"displayLocale": "zh-CN"` by default; change that
+single value to `"en"` for an English tooling view.
 
 With that configuration and [`examples/hello.osr`](examples/hello.osr):
 
@@ -108,14 +132,61 @@ and publishes one artifact set atomically:
   compiled modules own public static records (or when `--emit records` is
   requested).
 
-Python dependencies are still ordinary Python project dependencies. Add them
-from PyPI (or another index/path supported by `uv`) in the standard
-`[project].dependencies` or a dependency group, then let `uv` resolve and lock
-them. `[tool.osiris].extensions` is only a list of explicitly enabled static
-Osiris extension IDs: it points discovery at wheel `osiris.toml` markers and
-their `.osri` interfaces; it is not a package registry, installer, or second
-lock file, and the compiler never imports extension Python code during
-discovery.
+Python dependencies and Osiris extensions are ordinary Python project
+dependencies. Add them from PyPI (or another index/path supported by `uv`) in
+`[project].dependencies`, then let `uv` resolve and lock them. The compiler
+automatically reads `osiris.toml` and `.osri` resources only from distributions
+reachable in the runtime lock graph; it never imports extension Python code or
+scans unrelated installed packages during discovery.
+
+## Publishing an Extension
+
+An Osiris extension is an ordinary Python distribution whose wheel contains
+compiled `.osri` interfaces and an automatically generated
+`dist-info/osiris.toml` marker. Create one with:
+
+```console
+osr init --extension acme-osiris
+cd acme-osiris
+uv lock
+uv build --python 3.11
+uv publish dist/*
+```
+
+The generated `pyproject.toml` pins the installed compiler distribution and
+selects its bundled PEP 517 backend:
+
+```toml
+[build-system]
+requires = ["osiris-lang==<osr-version>"]
+build-backend = "osiris_build"
+```
+
+`osr init --extension acme-osiris` creates
+`src/acme_osiris/core.osr` with module `acme_osiris.core`. Each public module
+is compiled into readable Python plus an `.osri` interface; the backend adds
+one `[[extension]]` marker entry for each interface, using the module name
+(`acme_osiris.core`) as its ID. Do not write `osiris.toml` by hand.
+
+To convert an existing uv package, run `osr init --existing --extension` from
+its root. The command preserves existing metadata and refuses to replace a
+different build backend. If that package needs Hatchling, maturin, or another
+backend for additional native build work, backend composition is not yet
+supported and should be handled as a separate distribution.
+
+Consumers install the published extension exactly like any other dependency:
+
+```console
+uv add acme-osiris
+uv lock
+uv run osr check src/main.osr
+```
+
+The compiler follows the consumer's locked runtime dependency graph and reads
+the extension's static marker and interfaces without importing its Python
+package during discovery. Public interface dependencies of an extension must
+therefore be declared in `[project].dependencies`, so they are preserved as
+standard `Requires-Dist` metadata.
 
 ## Native CLI
 
@@ -123,6 +194,7 @@ discovery.
 cargo run --bin osr -- --version
 cargo run --bin osr -- check source.osr
 cargo run --bin osr -- compile source.osr
+cargo run --bin osr -- watch
 cargo run --bin osr -- expand source.osr
 cargo run --bin osr -- inspect --semantic source.osr --format json
 cargo run --bin osr -- lsp

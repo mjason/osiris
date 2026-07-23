@@ -63,7 +63,7 @@ impl LspState {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
         let symbol = document.semantic.symbol_at(offset)?;
-        let locale = locale.unwrap_or(&self.display_locale);
+        let locale = effective_display_locale(document, locale, &self.display_locale);
         let label = symbol.labels.for_locale(locale);
         let aliases = symbol
             .aliases
@@ -112,7 +112,7 @@ impl LspState {
         };
         let offset = position_to_offset(&document.text, position).unwrap_or(document.text.len());
         let prefix = completion_prefix(&document.text, offset);
-        let locale = locale.unwrap_or(&self.display_locale);
+        let locale = effective_display_locale(document, locale, &self.display_locale);
         let chinese = is_chinese_locale(locale);
         let mut items = document
             .semantic
@@ -167,7 +167,7 @@ impl LspState {
                 document,
                 trace,
                 offset,
-                locale.unwrap_or(&self.display_locale),
+                effective_display_locale(document, locale, &self.display_locale),
             );
         }
         let call = runtime_call?;
@@ -185,7 +185,11 @@ impl LspState {
         let source_argument = active_source_argument(items, &arguments, offset);
         let active_parameter = active_parameter(&signature.parameters, &arguments, source_argument)
             .map(|index| index as u32);
-        let chinese = is_chinese_locale(locale.unwrap_or(&self.display_locale));
+        let chinese = is_chinese_locale(effective_display_locale(
+            document,
+            locale,
+            &self.display_locale,
+        ));
         let parameter_labels = signature
             .parameters
             .iter()
@@ -210,4 +214,14 @@ impl LspState {
             active_parameter,
         })
     }
+}
+
+fn effective_display_locale<'a>(
+    document: &'a OpenDocument,
+    requested: Option<&'a str>,
+    fallback: &'a str,
+) -> &'a str {
+    requested
+        .or(document.display_locale.as_deref())
+        .unwrap_or(fallback)
 }

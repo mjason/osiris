@@ -9,9 +9,14 @@ fn project_document_uses_path_identity_and_dependency_interfaces() {
     fs::create_dir_all(&source_root).expect("source root");
     fs::write(
             root.join("pyproject.toml"),
-            "[project]\nname = \"lsp-workspace\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+            "[project]\nname = \"lsp-workspace\"\nversion = \"1.0\"\n",
         )
         .expect("project configuration");
+    fs::write(
+        root.join("osiris.jsonc"),
+        r#"{"source":["src"],"displayLocale":"zh-CN"}"#,
+    )
+        .expect("Osiris configuration");
     fs::write(
         source_root.join("math.osr"),
         "(module demo.math)\n(export [add-one])\n(defn add-one [[x Int]] -> Int (+ x 1))\n",
@@ -51,9 +56,14 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
     fs::create_dir_all(&source_root).expect("source root");
     fs::write(
             root.join("pyproject.toml"),
-            "[project]\nname = \"lsp-navigation\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+            "[project]\nname = \"lsp-navigation\"\nversion = \"1.0\"\n",
         )
         .expect("project configuration");
+    fs::write(
+        root.join("osiris.jsonc"),
+        r#"{"source":["src"],"displayLocale":"zh-CN"}"#,
+    )
+        .expect("Osiris configuration");
     let alpha_source = r#"(module demo.alpha)
 (export [score 得分])
 (defn score [[value Int]] -> Int value)
@@ -120,6 +130,17 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
     assert_eq!(alias_definition, alpha_definition);
     assert_eq!(beta_definition.uri, beta_uri);
     assert_ne!(beta_definition, alpha_definition);
+    let localized = state.completion(
+        &app_uri,
+        offset_to_position(app_source, app_source.len()),
+        None,
+    );
+    assert!(
+        localized
+            .iter()
+            .any(|item| item.insert_text == "得分" && item.label == "得分"),
+        "{localized:?}"
+    );
 
     let alpha_references = state.references(&app_uri, alpha_call);
     assert!(
@@ -286,6 +307,7 @@ fn external_interface_without_source_has_no_definition_location() {
             analysis,
             function_interfaces,
             macro_interfaces,
+            display_locale: None,
             workspace_symbols,
         },
     );
@@ -325,9 +347,11 @@ fn project_errors_preserve_workspace_identity_imports_and_completion() {
     fs::create_dir_all(&source_root).expect("source root");
     fs::write(
             root.join("pyproject.toml"),
-            "[project]\nname = \"lsp-workspace\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+            "[project]\nname = \"lsp-workspace\"\nversion = \"1.0\"\n",
         )
         .expect("project configuration");
+    fs::write(root.join("osiris.jsonc"), r#"{"source":["src"]}"#)
+        .expect("Osiris configuration");
     fs::write(
         source_root.join("math.osr"),
         "(module demo.math)\n(export [add-one])\n(defn add-one [[x Int]] -> Int (+ x 1))\n",

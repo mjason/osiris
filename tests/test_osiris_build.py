@@ -41,14 +41,15 @@ version = "1.2.3"
 description = "fixture"
 requires-python = ">=3.9"
 dependencies = ["NumPy>=2"]
-
-[tool.osiris]
-source = ["src"]
-target-python = "{target}"
-build-groups = ["osiris"]
-
-[dependency-groups]
-osiris = ["builder>=1"]
+""",
+            encoding="utf-8",
+        )
+        (self.root / "osiris.jsonc").write_text(
+            """{{
+  // Build configuration remains readable by people and editors.
+  "source": ["src"],
+  "targetPython": "{target}",
+}}
 """.format(target=target),
             encoding="utf-8",
         )
@@ -62,7 +63,6 @@ name = "demo-osiris"
 source = { editable = "." }
 dependencies = [
   { name = "numpy", version = "2.1.0" },
-  { name = "builder", version = "1.4.0" },
 ]
 
 [[package]]
@@ -70,10 +70,6 @@ name = "numpy"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 
-[[package]]
-name = "builder"
-version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
 """,
             encoding="utf-8",
         )
@@ -207,8 +203,8 @@ sidecar = {
     def test_non_numeric_locked_version_is_not_silently_truncated(self):
         self._replace(
             self.root / "uv.lock",
-            'name = "builder"\nversion = "1.4.0"',
-            'name = "builder"\nversion = "1.4garbage"',
+            'name = "numpy"\nversion = "2.1.0"',
+            'name = "numpy"\nversion = "2.1garbage"',
         )
         with self.assertRaises(osiris_build.BackendError) as context:
             osiris_build.get_requires_for_build_wheel()
@@ -240,40 +236,45 @@ sidecar = {
             '{ name = "numpy", version = "2.1.0", marker = "platform_system == \'Windows\'" }',
         )
         with mock.patch.object(osiris_build.platform, "system", return_value="Linux"):
-            self.assertEqual(
-                osiris_build.get_requires_for_build_wheel(),
-                ["builder==1.4.0"],
-            )
+            self.assertEqual(osiris_build.get_requires_for_build_wheel(), [])
 
     def test_projects_dependencies_are_projected_to_exact_lock_versions(self):
         self.assertEqual(
             osiris_build.get_requires_for_build_wheel(),
-            ["builder==1.4.0", "NumPy==2.1.0"],
+            ["NumPy==2.1.0"],
         )
         self.assertEqual(
             osiris_build.get_requires_for_build_sdist(),
-            ["builder==1.4.0", "NumPy==2.1.0"],
+            ["NumPy==2.1.0"],
         )
 
-    def test_source_and_build_groups_require_canonical_array_forms(self):
-        self._replace(self.root / "pyproject.toml", 'source = ["src"]', 'source = "src"')
+    def test_source_requires_canonical_array_form(self):
+        self._replace(self.root / "osiris.jsonc", '"source": ["src"]', '"source": "src"')
         with self.assertRaises(osiris_build.BackendError) as context:
             osiris_build.get_requires_for_build_wheel()
         self.assertIn("source must be a non-empty array", str(context.exception))
 
-        for groups, expected in [
-            ('["osiris", ""]', "entries must be non-empty strings"),
-            ('["osiris", "osiris"]', "must not contain duplicates"),
-        ]:
+    def test_removed_configuration_fields_fail_closed(self):
+        for field in ("watch", "emit", "extensions", "buildGroups", "trust"):
             self._write_project()
             self._replace(
-                self.root / "pyproject.toml",
-                'build-groups = ["osiris"]',
-                "build-groups = %s" % groups,
+                self.root / "osiris.jsonc",
+                '"source": ["src"],',
+                '"source": ["src"],\n  "%s": {},' % field,
             )
             with self.assertRaises(osiris_build.BackendError) as context:
                 osiris_build.get_requires_for_build_wheel()
-            self.assertIn(expected, str(context.exception))
+            self.assertIn("unknown osiris.jsonc field `%s`" % field, str(context.exception))
+
+    def test_display_locale_is_a_closed_enum(self):
+        self._replace(
+            self.root / "osiris.jsonc",
+            '"targetPython": "',
+            '"displayLocale": "zh",\n  "targetPython": "',
+        )
+        with self.assertRaises(osiris_build.BackendError) as context:
+            osiris_build.get_requires_for_build_wheel()
+        self.assertIn("displayLocale must be `en` or `zh-CN`", str(context.exception))
 
     def test_target_python_mismatch_fails_closed(self):
         self._write_project(target="3.9")
@@ -295,6 +296,8 @@ sidecar = {
             marker = archive.read("demo_osiris-1.2.3.dist-info/osiris.toml").decode("utf-8")
             self.assertIn("records = \"demo-osiris.records.json\"", marker)
             self.assertIn("[[extension]]", marker)
+            self.assertIn('id = "demo.hello"', marker)
+            self.assertIn('interface = "demo/hello.osri"', marker)
             records = archive.read("demo_osiris-1.2.3.dist-info/RECORD").decode("utf-8")
             self.assertIn("demo/hello.py,sha256=", records)
             self.assertTrue(records.endswith("demo_osiris-1.2.3.dist-info/RECORD,,\n"))
@@ -360,6 +363,25 @@ sidecar = {
             self.assertIn("demo/hello.py", archive.namelist())
             self.assertIn("demo/world.py", archive.namelist())
 
+    def test_exclude_globs_filter_files_inside_source_roots(self):
+        generated = self.root / "src" / "demo" / "generated"
+        generated.mkdir()
+        (generated / "ignored.osr").write_text("(module demo.generated.ignored)\n", encoding="utf-8")
+        (self.root / "src" / "demo" / "hello_test.osr").write_text(
+            "(module demo.hello_test)\n", encoding="utf-8"
+        )
+        self._replace(
+            self.root / "osiris.jsonc",
+            '"source": ["src"],',
+            '"source": ["src"],\n  "exclude": ["src/**/generated/**", "src/**/*_test.osr"],',
+        )
+        wheel_dir = self.root / "excluded-wheel"
+        filename = osiris_build.build_wheel(str(wheel_dir), self._settings())
+        with zipfile.ZipFile(wheel_dir / filename) as archive:
+            self.assertIn("demo/hello.py", archive.namelist())
+            self.assertNotIn("demo/ignored.py", archive.namelist())
+            self.assertNotIn("demo/hello_test.py", archive.namelist())
+
     def test_sdist_contains_sources_and_locked_build_inputs(self):
         sdist_dir = self.root / "sdist"
         filename = osiris_build.build_sdist(str(sdist_dir))
@@ -367,7 +389,7 @@ sidecar = {
             names = archive.getnames()
             self.assertIn("demo-osiris-1.2.3/src/demo/hello.osr", names)
             constraints = archive.extractfile("demo-osiris-1.2.3/osiris-build-constraints.txt")
-            self.assertEqual(constraints.read(), b"builder==1.4.0\nNumPy==2.1.0\n")
+            self.assertEqual(constraints.read(), b"NumPy==2.1.0\n")
             self.assertIn("demo-osiris-1.2.3/osiris-build-inputs.sha256", names)
 
 

@@ -47,9 +47,14 @@ fn check_analyzes_project_imports_against_source_interfaces() {
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"workspace-check\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+        "[project]\nname = \"workspace-check\"\nversion = \"1.0\"\n",
     )
     .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
 
     let output = osr(&["check", path_argument(&app)]);
 

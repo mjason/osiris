@@ -1,11 +1,13 @@
 """Compiler invocation plus deterministic wheel and sdist assembly."""
 
 import base64
+import fnmatch
 import gzip
 import hashlib
 import io
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -88,10 +90,41 @@ def _add_file(files: Dict[str, bytes], archive_path: str, data: bytes) -> None:
     files[archive_path] = data
 
 
+def _is_excluded(project: _Project, path: Path) -> bool:
+    try:
+        relative = path.relative_to(project.root).as_posix()
+    except ValueError:
+        return False
+    return any(_matches_exclude(relative, pattern) for pattern in project.exclude_patterns)
+
+
+def _matches_exclude(path: str, pattern: str) -> bool:
+    has_glob = any(character in pattern for character in "*?[")
+    if not has_glob:
+        return path == pattern or path.startswith(pattern + "/")
+    if pattern.endswith("/**") and path == pattern[:-3].rstrip("/"):
+        return True
+    segments = pattern.split("/")
+    expression = "^"
+    for index, segment in enumerate(segments):
+        if segment == "**":
+            expression += ".*" if index == len(segments) - 1 else "(?:[^/]+/)*"
+            continue
+        translated = fnmatch.translate(segment)
+        if translated.endswith((r"\z", r"\Z")):
+            translated = translated[:-2]
+        expression += translated
+        if index != len(segments) - 1:
+            expression += "/"
+    return re.fullmatch(expression, path) is not None
+
+
 def _collect_static_files(project: _Project) -> Dict[str, bytes]:
     files: Dict[str, bytes] = {}
     for source_root in project.source_roots:
         for path in sorted(source_root.rglob("*"), key=lambda item: item.as_posix()):
+            if _is_excluded(project, path):
+                continue
             if path.is_symlink():
                 raise _error("source file `%s` must not be a symlink" % path)
             if not path.is_file():
@@ -115,13 +148,13 @@ def _collect_compiler_output(
         source_files.extend(
             path
             for path in source_root.rglob("*.osr")
-            if path.is_file() and _file_inside(project.root, path)
+            if path.is_file() and _file_inside(project.root, path) and not _is_excluded(project, path)
         )
     if any(path.is_symlink() for source_root in project.source_roots for path in source_root.rglob("*.osr")):
         raise _error("Osiris source files must not be symlinks")
     source_files.sort(key=lambda item: item.relative_to(project.root).as_posix())
     if not source_files:
-        raise _error("no .osr source files found under [tool.osiris].source")
+        raise _error("no .osr source files found under osiris.jsonc source roots")
     command = _compiler_command(config_settings, project)
     interfaces: List[str] = []
     interface_projections: List[_InterfaceProjection] = []
@@ -429,7 +462,7 @@ def _sdist_inputs(project: _Project) -> Dict[str, bytes]:
     files: Dict[str, bytes] = {}
     # Build from an explicit, source-focused set rather than accidentally
     # embedding .git, target, virtualenvs, or generated wheels.
-    candidates: Set[Path] = {project.pyproject_path}
+    candidates: Set[Path] = {project.pyproject_path, project.config_path}
     lock_path = project.root / "uv.lock"
     if lock_path.is_file():
         candidates.add(lock_path)
@@ -441,6 +474,8 @@ def _sdist_inputs(project: _Project) -> Dict[str, bytes]:
             if path.is_symlink():
                 raise _error("source file `%s` must not be a symlink" % path)
             if path.is_file():
+                if _is_excluded(project, path):
+                    continue
                 candidates.add(path)
     for extra in ("LICENSE", "LICENSE.txt", "COPYING", "README", "README.md"):
         candidate = project.root / extra
@@ -455,6 +490,7 @@ def _sdist_inputs(project: _Project) -> Dict[str, bytes]:
     _add_file(files, "osiris-build-constraints.txt", constraints)
     hashes = [
         "pyproject.toml sha256:%s" % hashlib.sha256(project.pyproject_bytes).hexdigest(),
+        "osiris.jsonc sha256:%s" % hashlib.sha256(project.config_bytes).hexdigest(),
         "uv.lock sha256:%s" % hashlib.sha256(project.lock_bytes).hexdigest(),
     ]
     _add_file(files, "osiris-build-inputs.sha256", ("\n".join(hashes) + "\n").encode("ascii"))

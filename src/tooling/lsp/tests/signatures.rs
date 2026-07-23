@@ -9,9 +9,11 @@ fn signature_help_uses_cross_module_types_aliases_and_default_presence() {
     fs::create_dir_all(&source_root).expect("source root");
     fs::write(
             root.join("pyproject.toml"),
-            "[project]\nname = \"lsp-signature\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+            "[project]\nname = \"lsp-signature\"\nversion = \"1.0\"\n",
         )
         .expect("project configuration");
+    fs::write(root.join("osiris.jsonc"), r#"{"source":["src"]}"#)
+        .expect("Osiris configuration");
     fs::write(
         source_root.join("math.osr"),
         r#"(module demo.math)
@@ -64,9 +66,11 @@ fn macro_signature_help_uses_stable_identity_for_qualified_referred_and_local_ma
     fs::create_dir_all(&source_root).expect("source root");
     fs::write(
             root.join("pyproject.toml"),
-            "[project]\nname = \"lsp-macro-signature\"\nversion = \"1.0\"\n\n[tool.osiris]\nsource = [\"src\"]\n",
+            "[project]\nname = \"lsp-macro-signature\"\nversion = \"1.0\"\n",
         )
         .expect("project configuration");
+    fs::write(root.join("osiris.jsonc"), r#"{"source":["src"]}"#)
+        .expect("Osiris configuration");
     fs::write(
         source_root.join("first.osr"),
         "(module demo.first)\n(export [wrap])\n(defmacro wrap [第一值 & 其余] 第一值)\n",

@@ -215,6 +215,15 @@ pub struct SemanticInterfaceHash {
     pub semantic_interface_hash: String,
 }
 
+/// Internal representation for compiler-verifiable contract authorities.
+/// Project configuration cannot construct this value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TrustContract {
+    pub distribution: String,
+    pub semantic_interface_hash: String,
+    pub ids: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct EffectiveDependencyEdge {
     pub from: String,

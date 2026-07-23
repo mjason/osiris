@@ -1,6 +1,6 @@
 (module hello)
 
-;; hello.osr 位于 [tool.osiris].source = ["examples"] 的根目录，所以模块名是
+;; hello.osr 位于 osiris.jsonc source = ["examples"] 的根目录，所以模块名是
 ;; hello。子目录会用点号连接，例如 tutorial/app.osr 对应 tutorial.app。
 
 ;; 顶层定义默认只在当前模块可见。只有 export 中的名称才能被其他 .osr

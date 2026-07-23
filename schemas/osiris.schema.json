@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
+  "title": "Osiris compiler configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "source": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relativePath" },
+      "default": ["src"]
+    },
+    "outDir": { "$ref": "#/$defs/relativePath", "default": "target/osr" },
+    "exclude": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relativeGlob" },
+      "description": "Project-root-relative glob patterns shared by compilation and language tooling. A value without glob syntax also excludes all descendants."
+    },
+    "targetPython": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "default": "3.11"
+    },
+    "strict": { "type": "boolean", "default": true },
+    "displayLocale": {
+      "enum": ["en", "zh-CN"],
+      "default": "en",
+      "description": "Default language for LSP labels and documentation: en for English, zh-CN for Simplified Chinese."
+    }
+  },
+  "$defs": {
+    "relativePath": { "type": "string", "minLength": 1 },
+    "relativeGlob": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "(^/|(^|/)\\.\\.(/|$))" }
+    }
+  }
+}

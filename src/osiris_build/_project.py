@@ -1,6 +1,7 @@
 """Read and validate project configuration without invoking the compiler."""
 
 import os
+import json
 import re
 import sys
 from pathlib import Path
@@ -51,6 +52,89 @@ def _read_toml(path: Path) -> Tuple[bytes, Dict[str, Any]]:
     return raw, value
 
 
+def _strip_jsonc(source: str) -> str:
+    output: List[str] = []
+    index = 0
+    quote = False
+    escaped = False
+    while index < len(source):
+        char = source[index]
+        if quote:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quote = False
+            index += 1
+            continue
+        if char == '"':
+            quote = True
+            output.append(char)
+            index += 1
+            continue
+        if source.startswith("//", index):
+            while index < len(source) and source[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+            continue
+        if source.startswith("/*", index):
+            output.extend("  ")
+            index += 2
+            while index < len(source) and not source.startswith("*/", index):
+                output.append(source[index] if source[index] in "\r\n" else " ")
+                index += 1
+            if index >= len(source):
+                raise _error("unterminated block comment in osiris.jsonc")
+            output.extend("  ")
+            index += 2
+            continue
+        output.append(char)
+        index += 1
+    stripped = "".join(output)
+    output = []
+    index = 0
+    quote = False
+    escaped = False
+    while index < len(stripped):
+        char = stripped[index]
+        if quote:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quote = False
+            index += 1
+            continue
+        if char == '"':
+            quote = True
+        if char == ",":
+            lookahead = index + 1
+            while lookahead < len(stripped) and stripped[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(stripped) and stripped[lookahead] in "]}":
+                index += 1
+                continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _read_jsonc(path: Path) -> Tuple[bytes, Dict[str, Any]]:
+    try:
+        raw = path.read_bytes()
+        source = raw.decode("utf-8")
+        value = json.loads(_strip_jsonc(source))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _error("invalid JSONC in %s: %s" % (path, exc)) from exc
+    if not isinstance(value, dict):
+        raise _error("JSONC document %s must be an object" % path)
+    return raw, value
+
+
 def _as_table(value: Any, label: str) -> Dict[str, Any]:
     if value is None:
         return {}
@@ -61,9 +145,9 @@ def _as_table(value: Any, label: str) -> Dict[str, Any]:
 
 def _parse_target(value: Any) -> Tuple[int, int]:
     if value is None:
-        value = "3.9"
+        value = "3.11"
     if not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+", value.strip()):
-        raise _error("[tool.osiris].target-python must use MAJOR.MINOR form")
+        raise _error("osiris.jsonc targetPython must use MAJOR.MINOR form")
     major_text, minor_text = value.strip().split(".", 1)
     target = (int(major_text), int(minor_text))
     if target < (3, 9):
@@ -84,6 +168,23 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
     root = _project_root()
     pyproject_path = root / "pyproject.toml"
     pyproject_bytes, document = _read_toml(pyproject_path)
+    config_path = root / "osiris.jsonc"
+    config_bytes, osiris = _read_jsonc(config_path)
+    allowed_config = {
+        "$schema",
+        "source",
+        "outDir",
+        "exclude",
+        "targetPython",
+        "strict",
+        "displayLocale",
+    }
+    unknown_config = sorted(set(osiris) - allowed_config)
+    if unknown_config:
+        raise _error("unknown osiris.jsonc field `%s`" % unknown_config[0])
+    display_locale = osiris.get("displayLocale")
+    if display_locale is not None and display_locale not in ("en", "zh-CN"):
+        raise _error("osiris.jsonc displayLocale must be `en` or `zh-CN`")
     project = _as_table(document.get("project"), "[project]")
     name = project.get("name")
     if not isinstance(name, str) or not name.strip():
@@ -102,10 +203,7 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         raise _error(
             "[project].version `%s` is outside the backend's numeric PEP 440 subset" % version
         ) from exc
-    osiris = _as_table(_as_table(document.get("tool"), "[tool]").get("osiris"), "[tool.osiris]")
-    if not osiris:
-        raise _error("[tool.osiris] is required by the osiris-build backend")
-    target = _parse_target(osiris.get("target-python"))
+    target = _parse_target(osiris.get("targetPython"))
     _check_requires_python(project.get("requires-python"), target, "[project].requires-python")
     if enforce_runtime_python and (sys.version_info.major, sys.version_info.minor) != target:
         raise _error(
@@ -114,7 +212,7 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         )
     source_values = osiris.get("source", ["src"])
     if not isinstance(source_values, list) or not source_values:
-        raise _error("[tool.osiris].source must be a non-empty array")
+        raise _error("osiris.jsonc source must be a non-empty array")
     source_roots: List[Path] = []
     for index, value in enumerate(source_values):
         relative = _validate_relative_path(value, "source root %d" % index)
@@ -128,13 +226,16 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         if (root / relative).is_symlink():
             raise _error("source root `%s` must not be a symlink" % relative)
         source_roots.append(absolute)
-    build_groups = osiris.get("build-groups", [])
-    if not isinstance(build_groups, list):
-        raise _error("[tool.osiris].build-groups must be an array")
-    if any(not isinstance(group, str) or not group.strip() for group in build_groups):
-        raise _error("[tool.osiris].build-groups entries must be non-empty strings")
-    if len(set(build_groups)) != len(build_groups):
-        raise _error("[tool.osiris].build-groups must not contain duplicates")
+    exclude_values = osiris.get("exclude", [])
+    if not isinstance(exclude_values, list):
+        raise _error("osiris.jsonc exclude must be an array")
+    exclude_patterns: List[str] = []
+    for index, value in enumerate(exclude_values):
+        if not isinstance(value, str) or not value or value.startswith("/"):
+            raise _error("exclude pattern %d must be a non-empty project-relative string" % index)
+        if any(part == ".." for part in value.split("/")):
+            raise _error("exclude pattern `%s` must not escape the project" % value)
+        exclude_patterns.append(value.rstrip("/"))
     lock_path = root / "uv.lock"
     if not require_lock:
         lock_bytes, lock_document = b"", {}
@@ -145,7 +246,7 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         if lock_document.get("version") != 1:
             raise _error("uv.lock must use lock format version 1")
         _check_requires_python(lock_document.get("requires-python"), target, "uv.lock requires-python")
-        requirements = _project_requirements(project, document, build_groups)
+        requirements = _project_requirements(project)
         packages = _lock_packages(lock_document, target)
         root_entry = _lock_root_entry(lock_document, name)
         runtime_names = {item.normalized_name for item in requirements}
@@ -223,12 +324,14 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         root=root,
         pyproject_path=pyproject_path,
         pyproject_bytes=pyproject_bytes,
+        config_path=config_path,
+        config_bytes=config_bytes,
         document=document,
         project=project,
         osiris=osiris,
         source_roots=source_roots,
+        exclude_patterns=exclude_patterns,
         target_python=target,
-        build_groups=list(build_groups),
         requirements=[item.raw for item in requirements],
         locked_requirements=locked,
         lock_bytes=lock_bytes,

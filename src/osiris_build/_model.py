@@ -34,12 +34,14 @@ class _Project:
     root: Path
     pyproject_path: Path
     pyproject_bytes: bytes
+    config_path: Path
+    config_bytes: bytes
     document: Dict[str, Any]
     project: Dict[str, Any]
     osiris: Dict[str, Any]
     source_roots: List[Path]
+    exclude_patterns: List[str]
     target_python: Tuple[int, int]
-    build_groups: List[str]
     requirements: List[str]
     locked_requirements: List[str]
     lock_bytes: bytes

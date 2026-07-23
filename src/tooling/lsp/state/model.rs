@@ -10,6 +10,7 @@ pub struct OpenDocument {
     pub identifier_lints: Vec<IdentifierLint>,
     pub(super) function_interfaces: BTreeMap<String, interface::FunctionInterface>,
     pub(super) macro_interfaces: BTreeMap<String, interface::MacroInterface>,
+    pub(super) display_locale: Option<String>,
     workspace_symbols: WorkspaceSymbolIndex,
 }
 
@@ -25,6 +26,7 @@ impl OpenDocument {
             analysis,
             function_interfaces,
             macro_interfaces,
+            display_locale,
             workspace_symbols,
         } = frontend;
         let semantic = SemanticDocument::from_analysis_at_version(&analysis, uri.clone(), version);
@@ -37,6 +39,7 @@ impl OpenDocument {
             identifier_lints,
             function_interfaces,
             macro_interfaces,
+            display_locale,
             workspace_symbols,
         }
     }
@@ -46,6 +49,7 @@ pub(super) struct ProjectDocumentAnalysis {
     pub(super) analysis: Analysis,
     pub(super) function_interfaces: BTreeMap<String, interface::FunctionInterface>,
     pub(super) macro_interfaces: BTreeMap<String, interface::MacroInterface>,
+    pub(super) display_locale: Option<String>,
     pub(super) workspace_symbols: WorkspaceSymbolIndex,
 }
 
@@ -65,7 +69,7 @@ impl Default for LspState {
     fn default() -> Self {
         Self {
             documents: BTreeMap::new(),
-            target_python: PythonVersion::MINIMUM,
+            target_python: PythonVersion::DEFAULT_TARGET,
             display_locale: "en".to_owned(),
             site_roots: Vec::new(),
             analysis_runs: 0,

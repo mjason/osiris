@@ -31,14 +31,6 @@ python-packages = ["osiris", "osiris_build"]
 python-source = "src"
 features = ["python"]
 
-[tool.osiris]
-source = ["examples"]
-target-python = "3.9"
-strict = true
-extensions = []
-build-groups = []
-display-locale = "zh-CN"
-
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
 

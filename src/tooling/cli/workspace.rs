@@ -46,7 +46,7 @@ pub(super) fn load_workspace_sources(
         .map_err(|error| format!("could not resolve '{}': {error}", entry_path.display()))?;
     let mut paths = Vec::new();
     for root in &project.source_roots {
-        collect_osiris_sources(root, &mut paths)?;
+        collect_osiris_sources(root, project, &mut paths)?;
     }
     paths.sort();
     paths.dedup();
@@ -87,6 +87,7 @@ pub(super) fn load_workspace_sources(
 
 pub(super) fn collect_osiris_sources(
     directory: &Path,
+    project: &ProjectConfig,
     paths: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
     let entries = fs::read_dir(directory).map_err(|error| {
@@ -102,6 +103,9 @@ pub(super) fn collect_osiris_sources(
                 directory.display()
             )
         })?;
+        if project.is_excluded(&entry.path()) {
+            continue;
+        }
         let file_type = entry.file_type().map_err(|error| {
             format!(
                 "could not inspect source '{}': {error}",
@@ -109,7 +113,7 @@ pub(super) fn collect_osiris_sources(
             )
         })?;
         if file_type.is_dir() {
-            collect_osiris_sources(&entry.path(), paths)?;
+            collect_osiris_sources(&entry.path(), project, paths)?;
         } else if file_type.is_file()
             && entry
                 .path()
@@ -174,7 +178,7 @@ pub(super) fn compile_context(source_path: &Path) -> Result<CompileContext, Conf
                         config.distribution.clone(),
                         config.distribution_version.clone(),
                     ),
-                default_out_dir: config.root.join("target/osr"),
+                default_out_dir: config.default_output_dir(),
                 project: Some(config),
             })
         }

@@ -72,11 +72,8 @@ pub(super) fn load_project_interfaces(
     project: &ProjectConfig,
     site_roots: &[PathBuf],
 ) -> Option<BTreeMap<String, Interface>> {
-    if project.extensions.is_empty() {
-        return Some(BTreeMap::new());
-    }
     if site_roots.is_empty() {
-        return None;
+        return Some(BTreeMap::new());
     }
     let lock = project.load_lock().ok()?;
     let graph = dependency::resolve_effective_extensions(project, &lock, site_roots).ok()?;

@@ -16,7 +16,7 @@ use crate::{
     hash::{push_field, sha256},
     hir::{ContractTrustPolicy, InterfaceTrustPolicy},
     interface,
-    project::{ProjectConfig, TrustContract},
+    project::ProjectConfig,
     types::PythonVersion,
 };
 

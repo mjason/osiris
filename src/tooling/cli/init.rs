@@ -4,6 +4,7 @@ use std::{
     process::Command,
 };
 
+use serde::Deserialize;
 use toml_edit::{Array, DocumentMut, Item, Table, Value, value};
 
 use super::*;
@@ -15,6 +16,35 @@ const STARTER_SOURCE: &str = r#"(module main)
 
 ;; `uv run osr run src/main.osr` 会编译并执行顶层表达式。
 (py.print "Hello from Osiris")
+"#;
+
+fn extension_starter_source(module: &str) -> String {
+    format!(
+        r#"(module {module}.core)
+
+;; 公开声明会进入 wheel 内的 .osri 接口，并可由下游 Osiris 项目导入。
+(export [identity])
+
+^{{:doc {{"zh-CN" "返回输入值。" "en" "Return the input value."}}}}
+(defn ^Any identity [^Any value] value)
+"#
+    )
+}
+
+const PROJECT_CONFIG: &str = r#"{
+  "$schema": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
+
+  // Osiris 模块根目录；目录层级映射为模块名中的点。
+  "source": ["src"],
+  "outDir": "target/osr",
+
+  // 单次编译只对应一个 Python target。
+  "targetPython": "3.11",
+  "strict": true,
+
+  // LSP 展示语言：中文使用 zh-CN，英文使用 en。
+  "displayLocale": "zh-CN"
+}
 "#;
 
 pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
@@ -42,21 +72,34 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     }
 
     let pyproject = root.join("pyproject.toml");
-    let configured = match configure_pyproject(&pyproject) {
+    let setup = match configure_pyproject(&pyproject, arguments.extension) {
         Ok(configured) => configured,
         Err(message) => return init_failure(message),
     };
-    if let Err(error) = create_starter(&root, &configured.source_root) {
+    let source_root = match configure_osiris_jsonc(&root) {
+        Ok(source_root) => source_root,
+        Err(message) => return init_failure(message),
+    };
+    if let Err(error) = create_starter(
+        &root,
+        &source_root,
+        arguments.extension.then_some(setup.module.as_str()),
+    ) {
         return init_failure(format!("could not create starter source: {error}"));
     }
-    if configured.needs_dependency {
+    if setup.needs_dependency {
         if let Err(message) = uv_add_osiris(&root) {
             return init_failure(message);
         }
     }
 
+    let next = if arguments.extension {
+        "uv lock && uv build --python 3.11"
+    } else {
+        "uv run osr run src/main.osr"
+    };
     CliOutcome::success(format!(
-        "Initialized Osiris project in {}\nRun: cd {} && uv run osr run src/main.osr\n",
+        "Initialized Osiris project in {}\nRun: cd {} && {next}\n",
         root.display(),
         root.display()
     ))
@@ -65,10 +108,12 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
 struct InitArguments<'a> {
     path: &'a str,
     existing: bool,
+    extension: bool,
 }
 
 fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, String> {
     let mut existing = false;
+    let mut extension = false;
     let mut path = None;
     for argument in arguments {
         match argument.as_str() {
@@ -76,6 +121,10 @@ fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, Strin
                 return Err("duplicate option '--existing' for 'init'".to_owned());
             }
             "--existing" => existing = true,
+            "--extension" if extension => {
+                return Err("duplicate option '--extension' for 'init'".to_owned());
+            }
+            "--extension" => extension = true,
             option if option.starts_with('-') => {
                 return Err(format!("unknown option '{option}' for 'init'"));
             }
@@ -88,12 +137,16 @@ fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, Strin
         (_, Some(path)) => path,
         (false, None) => return Err("missing PROJECT for 'init'".to_owned()),
     };
-    Ok(InitArguments { path, existing })
+    Ok(InitArguments {
+        path,
+        existing,
+        extension,
+    })
 }
 
 fn uv_init(root: &Path) -> Result<(), String> {
     let output = Command::new("uv")
-        .args(["init", "--bare", "--vcs", "none", "--python", "3.9"])
+        .args(["init", "--bare", "--vcs", "none", "--python", "3.11"])
         .arg(root)
         .output()
         .map_err(|error| format!("could not run uv: {error}"))?;
@@ -118,46 +171,105 @@ fn command_result(label: &str, output: std::process::Output) -> Result<(), Strin
     Err(format!("{label} failed: {}", stderr.trim()))
 }
 
-struct InitConfiguration {
+struct ProjectSetup {
     needs_dependency: bool,
-    source_root: PathBuf,
+    module: String,
 }
 
-fn configure_pyproject(path: &Path) -> Result<InitConfiguration, String> {
+fn configure_pyproject(path: &Path, extension: bool) -> Result<ProjectSetup, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
     let mut document = source
         .parse::<DocumentMut>()
         .map_err(|error| format!("could not parse {}: {error}", path.display()))?;
+    let distribution = document
+        .get("project")
+        .and_then(Item::as_table)
+        .and_then(|project| project.get("name"))
+        .and_then(Item::as_str)
+        .ok_or_else(|| "[project].name is required".to_owned())?;
+    let module = extension_module_name(distribution);
     let needs_dependency = !has_osiris_dependency(&document);
-
-    let tool = table_at(&mut document, "tool")?;
-    if tool.contains_key("osiris") && !tool["osiris"].is_table() {
-        return Err("[tool.osiris] conflicts with a non-table value".to_owned());
+    if extension {
+        configure_extension_backend(&mut document)?;
+        fs::write(path, document.to_string())
+            .map_err(|error| format!("could not write {}: {error}", path.display()))?;
     }
-    let osiris = table_at_item(tool, "osiris")?;
-    set_default(osiris, "source", array_item(["src"]));
-    set_default(osiris, "target-python", value("3.9"));
-    set_default(osiris, "strict", value(true));
-    set_default(osiris, "extensions", array_item([]));
-    set_default(osiris, "build-groups", array_item([]));
-    let source_root = configured_source_root(osiris)?;
-
-    fs::write(path, document.to_string())
-        .map_err(|error| format!("could not update {}: {error}", path.display()))?;
-    Ok(InitConfiguration {
+    Ok(ProjectSetup {
         needs_dependency,
-        source_root,
+        module,
     })
 }
 
-fn configured_source_root(osiris: &Table) -> Result<PathBuf, String> {
-    let source = osiris
-        .get("source")
-        .and_then(Item::as_array)
-        .and_then(|roots| roots.get(0))
-        .and_then(Value::as_str)
-        .ok_or_else(|| "[tool.osiris].source must be a non-empty string array".to_owned())?;
+fn configure_extension_backend(document: &mut DocumentMut) -> Result<(), String> {
+    if !document.contains_key("build-system") {
+        document["build-system"] = Item::Table(Table::new());
+    }
+    let build = document["build-system"]
+        .as_table_mut()
+        .ok_or_else(|| "[build-system] conflicts with a non-table value".to_owned())?;
+    if let Some(backend) = build.get("build-backend").and_then(Item::as_str)
+        && backend != "osiris_build"
+    {
+        return Err(format!(
+            "[build-system].build-backend is `{backend}`; refusing to replace it with `osiris_build`"
+        ));
+    }
+    build["build-backend"] = value("osiris_build");
+    let requirement = format!("osiris-lang=={}", crate::version());
+    if !build.contains_key("requires") {
+        build["requires"] = Item::Value(Value::Array(Array::new()));
+    }
+    let requires = build["requires"]
+        .as_array_mut()
+        .ok_or_else(|| "[build-system].requires must be an array".to_owned())?;
+    let osiris_requirements = requires
+        .iter()
+        .filter_map(|item| item.as_str())
+        .filter(|item| dependency_name(item) == "osiris-lang")
+        .collect::<Vec<_>>();
+    if osiris_requirements
+        .iter()
+        .any(|existing| *existing != requirement)
+    {
+        return Err(format!(
+            "[build-system].requires must pin `{requirement}` for this compiler"
+        ));
+    }
+    if osiris_requirements.is_empty() {
+        requires.push(requirement);
+    }
+    Ok(())
+}
+
+fn extension_module_name(distribution: &str) -> String {
+    let mut module = normalize_distribution_name(distribution).replace('-', "_");
+    if module.starts_with(|character: char| character.is_ascii_digit()) {
+        module.insert(0, '_');
+    }
+    module
+}
+
+#[derive(Deserialize)]
+struct InitJsonc {
+    source: Option<Vec<String>>,
+}
+
+fn configure_osiris_jsonc(root: &Path) -> Result<PathBuf, String> {
+    let path = root.join("osiris.jsonc");
+    if !path.exists() {
+        fs::write(&path, PROJECT_CONFIG)
+            .map_err(|error| format!("could not write {}: {error}", path.display()))?;
+        return Ok(PathBuf::from("src"));
+    }
+    let source = fs::read_to_string(&path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    let config: InitJsonc = json5::from_str(&source)
+        .map_err(|error| format!("invalid JSONC in {}: {error}", path.display()))?;
+    let source = config
+        .source
+        .and_then(|roots| roots.into_iter().next())
+        .ok_or_else(|| "osiris.jsonc source must be a non-empty string array".to_owned())?;
     let path = PathBuf::from(source);
     if path.is_absolute()
         || path.components().any(|component| {
@@ -167,41 +279,9 @@ fn configured_source_root(osiris: &Table) -> Result<PathBuf, String> {
             )
         })
     {
-        return Err("[tool.osiris].source must stay inside the project".to_owned());
+        return Err("osiris.jsonc source must stay inside the project".to_owned());
     }
     Ok(path)
-}
-
-fn table_at<'a>(document: &'a mut DocumentMut, key: &str) -> Result<&'a mut Table, String> {
-    if !document.contains_key(key) {
-        document[key] = Item::Table(Table::new());
-    }
-    document[key]
-        .as_table_mut()
-        .ok_or_else(|| format!("[{key}] conflicts with a non-table value"))
-}
-
-fn table_at_item<'a>(parent: &'a mut Table, key: &str) -> Result<&'a mut Table, String> {
-    if !parent.contains_key(key) {
-        parent[key] = Item::Table(Table::new());
-    }
-    parent[key]
-        .as_table_mut()
-        .ok_or_else(|| format!("table '{key}' conflicts with a non-table value"))
-}
-
-fn set_default(table: &mut Table, key: &str, item: Item) {
-    if !table.contains_key(key) {
-        table[key] = item;
-    }
-}
-
-fn array_item<const N: usize>(entries: [&str; N]) -> Item {
-    let mut array = Array::new();
-    for entry in entries {
-        array.push(entry);
-    }
-    Item::Value(Value::Array(array))
 }
 
 fn has_osiris_dependency(document: &DocumentMut) -> bool {
@@ -246,13 +326,26 @@ fn dependency_name(requirement: &str) -> String {
         .replace('_', "-")
 }
 
-fn create_starter(root: &Path, source_root: &Path) -> std::io::Result<()> {
-    let source = root.join(source_root).join("main.osr");
+fn create_starter(
+    root: &Path,
+    source_root: &Path,
+    extension_module: Option<&str>,
+) -> std::io::Result<()> {
+    let (relative, contents) = extension_module.map_or_else(
+        || (PathBuf::from("main.osr"), STARTER_SOURCE.to_owned()),
+        |module| {
+            (
+                PathBuf::from(module).join("core.osr"),
+                extension_starter_source(module),
+            )
+        },
+    );
+    let source = root.join(source_root).join(relative);
     if source.exists() {
         return Ok(());
     }
     fs::create_dir_all(source.parent().expect("starter source has a parent"))?;
-    fs::write(source, STARTER_SOURCE)
+    fs::write(source, contents)
 }
 
 fn init_failure(message: String) -> CliOutcome {
@@ -269,10 +362,16 @@ mod tests {
         let new = parse_init_arguments(&new_arguments).unwrap();
         assert_eq!(new.path, "demo");
         assert!(!new.existing);
+        assert!(!new.extension);
         let existing_arguments = ["--existing".to_owned()];
         let existing = parse_init_arguments(&existing_arguments).unwrap();
         assert_eq!(existing.path, ".");
         assert!(existing.existing);
+        assert!(!existing.extension);
+        let extension_arguments = ["--extension".to_owned(), "demo-ext".to_owned()];
+        let extension = parse_init_arguments(&extension_arguments).unwrap();
+        assert_eq!(extension.path, "demo-ext");
+        assert!(extension.extension);
     }
 
     #[test]

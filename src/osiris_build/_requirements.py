@@ -4,7 +4,7 @@ import os
 import platform
 import re
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from ._common import _error, _normalise_name
 from ._model import BackendError, _LockedPackage, _Requirement
@@ -282,45 +282,6 @@ def _satisfies(specifier: str, version: str) -> bool:
     return True
 
 
-def _group_requirements(document: Mapping[str, Any], groups: Sequence[str]) -> List[_Requirement]:
-    table = document.get("dependency-groups", {})
-    if table is None:
-        table = {}
-    if not isinstance(table, dict):
-        raise _error("[dependency-groups] must be a TOML table")
-    result: List[_Requirement] = []
-    visiting: Set[str] = set()
-
-    def visit(name: str) -> None:
-        if name in visiting:
-            raise _error("dependency group cycle at `%s`" % name)
-        if name not in table:
-            raise _error("selected dependency group `%s` is missing" % name)
-        value = table[name]
-        if not isinstance(value, list):
-            raise _error("dependency group `%s` must be an array" % name)
-        visiting.add(name)
-        try:
-            for item in value:
-                if isinstance(item, str):
-                    result.append(_parse_requirement(item))
-                elif isinstance(item, dict) and set(item) == {"include-group"}:
-                    included = item.get("include-group")
-                    if not isinstance(included, str):
-                        raise _error("include-group in `%s` must be a string" % name)
-                    visit(included)
-                else:
-                    raise _error("unsupported dependency group entry in `%s`" % name)
-        finally:
-            visiting.remove(name)
-
-    for group in groups:
-        if not isinstance(group, str) or not group:
-            raise _error("[tool.osiris].build-groups entries must be strings")
-        visit(group)
-    return result
-
-
 def _lock_package_entries(document: Mapping[str, Any]) -> List[Mapping[str, Any]]:
     packages = document.get("package", [])
     if not isinstance(packages, list):
@@ -444,16 +405,10 @@ def _check_requires_python(expression: Any, target: Tuple[int, int], label: str)
         )
 
 
-def _project_requirements(
-    project: Mapping[str, Any],
-    document: Mapping[str, Any],
-    groups: Sequence[str],
-) -> List[_Requirement]:
+def _project_requirements(project: Mapping[str, Any]) -> List[_Requirement]:
     dependencies = project.get("dependencies", [])
     if dependencies is None:
         dependencies = []
     if not isinstance(dependencies, list):
         raise _error("[project].dependencies must be an array")
-    result = [_parse_requirement(item) for item in dependencies]
-    result.extend(_group_requirements(document, groups))
-    return result
+    return [_parse_requirement(item) for item in dependencies]
