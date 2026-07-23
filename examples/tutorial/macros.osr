@@ -1,0 +1,20 @@
+(module tutorial.macros)
+
+;; 宏也是模块声明，只有 export 后才能由其他模块使用。宏在 Rust 实现的、受限且
+;; 确定性的 phase-1 求值器中展开，不会先编译成 Python 再执行。
+(export [unless twice])
+
+;; ` 建立卫生 syntax template，~ 插入一个调用方语法对象，~@ 插入一组语法
+;; 对象。value# 一类自动 gensym 也可用于避免捕获调用方局部名称。
+^{:doc {"zh-CN" "条件为假时执行 body，并返回最后一个表达式。"}}
+(defmacro unless [condition & body]
+  `(if (not ~condition)
+     (do ~@body)
+     none))
+
+;; value# 每次展开都会变成唯一的局部 binding。传入的 expression 只求值一次，
+;; 同时不会捕获调用方恰好同名的变量。
+^{:doc {"zh-CN" "只求值一次，并把结果与自身相加。"}}
+(defmacro twice [expression]
+  `(let [value# ~expression]
+     (+ value# value#)))

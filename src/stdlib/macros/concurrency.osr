@@ -1,0 +1,178 @@
+;; Concurrency forms intentionally remain ordinary macros.  The compiler owns
+;; only the small, typed runtime entry points below; callback bodies continue
+;; through the regular lexical lowering path and therefore retain source maps
+;; and effect summaries.
+(defmacro future [& body]
+  `(osiris.prelude/future-call*
+     (fn [] ~(if (empty? body) none `(do ~@body)))))
+
+(defmacro future-call [function]
+  `(osiris.prelude/future-call* ~function))
+
+(defmacro future-done? [value]
+  `(osiris.prelude/future-done* ~value))
+
+(defmacro future-cancelled? [value]
+  `(osiris.prelude/future-cancelled* ~value))
+
+(defmacro future-cancel [value]
+  `(osiris.prelude/future-cancel* ~value))
+
+;; Parallel collection/control helpers are intentionally expressed in terms
+;; of the existing Future ABI.  They submit all work eagerly, then deref in
+;; source/input order, which keeps the result deterministic while making the
+;; concurrency boundary explicit in generated Osiris/Python code.  A failed
+;; deref propagates its first observed exception; already-submitted work is
+;; not implicitly cancelled.
+(defn-for-syntax osiris.prelude/parallel-params [prefix forms]
+  (if (empty? forms)
+    '()
+    (cons
+      (gensym prefix)
+      (osiris.prelude/parallel-params prefix (rest forms)))))
+
+(defn-for-syntax osiris.prelude/parallel-bindings [names forms]
+  (if (empty? names)
+    '()
+    (cons
+      (first names)
+      (cons
+        (first forms)
+        (osiris.prelude/parallel-bindings (rest names) (rest forms))))))
+
+(defn-for-syntax osiris.prelude/parallel-deref-forms [names]
+  (if (empty? names)
+    '()
+    (cons
+      `(deref ~(first names))
+      (osiris.prelude/parallel-deref-forms (rest names)))))
+
+(defn-for-syntax osiris.prelude/parallel-call-forms [names]
+  (if (empty? names)
+    '()
+    (cons
+      `(future-call (fn [] (~(first names))))
+      (osiris.prelude/parallel-call-forms (rest names)))))
+
+(defn-for-syntax osiris.prelude/pvalues-future-expressions [forms]
+  (if (empty? forms)
+    '()
+    (cons
+      `(future-call (fn [] ~(first forms)))
+      (osiris.prelude/pvalues-future-expressions (rest forms)))))
+
+(defmacro pmap [function & collections]
+  (if (empty? collections)
+    (syntax-error &form "pmap requires at least one collection")
+    (let [function-name (gensym "pmap-function")
+          parameters (osiris.prelude/parallel-params "pmap-item" collections)
+          futures-name (gensym "pmap-futures")
+          task-name (gensym "pmap-task")
+          invocation (cons function-name parameters)]
+      `(let [~function-name ~function
+             ~futures-name
+             (mapv
+               (fn [~@parameters]
+                 (future-call (fn [] ~invocation)))
+               ~@collections)]
+         (mapv (fn [~task-name] (deref ~task-name)) ~futures-name)))))
+
+(defmacro pvalues [& forms]
+  (if (empty? forms)
+    []
+    (let [future-names (osiris.prelude/parallel-params "pvalues-future" forms)
+          future-expressions (osiris.prelude/pvalues-future-expressions forms)]
+      `(let [~@(osiris.prelude/parallel-bindings future-names future-expressions)]
+         [~@(osiris.prelude/parallel-deref-forms future-names)]))))
+
+(defmacro pcalls [& functions]
+  (if (empty? functions)
+    []
+    (let [function-names (osiris.prelude/parallel-params "pcall-function" functions)
+          future-names (osiris.prelude/parallel-params "pcall-future" functions)
+          function-bindings (osiris.prelude/parallel-bindings function-names functions)
+          future-expressions (osiris.prelude/parallel-call-forms function-names)
+          future-bindings (osiris.prelude/parallel-bindings future-names future-expressions)]
+      `(let [~@function-bindings
+             ~@future-bindings]
+         [~@(osiris.prelude/parallel-deref-forms future-names)]))))
+
+(defmacro promise [& args]
+  (if (empty? args)
+    `(osiris.prelude/promise*)
+    (syntax-error &form "promise does not accept arguments")))
+
+(defmacro deliver [value result]
+  `(osiris.prelude/deliver* ~value ~result))
+
+(defmacro lock [& args]
+  (if (empty? args)
+    `(osiris.prelude/lock*)
+    (syntax-error &form "lock does not accept arguments")))
+
+(defmacro locking [value & body]
+  `(osiris.prelude/locking* ~value
+     (fn [] ~(if (empty? body) none `(do ~@body)))))
+
+;; Keep timing as a surface macro so the measured expression remains ordinary
+;; typed code with its lexical scope and source map intact.  The runtime owns
+;; only clock access and the Clojure-compatible reporting format.
+(defmacro time [& expressions]
+  (if (empty? expressions)
+    (syntax-error &form "time requires at least one expression")
+    `(osiris.prelude/time* (fn [] (do ~@expressions)))))
+
+(defn-for-syntax osiris.prelude/validate-binding-targets [bindings]
+  (if (empty? bindings)
+    true
+    (let [target (first bindings)]
+      (if (not (symbol? target))
+        (syntax-error target "binding targets must be dynamic Var symbols")
+        (osiris.prelude/validate-binding-targets (rest (rest bindings)))))))
+
+(defmacro binding [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "binding requires a binding vector")
+    (if (not (osiris.prelude/for-even-bindings? bindings))
+      (syntax-error bindings "binding requires target/value pairs")
+      (let [valid (osiris.prelude/validate-binding-targets bindings)]
+        `(osiris.prelude/binding*
+           ~bindings
+           (fn [] ~(if (empty? body) none `(do ~@body))))))))
+
+(defn-for-syntax osiris.prelude/with-open-form [call bindings body]
+  (if (empty? bindings)
+    `(do ~@body)
+    (if (empty? (rest bindings))
+      (syntax-error call "with-open requires resource name/value pairs")
+      (let [name (first bindings)
+            value (nth bindings 1)
+            remaining (rest (rest bindings))]
+        (if (not (symbol? name))
+          (syntax-error name "with-open resource names must be symbols")
+          `(let [~name ~value]
+             (try
+               ~(osiris.prelude/with-open-form call remaining body)
+               (finally (osiris.prelude/close* ~name)))))))))
+
+(defmacro with-open [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "with-open requires a binding vector")
+    (osiris.prelude/with-open-form &form bindings body)))
+
+(defmacro throw [value]
+  `(raise ~value))
+
+(defmacro assert [condition & message]
+  (if (> (count message) 1)
+    (syntax-error &form "assert accepts at most one message expression")
+    (if (empty? message)
+      `(if (osiris.prelude/truthy* ~condition)
+         none
+         (osiris.prelude/assert* false))
+      `(if (osiris.prelude/truthy* ~condition)
+         none
+         (osiris.prelude/assert* false ~(first message))))))
+
+(defmacro comment [& forms]
+  none)

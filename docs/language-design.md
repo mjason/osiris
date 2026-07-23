@@ -143,9 +143,16 @@ Osiris 模块导入与 Python 运行时导入必须在语义上区分。普通 `
 
 ### 4.4 核心声明与表达式
 
+核心形式是闭集，规范性清单位于 `src/language/core_forms.rs`，目录职责和
+纳入准则见 [`architecture.md`](architecture.md)。只有建立模块/阶段边界、
+运行时绑定、名义类型与 ABI、静态接口，或宏无法保持的词法求值语义时，
+形式才进入 Rust kernel。新增方便语法应首先实现为 `src/stdlib/macros/`
+中的卫生宏；扩展包只能通过 `.osri` 发布宏、类型、extern contract、schema
+和静态 record，不能注册 parser 或 backend 分支。
+
 第一版核心至少包含：
 
-- `module`、`import`、`import-for-syntax`、`py/import`、`export`、`alias`、`extern`
+- `module`、`import`、`import-for-syntax`、`py/import`、`py/decorate`、`export`、`alias`、`extern`
 - `def`、`defn`、`defn-`、`fn`
 - `let`、`if`、`do`
 - phase-1 `quote` 和 syntax quote
@@ -324,6 +331,47 @@ API 作者可以通过第 8.8 节的标准 metadata 发布本地化名称：
 - 公共库推荐使用稳定的 ASCII canonical name 加本地化 public names；应用内部的局部绑定可以直接使用中文。两种风格都是真实源码，不要求 LSP 才能编译。
 
 生成 Python 时，import、公开调用和参数名使用 canonical Python binding；中文局部定义若本身是 canonical binding，则在通过目标 Python NFKC 碰撞检查后可以原样保留。若未来需要把 Osiris alias 同时发布为 Python API，必须使用显式 opt-in，不能改变默认 codegen。
+
+### 4.7 Python 装饰器
+
+Python 装饰器会在模块加载时执行，因此不能由不可执行的 Rich Metadata
+隐式触发。Osiris 使用显式、类似 `alias` 的顶层声明，把一个或多个 Python
+表达式附着到当前模块生成的函数或 struct：
+
+```clojure
+(py/import host.runtime :as host)
+
+(py/decorate publish
+  host.trace
+  (host.register
+    :extra-data {"columns" ["value" "year"]}))
+
+(defn ^Any publish
+  [^Any context [^Str field = "value"]]
+  (context.emit field))
+```
+
+以上声明按源码顺序生成：
+
+```python
+@host.trace
+@host.register(extra_data={"columns": ("value", "year")})
+def publish(context: Any, field: str = "value") -> Any:
+    return context.emit(field)
+```
+
+`py/decorate` 的 target 按 binding id 解析，所以本地 alias 可以作为 target，
+但不能装饰 value、extern/import binding 或其他模块的声明。一个 target 只能有
+一个 `py/decorate` 声明；多个 decorator 必须集中写在同一声明中，其顺序与
+Python 的 `@` 顺序一致。声明可以位于 target 前后，也可以由顶层声明宏生成，
+因此扩展包可以提供 `defcomponent` 一类宏而无需注册 parser 或 backend 插件。
+
+Decorator 必须能降低为单个 Python expression；需要语句、临时变量或控制流的
+表达式会被拒绝。Decorator 负责保持 Osiris 声明的参数与返回类型契约；返回
+`Any` 的宿主 decorator 是显式动态边界，不能被编译器当作类型证明。Decorator
+表达式的求值发生在 Python 模块加载阶段，其 effect 不混入被装饰函数的调用
+summary。自定义 struct decorator 生成在 `@dataclass(frozen=True)` 外层，因此
+接收到的是已经完成 dataclass 转换的 class。
 
 ## 5. 运行时语义
 
@@ -623,7 +671,7 @@ phase 1 禁止：
 
 - 只允许 list head 位置的宏和顶层声明宏。
 - `module`、`import`、`import-for-syntax`、`py/import`、`export`、`alias`、`defmacro`、`defn-for-syntax` 和 `defstatic-schema` 必须直接出现在源码 header/phase-1 声明中，宏不能生成这些形式或改变已经建立的依赖图。
-- 顶层声明宏只能生成 phase-0 `def`、`defn`、`defstruct`、`extern` 和非执行的 `static-record` 等声明；源码中的直接 `export` 可以提前引用展开后才产生的名称。
+- 顶层声明宏只能生成 phase-0 `def`、`defn`、`defstruct`、`extern`、`py/decorate` 和非执行的 `static-record` 等声明；源码中的直接 `export` 可以提前引用展开后才产生的名称。
 - 不允许 reader macro 或修改 tokenizer/parser。
 - 不允许 Python、Rust 动态库或 WASM procedural macro。
 - 不允许宏根据类型推断结果改变展开；类型相关检查在 typed HIR 阶段完成。

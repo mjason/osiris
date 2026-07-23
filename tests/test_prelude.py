@@ -1,22 +1,6 @@
-import importlib.util
 import unittest
-from pathlib import Path
 
-
-ROOT = Path(__file__).resolve().parents[1]
-PRELUDE_PATH = ROOT / "src" / "osiris" / "prelude.py"
-
-
-def _load_prelude():
-    spec = importlib.util.spec_from_file_location("osiris_test_prelude", PRELUDE_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("could not load the Osiris runtime prelude")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-prelude = _load_prelude()
+from runtime_loader import prelude
 
 
 class MapvTests(unittest.TestCase):

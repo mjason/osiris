@@ -1,18 +1,7 @@
-import importlib.util
-import sys
 import threading
 import unittest
-from pathlib import Path
 
-
-ROOT = Path(__file__).resolve().parents[1]
-PRELUDE_PATH = ROOT / "src" / "osiris" / "prelude.py"
-spec = importlib.util.spec_from_file_location("osiris_test_dynamic_binding", PRELUDE_PATH)
-if spec is None or spec.loader is None:
-    raise RuntimeError("could not load the Osiris runtime prelude")
-prelude = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = prelude
-spec.loader.exec_module(prelude)
+from runtime_loader import prelude
 
 
 class DynamicBindingRuntimeTests(unittest.TestCase):

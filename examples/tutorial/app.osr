@@ -1,0 +1,56 @@
+(module tutorial.app)
+
+;; 普通 import 加载另一个 Osiris 模块的公开 .osri 接口：
+;; - :as transforms 允许写 transforms/increment-all；
+;; - :refer [sum-values] 把指定公开名称直接引入当前模块；
+;; 两种方式可以在同一条 import 中同时使用。
+(import tutorial.transforms :as transforms :refer [sum-values])
+
+;; import-for-syntax 专门建立编译期依赖。宏在生成 Python 之前就会展开，因此它
+;; 不会变成 Python import。这里同时演示限定调用和 :refer 调用。
+(import-for-syntax tutorial.macros :as macros :refer [unless])
+
+;; py/import 与上面的 import 不同：它会在生成代码中写出 Python import，适合
+;; 标准库和由 uv 安装的 PyPI 包。编译阶段不会执行这个 Python 模块。
+(py/import math :as math)
+
+(export [incremented-total positive-combinations waiting-label
+         double-after-increment square-root])
+
+;; transforms/全部加一 是 increment-all 通过 Rich Metadata 发布的中文名称。
+;; 它与 canonical 名称具有同一个 binding id，生成 Python 时仍调用
+;; transforms.increment_all，不会多生成一层中文 wrapper。
+^{:doc {"zh-CN" "将输入逐项加一，然后求和。"}}
+(defn ^Int incremented-total
+  [^{:type (Vector Int)} values]
+  (-> values
+      (transforms/全部加一)
+      (sum-values)))
+
+;; 限定名称让代码读者能直接看出函数来自哪个 Osiris 模块。
+^{:doc {"zh-CN" "返回两组整数产生的正数笛卡尔和。"}}
+(defn ^{:type (Vector Int)} positive-combinations
+  [^{:type (Vector Int)} left-values
+   ^{:type (Vector Int)} right-values]
+  (transforms/positive-pair-sums left-values right-values))
+
+;; :refer 导入的宏可以直接使用。unless 展开为 if/do/none，所以函数可能返回
+;; Str 或 none，对应 Option[Str]。
+^{:doc {"zh-CN" "未就绪时返回等待提示，否则返回 none。"}}
+(defn ^{:type (Option Str)} waiting-label
+  [^Bool ready]
+  (unless ready "waiting"))
+
+;; 通过 :as 导入的宏使用限定名称。twice 内部的 value# 是卫生 binding，所以
+;; (+ value 1) 只求值一次，也不会捕获调用方局部变量。
+^{:doc {"zh-CN" "先加一，再把结果与自身相加。"}}
+(defn ^Int double-after-increment
+  [^Int value]
+  (macros/twice (+ value 1)))
+
+;; Python 动态边界的返回值目前是 Any，因此公开函数也显式标记为 Any。扩展包
+;; 可以通过 extern 提供更精确的签名，让调用方继续保持静态类型。
+^{:doc {"zh-CN" "调用 Python 标准库 math.sqrt。"}}
+(defn ^Any square-root
+  [^Float value]
+  (math.sqrt value))

@@ -1,8 +1,9 @@
 # Osiris
 
 Osiris is the project for `osr`, a small, data-oriented Lisp-to-Python
-compiler. The language is designed around readable Python output, hygienic
-macros, static types, Unicode names, and tooling-readable metadata.
+compiler. The language is designed around readable Python output, explicit
+Python decorators, hygienic macros, static types, Unicode names, and
+tooling-readable metadata.
 
 The current compiler implements a lossless tokenizer, a recoverable `nom`
 reader, surface AST lowering, hygienic macro expansion, name and alias
@@ -56,6 +57,20 @@ With that configuration and [`examples/hello.osr`](examples/hello.osr):
 cargo run --bin osr -- check examples/hello.osr
 cargo run --bin osr -- compile examples/hello.osr
 ```
+
+The multi-file [`examples/tutorial/app.osr`](examples/tutorial/app.osr)
+demonstrates importing another Osiris module with `:as` and `:refer`, importing
+a macro with `import-for-syntax`, and keeping Python `py/import` separate:
+
+```clojure
+(import tutorial.transforms :as transforms :refer [sum-values])
+(import-for-syntax tutorial.macros :refer [unless])
+(py/import math :as math)
+```
+
+Run `cargo run --bin osr -- check examples/tutorial/app.osr` to analyze the
+whole local dependency graph. See [`examples/README.md`](examples/README.md)
+for the module-to-path mapping and generated outputs.
 
 `check` parses and validates the project and leaves the working tree
 unchanged. `compile` prints the output directory (`target/osr/` by default)
@@ -122,4 +137,6 @@ same Rust CLI dispatcher as the native executable, so parsing and diagnostics
 do not diverge.
 
 The current language design is in
-[`docs/language-design.md`](docs/language-design.md).
+[`docs/language-design.md`](docs/language-design.md). Compiler ownership and
+the kernel/macro/extension boundary are documented in
+[`docs/architecture.md`](docs/architecture.md).

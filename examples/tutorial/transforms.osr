@@ -1,0 +1,38 @@
+(module tutorial.transforms)
+
+;; 文件路径必须与模块名对应：
+;;   examples/tutorial/transforms.osr -> tutorial.transforms
+;; 因为项目的 pyproject.toml 将 examples 配置为 Osiris source root。
+
+;; 未导出的定义是模块私有实现。这里公开三个函数，供 tutorial.app 导入。
+(export [increment-all sum-values positive-pair-sums])
+
+;; 返回类型写在函数名的 metadata 上，参数类型写在参数名的 metadata 上。
+;; 这是当前推荐语法；不要再写旧式的 [[values (Vector Int)]] -> ...。
+^{:doc {"zh-CN" "将每个整数加一。"
+        "en" "Increment every integer."}
+  :osiris/names
+  {"zh-CN" {:preferred 全部加一
+             :aliases [逐项加一]}}}
+(defn ^{:type (Vector Int)} increment-all
+  [^{:type (Vector Int)} values]
+  (mapv (fn [^Int value] (+ value 1)) values))
+
+;; reduce 是 prelude 提供的有类型序列操作。这里显式给出初始值 0，因此空集合
+;; 的结果也是确定的 0。
+^{:doc {"zh-CN" "对整数序列求和。"}}
+(defn ^Int sum-values
+  [^{:type (Vector Int)} values]
+  (reduce (fn [total value] (+ total value)) 0 values))
+
+;; for 支持多个 binding，并按从左到右的嵌套顺序组合。:let 只在当前组合内
+;; 建立局部值，:when 为 false 时跳过当前结果。
+^{:doc {"zh-CN" "计算两组整数的正数笛卡尔和。"}}
+(defn ^{:type (Vector Int)} positive-pair-sums
+  [^{:type (Vector Int)} left-values
+   ^{:type (Vector Int)} right-values]
+  (for [left left-values
+        right right-values
+        :let [pair-sum (+ left right)]
+        :when (> pair-sum 0)]
+    pair-sum))
