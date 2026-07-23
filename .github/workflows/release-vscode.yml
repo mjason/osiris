@@ -3,7 +3,16 @@ name: Release VS Code extension
 on:
   push:
     tags:
-      - "vscode-v[0-9]*"
+      - "vscode-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vscode-vX.Y.Z tag to release
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -26,7 +35,7 @@ jobs:
         shell: bash
         run: |
           version="$(node --print 'require("./package.json").version')"
-          test "vscode-v${version}" = "${GITHUB_REF_NAME}"
+          test "vscode-v${version}" = "${RELEASE_TAG}"
       - run: npm ci
       - run: npm run check
       - name: Build VSIX
@@ -39,7 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}"
+          gh release create "${RELEASE_TAG}"
           editors/vscode/osiris-vscode-*.vsix
-          --title "Osiris VS Code ${GITHUB_REF_NAME#vscode-v}"
+          --title "Osiris VS Code ${RELEASE_TAG#vscode-v}"
           --generate-notes

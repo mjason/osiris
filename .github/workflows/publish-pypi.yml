@@ -3,7 +3,17 @@ name: Publish Python package
 on:
   push:
     tags:
-      - "v[0-9]*"
+      - "v*"
+      - "!vscode-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z tag to publish
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -18,7 +28,7 @@ jobs:
         shell: bash
         run: |
           version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
-          test "v${version}" = "${GITHUB_REF_NAME}"
+          test "v${version}" = "${RELEASE_TAG}"
 
   test:
     name: Test release source
