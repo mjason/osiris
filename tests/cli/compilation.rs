@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn build_compiles_the_jsonc_project_without_a_source_argument() {
+    let fixture = SourceFixture::new("none\n");
+    fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
+    fixture.write("src/lib/value.osr", "(module lib.value)\n(def value 2)\n");
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"build-project\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"],"outDir":"dist","targetPython":"3.11"}"#,
+    )
+    .unwrap();
+
+    let output = osr(&["build", path_argument(&fixture.directory)]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fixture.directory.join("dist/main.py").is_file());
+    assert!(fixture.directory.join("dist/lib/value.py").is_file());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("{}\n", fixture.directory.join("dist").display())
+    );
+}
+
+#[test]
 fn project_config_controls_glob_exclusions_and_output() {
     let fixture = SourceFixture::new("none\n");
     let app = fixture.write("src/main.osr", "(module main)\n(def value 1)\n");

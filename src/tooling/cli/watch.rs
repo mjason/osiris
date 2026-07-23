@@ -7,7 +7,7 @@ use std::{
 
 use notify::{RecursiveMode, Watcher};
 
-use super::{ProjectConfig, run_compile};
+use super::{ProjectConfig, run_project_build};
 
 struct WatchArguments {
     path: PathBuf,
@@ -17,8 +17,9 @@ struct WatchArguments {
 pub fn run_watch_stdio(arguments: &[String]) -> Result<(), String> {
     let arguments = parse_watch_arguments(arguments)?;
     let project = ProjectConfig::discover(&arguments.path).map_err(|error| error.to_string())?;
-    let entry = first_source(&project)?;
-    compile_and_render(&entry, &arguments.site_roots)?;
+    if !build_and_render(&arguments.path, &arguments.site_roots)? {
+        return Err("initial build failed".to_owned());
+    }
 
     let (sender, receiver) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event| {
@@ -45,7 +46,7 @@ pub fn run_watch_stdio(arguments: &[String]) -> Result<(), String> {
     loop {
         let event = receiver
             .recv()
-            .map_err(|error| format!("file watcher stopped: {error}"))?
+            .map_err(|_| "file watcher stopped unexpectedly".to_owned())?
             .map_err(|error| format!("file watcher error: {error}"))?;
         if !event
             .paths
@@ -55,10 +56,7 @@ pub fn run_watch_stdio(arguments: &[String]) -> Result<(), String> {
             continue;
         }
         while receiver.recv_timeout(Duration::from_millis(75)).is_ok() {}
-        let current =
-            ProjectConfig::discover(&arguments.path).map_err(|error| error.to_string())?;
-        let entry = first_source(&current)?;
-        compile_and_render(&entry, &arguments.site_roots)?;
+        let _ = build_and_render(&arguments.path, &arguments.site_roots)?;
     }
 }
 
@@ -89,40 +87,12 @@ fn parse_watch_arguments(arguments: &[String]) -> Result<WatchArguments, String>
     })
 }
 
-fn first_source(project: &ProjectConfig) -> Result<PathBuf, String> {
-    let mut pending = project.source_roots.clone();
-    while let Some(directory) = pending.pop() {
-        let entries = std::fs::read_dir(&directory)
-            .map_err(|error| format!("could not scan '{}': {error}", directory.display()))?;
-        for entry in entries {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path();
-            if project.is_excluded(&path) {
-                continue;
-            }
-            let file_type = entry.file_type().map_err(|error| error.to_string())?;
-            if file_type.is_dir() {
-                pending.push(path);
-            } else if file_type.is_file()
-                && path.extension().and_then(|value| value.to_str()) == Some("osr")
-            {
-                return Ok(path);
-            }
-        }
-    }
-    Err("project has no Osiris sources to watch".to_owned())
-}
-
 fn should_recompile(project: &ProjectConfig, path: &Path) -> bool {
     !project.is_excluded(path) && path.extension().and_then(|value| value.to_str()) == Some("osr")
 }
 
-fn compile_and_render(entry: &Path, site_roots: &[String]) -> Result<(), String> {
-    let mut arguments = vec![entry.display().to_string()];
-    for root in site_roots {
-        arguments.extend(["--site-root".to_owned(), root.clone()]);
-    }
-    let outcome = run_compile(&arguments);
+fn build_and_render(path: &Path, site_roots: &[String]) -> Result<bool, String> {
+    let outcome = run_project_build(path, site_roots);
     let mut stdout = io::stdout().lock();
     stdout
         .write_all(outcome.stdout.as_bytes())
@@ -133,7 +103,7 @@ fn compile_and_render(entry: &Path, site_roots: &[String]) -> Result<(), String>
         .write_all(outcome.stderr.as_bytes())
         .and_then(|()| stderr.flush())
         .map_err(|error| error.to_string())?;
-    Ok(())
+    Ok(outcome.exit_code == 0)
 }
 
 #[cfg(test)]

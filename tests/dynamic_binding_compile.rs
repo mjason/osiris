@@ -5,7 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use _core::{
+use osiris::{
     compiler::{CompileInput, CompileOptions, compile, compile_workspace},
     interface,
     project::PythonVersion,

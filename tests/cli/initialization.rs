@@ -52,6 +52,7 @@ exit 9
     assert!(!configured.contains("[tool.osiris]"));
     let osiris = fs::read_to_string(project.join("osiris.jsonc")).unwrap();
     assert!(osiris.contains("\"source\": [\"src\"]"));
+    assert!(osiris.contains("\"outDir\": \"dist\""));
     assert!(osiris.contains("\"targetPython\": \"3.11\""));
     assert!(osiris.contains("\"displayLocale\": \"zh-CN\""));
     assert_eq!(

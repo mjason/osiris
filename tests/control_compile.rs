@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use _core::{compiler::CompileOptions, compiler::compile, project::PythonVersion};
+use osiris::{compiler::CompileOptions, compiler::compile, project::PythonVersion};
 
 fn options() -> CompileOptions {
     CompileOptions::new("control_compile", PythonVersion::default())

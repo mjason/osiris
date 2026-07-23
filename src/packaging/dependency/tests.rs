@@ -52,6 +52,27 @@ fn parses_target_applicable_lock_hash_and_edges() {
 }
 
 #[test]
+fn accepts_uv_virtual_project_root_without_a_source_hash() {
+    let source = lock("python_version >= '3.11'")
+        .replace(
+            "name = \"demo\"\n",
+            "name = \"demo\"\nversion = \"0.1.0\"\n",
+        )
+        .replace(
+            "source = { editable = \".\" }",
+            "source = { virtual = \".\" }",
+        );
+
+    let parsed = UvLock::parse(&source, PythonVersion::new(3, 11))
+        .expect("uv virtual roots do not have source hashes");
+    let root = parsed.project_package("demo").expect("project root");
+    assert!(root.project_root);
+    assert!(!root.editable);
+    assert_eq!(root.source, "virtual");
+    assert!(root.source_hash.is_none());
+}
+
+#[test]
 fn target_inapplicable_pin_cannot_satisfy_an_edge() {
     let parsed = UvLock::parse(&lock("python_version >= '3.12'"), PythonVersion::new(3, 11))
         .expect("non-applicable candidates are omitted");

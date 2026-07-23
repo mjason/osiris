@@ -63,52 +63,6 @@ pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
-
-#[cfg(feature = "python")]
-use pyo3::exceptions::PyOSError;
-
-#[cfg(feature = "python")]
-#[pyfunction]
-#[pyo3(name = "version")]
-fn python_version() -> &'static str {
-    version()
-}
-
-#[cfg(feature = "python")]
-#[pyfunction]
-#[pyo3(name = "_run_cli")]
-fn python_run_cli(arguments: Vec<String>) -> (u8, String, String) {
-    let outcome = cli::run_cli(&arguments);
-    (outcome.exit_code, outcome.stdout, outcome.stderr)
-}
-
-#[cfg(feature = "python")]
-#[pyfunction]
-#[pyo3(name = "_run_lsp_stdio")]
-fn python_run_lsp_stdio() -> PyResult<()> {
-    lsp_stdio::run_stdio().map_err(|error| PyOSError::new_err(error.to_string()))
-}
-
-#[cfg(feature = "python")]
-#[pyfunction]
-#[pyo3(name = "_run_watch_stdio")]
-fn python_run_watch_stdio(py: Python<'_>, arguments: Vec<String>) -> PyResult<()> {
-    py.detach(|| cli::run_watch_stdio(&arguments))
-        .map_err(PyOSError::new_err)
-}
-
-#[cfg(feature = "python")]
-#[pymodule]
-fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(python_version, m)?)?;
-    m.add_function(wrap_pyfunction!(python_run_cli, m)?)?;
-    m.add_function(wrap_pyfunction!(python_run_lsp_stdio, m)?)?;
-    m.add_function(wrap_pyfunction!(python_run_watch_stdio, m)?)?;
-    Ok(())
-}
-
 #[cfg(test)]
 #[path = "lib/tests.rs"]
 mod tests;

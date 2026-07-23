@@ -26,10 +26,10 @@ examples/tutorial/app.osr        -> tutorial.app
 
 ```console
 cargo run --bin osr -- check examples/tutorial/app.osr
-cargo run --bin osr -- compile examples/tutorial/app.osr
+cargo run --bin osr -- build
 ```
 
 `compile` 以当前 project/distribution 为发布单元，因此 source root 中的模块会
-一起生成到 `target/osr/`，而不只是单独生成入口文件。运行时依赖
+一起生成到 `dist/`，而不只是单独生成入口文件。运行时依赖
 `tutorial.transforms` 会出现在 `app.py` 的 Python import 中；
 `tutorial.macros` 只参与编译期展开，不会成为 `app.py` 的运行时 import。

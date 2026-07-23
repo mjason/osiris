@@ -31,7 +31,7 @@ git push origin v0.1.0
 ```
 
 The tag triggers `.github/workflows/publish-pypi.yml`, which checks the version,
-runs the Rust tests, builds abi3 wheels and an sdist, then publishes through the
+runs the Rust tests, builds native CLI wheels and an sdist, then publishes through the
 `pypi` environment.
 
 ## VS Code VSIX

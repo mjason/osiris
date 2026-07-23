@@ -127,6 +127,18 @@ pub(super) fn collect_osiris_sources(
     Ok(())
 }
 
+pub(super) fn first_project_source(project: &ProjectConfig) -> Result<PathBuf, String> {
+    let mut paths = Vec::new();
+    for root in &project.source_roots {
+        collect_osiris_sources(root, project, &mut paths)?;
+    }
+    paths.sort();
+    paths
+        .into_iter()
+        .next()
+        .ok_or_else(|| "project has no Osiris sources".to_owned())
+}
+
 pub(super) fn workspace_compile_inputs(
     sources: &WorkspaceSources,
 ) -> Vec<compiler::CompileInput<'_>> {
@@ -188,7 +200,7 @@ pub(super) fn compile_context(source_path: &Path) -> Result<CompileContext, Conf
             default_out_dir: source_path
                 .parent()
                 .unwrap_or_else(|| Path::new("."))
-                .join("target/osr"),
+                .join("dist"),
             project: None,
         }),
         Err(error) => Err(error),

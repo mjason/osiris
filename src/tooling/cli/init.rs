@@ -36,7 +36,7 @@ const PROJECT_CONFIG: &str = r#"{
 
   // Osiris 模块根目录；目录层级映射为模块名中的点。
   "source": ["src"],
-  "outDir": "target/osr",
+  "outDir": "dist",
 
   // 单次编译只对应一个 Python target。
   "targetPython": "3.11",

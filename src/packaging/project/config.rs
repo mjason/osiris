@@ -164,7 +164,7 @@ impl ProjectConfig {
                 ))),
             })
             .transpose()?;
-        let output_relative = PathBuf::from(jsonc.out_dir.unwrap_or_else(|| "target/osr".to_owned()));
+        let output_relative = PathBuf::from(jsonc.out_dir.unwrap_or_else(|| "dist".to_owned()));
         validate_relative_path(&output_relative, "output directory")?;
         let exclude = compile_exclude_patterns(jsonc.exclude.unwrap_or_default())?;
         let output_dir = root.join(output_relative);

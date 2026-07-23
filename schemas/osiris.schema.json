@@ -13,7 +13,7 @@
       "items": { "$ref": "#/$defs/relativePath" },
       "default": ["src"]
     },
-    "outDir": { "$ref": "#/$defs/relativePath", "default": "target/osr" },
+    "outDir": { "$ref": "#/$defs/relativePath", "default": "dist" },
     "exclude": {
       "type": "array",
       "uniqueItems": true,

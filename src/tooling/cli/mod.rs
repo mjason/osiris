@@ -22,7 +22,7 @@ use crate::{
     source::Span,
 };
 
-pub const USAGE: &str = "Usage: osr [OPTIONS]\n       osr init PROJECT\n       osr init --extension PROJECT\n       osr init --existing [--extension] [DIR]\n       osr check FILE [--site-root DIR]\n       osr compile FILE... [--out-dir DIR] [--emit py,osri,map,records] [--site-root DIR]\n       osr watch [DIR] [--site-root DIR]\n       osr run FILE [--site-root DIR] [-- ARGS...]\n       osr expand [--once] FILE\n       osr inspect [--syntax|--semantic] FILE [--format text|json]\n       osr lsp\n\nCommands:\n  init          Create a project or add Osiris to an existing uv project\n  check FILE    Analyze an Osiris project or standalone source file\n  compile FILE  Compile one distribution to Python\n  watch         Recompile a project when configured inputs change\n  run FILE      Compile and run an Osiris project entry module\n  expand FILE   Print macro-expanded Osiris forms\n  inspect FILE  Inspect syntax or the semantic model\n  lsp           Run the Language Server Protocol server\n\nOptions:\n  --site-root DIR  Search this installed-package root for locked static extensions\n  -V, --version    Print version\n  -h, --help       Print help";
+pub const USAGE: &str = "Usage: osr [OPTIONS]\n       osr init PROJECT\n       osr init --extension PROJECT\n       osr init --existing [--extension] [DIR]\n       osr check FILE [--site-root DIR]\n       osr build [DIR] [--site-root DIR]\n       osr compile FILE... [--out-dir DIR] [--emit py,osri,map,records] [--site-root DIR]\n       osr watch [DIR] [--site-root DIR]\n       osr run FILE [--site-root DIR] [-- ARGS...]\n       osr expand [--once] FILE\n       osr inspect [--syntax|--semantic] FILE [--format text|json]\n       osr lsp\n\nCommands:\n  init          Create a project or add Osiris to an existing uv project\n  check FILE    Analyze an Osiris project or standalone source file\n  build         Compile the project configured by osiris.jsonc\n  compile FILE  Compile explicit source files or a containing project\n  watch         Rebuild a project when configured inputs change\n  run FILE      Compile and run an Osiris project entry module\n  expand FILE   Print macro-expanded Osiris forms\n  inspect FILE  Inspect syntax or the semantic model\n  lsp           Run the Language Server Protocol server\n\nOptions:\n  --site-root DIR  Search this installed-package root for locked static extensions\n  -V, --version    Print version\n  -h, --help       Print help";
 
 static NEXT_RUN_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -87,6 +87,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
         }
         [command, rest @ ..] if command == "init" => run_init(rest),
         [command, rest @ ..] if command == "check" => run_check(rest),
+        [command, rest @ ..] if command == "build" => run_build(rest),
         [command, rest @ ..] if command == "compile" => run_compile(rest),
         [command, rest @ ..] if command == "run" => run_program(rest),
         [command, rest @ ..] if command == "expand" => run_expand(rest),
@@ -95,6 +96,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
     }
 }
 
+mod build;
 mod check;
 mod compile;
 mod extensions;
@@ -106,6 +108,7 @@ mod source_io;
 mod watch;
 mod workspace;
 
+use build::*;
 use check::*;
 use compile::*;
 use extensions::*;

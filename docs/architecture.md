@@ -48,6 +48,14 @@ extension cannot register a parser production or backend callback.
 This keeps package management in PyPI/`uv`, keeps the compiler deterministic,
 and lets domain libraries evolve independently from the language kernel.
 
+`osr` itself is always a native Rust executable. The `osiris-lang` wheel is a
+distribution container: uv installs its executable into the environment's
+scripts directory, but Python does not host the CLI, watcher, or LSP process.
+Rust may scan the target project's installed-package roots for static
+`osiris.toml` and `.osri` resources; it never starts Python or imports an
+extension while doing so. The wheel's Python code is limited to the generated
+program runtime and the PEP 517 extension build backend.
+
 ## Source Ownership
 
 | Directory | Responsibility |

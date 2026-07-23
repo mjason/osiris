@@ -54,7 +54,11 @@ pub(super) fn load_external_interfaces(
             records_resolver: Vec::new(),
         });
     };
-    if site_roots.is_empty() {
+    let mut roots = site_roots.iter().map(PathBuf::from).collect::<Vec<_>>();
+    roots.extend(project.installed_package_roots());
+    roots.sort();
+    roots.dedup();
+    if roots.is_empty() {
         let trust_policy = dependency::contract_trust_policy(&[], &[])
             .map_err(|error| format!("could not validate contract trust policy: {error}"))?;
         return Ok(LoadedExternalInterfaces {
@@ -63,7 +67,6 @@ pub(super) fn load_external_interfaces(
             records_resolver: Vec::new(),
         });
     }
-    let roots = site_roots.iter().map(PathBuf::from).collect::<Vec<_>>();
     let lock = project
         .load_lock()
         .map_err(|error| format!("could not validate uv.lock: {error}"))?;

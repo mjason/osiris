@@ -22,14 +22,11 @@ Homepage = "https://github.com/mjason/osiris"
 Repository = "https://github.com/mjason/osiris"
 Issues = "https://github.com/mjason/osiris/issues"
 
-[project.scripts]
-osr = "osiris:main"
-
 [tool.maturin]
-module-name = "osiris._core"
+bindings = "bin"
+module-name = "osiris"
 python-packages = ["osiris", "osiris_build"]
 python-source = "src"
-features = ["python"]
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]

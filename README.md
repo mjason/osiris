@@ -69,7 +69,7 @@ trailing commas are accepted. A typical configuration is deliberately small:
 {
   "$schema": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
   "source": ["examples"],
-  "outDir": "target/osr",
+  "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
   "displayLocale": "zh-CN"
@@ -102,7 +102,8 @@ With that configuration and [`examples/hello.osr`](examples/hello.osr):
 
 ```console
 cargo run --bin osr -- check examples/hello.osr
-cargo run --bin osr -- compile examples/hello.osr
+cargo run --bin osr -- build
+cargo run --bin osr -- watch
 ```
 
 The multi-file [`examples/tutorial/app.osr`](examples/tutorial/app.osr)
@@ -120,13 +121,16 @@ whole local dependency graph. See [`examples/README.md`](examples/README.md)
 for the module-to-path mapping and generated outputs.
 
 `check` parses and validates the project and leaves the working tree
-unchanged. `compile` prints the output directory (`target/osr/` by default)
-and publishes one artifact set atomically:
+unchanged. `build` compiles the complete project described by `osiris.jsonc`,
+prints the output directory (`dist/` by default), and publishes one artifact
+set atomically. `watch` reruns that same build when a non-excluded `.osr`
+source changes. `compile` remains the lower-level command for explicit source
+and `--emit` control.
 
-- `target/osr/hello.py` is the readable generated Python module.
-- `target/osr/hello.osri` is the public, versioned Osiris compilation
+- `dist/hello.py` is the readable generated Python module.
+- `dist/hello.osri` is the public, versioned Osiris compilation
   interface used by downstream modules and tools.
-- `target/osr/hello.py.map` maps generated Python spans back to source and
+- `dist/hello.py.map` maps generated Python spans back to source and
   macro-expansion spans.
 - A distribution-level `*.records.json` sidecar is emitted only when the
   compiled modules own public static records (or when `--emit records` is
@@ -193,17 +197,18 @@ standard `Requires-Dist` metadata.
 ```console
 cargo run --bin osr -- --version
 cargo run --bin osr -- check source.osr
-cargo run --bin osr -- compile source.osr
+cargo run --bin osr -- build
 cargo run --bin osr -- watch
+cargo run --bin osr -- compile source.osr
 cargo run --bin osr -- expand source.osr
 cargo run --bin osr -- inspect --semantic source.osr --format json
 cargo run --bin osr -- lsp
 cargo test --all-targets --all-features
 ```
 
-`check` runs the frontend and semantic gates. `compile` emits readable Python,
-an `.osri` compilation interface, and a `.py.map` source map into
-`target/osr/`. `expand` shows macro output. `inspect` exposes either the
+`check` runs the frontend and semantic gates. `build` emits readable Python,
+an `.osri` compilation interface, and a `.py.map` source map into `dist/` by
+default. `expand` shows macro output. `inspect` exposes either the
 lossless syntax tree or the versioned semantic model used by the LSP and Agent
 APIs. Compilation errors return status 1; command-line misuse returns status
 2.
@@ -216,10 +221,11 @@ collision-safe name resolution.
 
 ## Python package
 
-The Python package embeds the same Rust core through PyO3 and installs an
-`osr` console command. `osiris_build` provides the PEP 517 backend used by
-Osiris source distributions; Python dependencies continue to be declared in
-`pyproject.toml` and locked by `uv`.
+The PyPI wheel carries `osr` as a native Rust executable. Python and its
+packaging tools install the wheel, but they do not launch or host the CLI.
+The same wheel also contains the `osiris` runtime used by generated Python and
+the `osiris_build` PEP 517 backend used by Osiris source distributions. Python
+dependencies continue to be declared in `pyproject.toml` and locked by `uv`.
 
 The PyPI distribution is named `osiris-lang` because the `osiris` project name
 is already occupied. The installed Python package remains `osiris`:
@@ -236,10 +242,10 @@ uv sync
 uv run osr --version
 ```
 
-The package version is defined once in `Cargo.toml`; maturin supplies it to the
-Python package during the build. The Python console script delegates to the
-same Rust CLI dispatcher as the native executable, so parsing and diagnostics
-do not diverge.
+The package version is defined once in `Cargo.toml`; maturin uses it for the
+platform wheel and places the native executable in the wheel's scripts area.
+Consequently `osr`, `osr watch`, and `osr lsp` run without a Python interpreter
+process.
 
 ## VS Code
 

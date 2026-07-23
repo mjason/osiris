@@ -25,12 +25,13 @@ pub struct LockedDistribution {
     pub normalized_name: String,
     pub version: String,
     pub source: String,
-    /// Editable project roots are the only packages allowed to omit this.
+    /// Local project roots are the only packages allowed to omit this.
     pub source_hash: Option<String>,
     pub source_hashes: Vec<String>,
     pub dependencies: Vec<LockedDependency>,
     pub resolution_markers: Vec<String>,
     pub editable: bool,
+    pub project_root: bool,
 }
 
 impl LockedDistribution {

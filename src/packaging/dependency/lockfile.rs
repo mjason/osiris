@@ -76,10 +76,10 @@ pub(super) fn parse_lock_table(
             )
         })?;
         let package = parse_package(table, target, path)?;
-        if package.editable && project.replace(package.normalized_name.clone()).is_some() {
+        if package.project_root && project.replace(package.normalized_name.clone()).is_some() {
             return Err(DependencyError::InvalidLock(
                 path.to_path_buf(),
-                "uv.lock contains multiple editable project roots".to_owned(),
+                "uv.lock contains multiple local project roots".to_owned(),
             ));
         }
         if package.applicable(target)? {
@@ -144,6 +144,7 @@ pub(super) fn same_pin(left: &LockedDistribution, right: &LockedDistribution) ->
         && left.source_hashes == right.source_hashes
         && left.dependencies == right.dependencies
         && left.editable == right.editable
+        && left.project_root == right.project_root
 }
 
 pub(super) fn parse_package(
@@ -170,9 +171,14 @@ pub(super) fn parse_package(
         .and_then(|source| source.get("editable"))
         .and_then(toml::Value::as_str)
         .is_some_and(|value| value == ".");
+    let virtual_root = source_table
+        .and_then(|source| source.get("virtual"))
+        .and_then(toml::Value::as_str)
+        .is_some_and(|value| value == ".");
+    let project_root = editable || virtual_root;
     let version = match table.get("version").and_then(toml::Value::as_str) {
         Some(value) if !value.is_empty() => value.to_owned(),
-        _ if editable => "0".to_owned(),
+        _ if project_root => "0".to_owned(),
         _ => {
             return Err(DependencyError::InvalidLock(
                 path.to_path_buf(),
@@ -189,7 +195,7 @@ pub(super) fn parse_package(
     .map_err(|message| DependencyError::InvalidLock(path.to_path_buf(), message))?;
     let source = source_descriptor(source_table, editable);
     let source_hashes = source_hashes(table, path)?;
-    if !editable && source_hashes.is_empty() {
+    if !project_root && source_hashes.is_empty() {
         return Err(DependencyError::InvalidLock(
             path.to_path_buf(),
             format!("package `{name}` has no source hash"),
@@ -207,6 +213,7 @@ pub(super) fn parse_package(
         dependencies,
         resolution_markers,
         editable,
+        project_root,
     })
 }
 
@@ -253,6 +260,8 @@ pub(super) fn source_descriptor(source: Option<&toml::Table>, editable: bool) ->
     };
     if source.contains_key("registry") {
         "registry".to_owned()
+    } else if source.contains_key("virtual") {
+        "virtual".to_owned()
     } else if source.contains_key("git") {
         "git".to_owned()
     } else if source.contains_key("directory") || source.contains_key("path") {

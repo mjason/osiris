@@ -180,9 +180,21 @@ fn minimal_configuration_uses_defaults() {
     let path = fixture("{}");
     let config = ProjectConfig::load(&path).expect("minimal configuration should load");
     assert_eq!(config.target_python, PythonVersion::DEFAULT_TARGET);
-    assert_eq!(config.default_output_dir(), config.root.join("target/osr"));
+    assert_eq!(config.default_output_dir(), config.root.join("dist"));
     let root = path.parent().expect("fixture has parent");
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn discovers_project_virtual_environment_without_running_python() {
+    let path = fixture("{}");
+    let config = ProjectConfig::load(&path).expect("minimal configuration should load");
+    let site_packages = config.root.join(".venv/lib/python3.11/site-packages");
+    fs::create_dir_all(&site_packages).expect("site-packages fixture should be created");
+
+    assert!(config.installed_package_roots().contains(&site_packages));
+
+    let _ = fs::remove_dir_all(&config.root);
 }
 
 #[test]

@@ -8,19 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackageImportTests(unittest.TestCase):
-    def test_prelude_import_does_not_require_native_extension(self):
+    def test_python_runtime_is_independent_from_the_native_cli(self):
         script = r"""
-import importlib.abc
-import sys
-
-class BlockNativeCore(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname == "osiris._core":
-            raise ModuleNotFoundError("native core intentionally unavailable")
-        return None
-
-sys.meta_path.insert(0, BlockNativeCore())
+import osiris
 from osiris import prelude
+assert isinstance(osiris.version(), str)
 assert prelude.mapv(lambda value: value + 1, (1, 2)) == (2, 3)
 """
         environment = os.environ.copy()
@@ -33,7 +25,6 @@ assert prelude.mapv(lambda value: value + 1, (1, 2)) == (2, 3)
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()

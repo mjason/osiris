@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use _core::records;
+use osiris::records;
 use sha2::Digest;
 
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
@@ -63,3 +63,5 @@ mod initialization;
 mod inspection;
 #[path = "cli/protocol.rs"]
 mod protocol;
+#[path = "cli/watching.rs"]
+mod watching;

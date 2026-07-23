@@ -1,8 +1,4 @@
-from __future__ import annotations
-
-import sys
 from importlib.metadata import PackageNotFoundError, version as distribution_version
-from pathlib import Path
 
 __all__ = ["version"]
 
@@ -13,39 +9,4 @@ except PackageNotFoundError:
 
 
 def version() -> str:
-    from osiris._core import version as native_version
-
-    return native_version()
-
-
-def _site_roots() -> list[str]:
-    return sorted(
-        {
-            str(Path(entry).resolve())
-            for entry in sys.path
-            if entry and Path(entry).is_dir()
-        }
-    )
-
-
-def main() -> None:
-    from osiris._core import _run_cli, _run_lsp_stdio, _run_watch_stdio
-
-    if sys.argv[1:] == ["lsp"]:
-        _run_lsp_stdio()
-        return
-    if sys.argv[1:2] == ["watch"]:
-        arguments = list(sys.argv[2:])
-        for root in _site_roots():
-            arguments.extend(["--site-root", root])
-        _run_watch_stdio(arguments)
-        return
-    arguments = list(sys.argv[1:])
-    if arguments[:1] == ["compile"]:
-        for root in _site_roots():
-            arguments.extend(["--site-root", root])
-    exit_code, stdout, stderr = _run_cli(arguments)
-    sys.stdout.write(stdout)
-    sys.stderr.write(stderr)
-    if exit_code:
-        raise SystemExit(exit_code)
+    return __version__
