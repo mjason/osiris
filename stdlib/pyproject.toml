@@ -1,6 +1,6 @@
 [project]
 name = "osiris-stdlib"
-version = "0.3.2"
+version = "0.3.3"
 description = "Source-distributed standard library for Osiris"
 readme = "README.md"
 requires-python = ">=3.11"

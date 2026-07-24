@@ -1,4 +1,4 @@
-//! Compiler-embedded standard-library identities and source artifacts.
+//! Compiler-owned Kernel identities and source-distributed standard artifacts.
 //!
 //! This module is the single source of truth for public facade names. Private
 //! Python helper layout and Phase-1 implementation names are deliberately not
@@ -22,8 +22,8 @@ pub use api::{
 };
 pub(crate) use artifacts::linked_standard_support;
 pub use artifacts::{
-    EmbeddedStandardArtifacts, StandardArtifactResource, embedded_artifacts, interface_artifact,
-    source_artifact, source_artifact_by_uri, validate_embedded_artifacts,
+    StandardArtifactResource, StandardArtifacts, interface_artifact, source_artifact,
+    source_artifact_by_uri, standard_artifacts, validate_resources, validate_standard_artifacts,
 };
 
 pub const CORE_NAMESPACE: &str = "osiris.core";
@@ -198,7 +198,7 @@ pub fn find_by_id(id: &BindingId) -> Option<StandardBinding> {
 /// Hash the semantic facade contract independently from private helper layout.
 #[must_use]
 pub fn semantic_hash() -> String {
-    embedded_artifacts()
+    standard_artifacts()
         .map(|artifacts| artifacts.semantic_hash.clone())
         .unwrap_or_default()
 }

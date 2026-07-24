@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 3
+revision: 4
 ---
 
 # Osiris Syntax
@@ -132,6 +132,9 @@ following supported syntax node:
   :osiris/names
   {"zh-CN" {:preferred 全部加一
              :aliases [逐项加一]}}
+  :examples
+  [["(increment-all [1 2 3])"
+    ";; => [2 3 4]"]]
   :agent/tags [:data :transform]}
 (defn ^{:type (Vector Int)} increment-all
   [^{:type (Vector Int)} values]
@@ -152,6 +155,21 @@ should write it in English, but any language is valid. Other keys must be
 standard BCP 47 language tags such as `"en"`, `"zh-CN"`, or `"ja"`. Tooling
 uses RFC 4647 lookup and falls back to `:default` without pretending that the
 fallback has a language tag.
+
+Documentation examples use a vector of examples. Each example is another
+vector containing one source line per string:
+
+```clojure
+:examples
+[["(reduce + 0 [1 2 3 4])"
+  ";; => 10"]
+ ["(reduce + [1 2 3 4])"
+  ";; => 10"]]
+```
+
+Do not put escaped newlines into one string. The outer vector separates
+examples; the inner vector preserves canonically formatted source lines. LSP,
+LSC, package interfaces, and Agent-facing JSON all consume this same metadata.
 
 Phase 1 can read and immutably update metadata with `meta`, `with-meta`, and
 `vary-meta`. Metadata cannot claim compiler-verified type, effect, temporal, or
@@ -392,6 +410,20 @@ standard operation needs reusable support, the linker emits ordinary Python
 under the owning package's reserved `__osiris_runtime__` package. Osiris source
 MUST NOT declare that package or import its private names directly.
 
+## Standard Library Resources
+
+The compiler embeds only Kernel and Bootstrap source. Public standard-library
+modules are ordinary `.osr` resources shipped in the matching `osiris-lang`
+distribution. Compilation, LSP, LSC, source maps, and linking read them through
+one validated resource provider.
+
+The compiler carries the SHA-256 identity of the complete standard resource
+tree. Missing or modified resources are an invalid installation; the compiler
+does not silently use a second public-source copy from its executable.
+`osiris-stdlib:///osiris/core/transform.osr` is a stable logical URI resolved
+through that provider, not evidence that the source is embedded in the binary.
+Generated Python still has no runtime dependency on `osiris-lang`.
+
 ## Complete Minimal Module
 
 ```clojure
@@ -405,6 +437,9 @@ MUST NOT declare that package or import its private names directly.
 
 ^{:doc {:default "Return positive Cartesian sums."
         "zh-CN" "返回笛卡尔组合中的正数和。"}
+  :examples
+  [["(positive-sums [-2 1] [1 3])"
+    ";; => [1 2 4]"]]
   :osiris/names
   {"zh-CN" {:preferred 正数组合}}}
 (defn ^{:type (Vector Int)} positive-sums
@@ -416,7 +451,10 @@ MUST NOT declare that package or import its private names directly.
         :when (> sum 0)]
     sum))
 
-^{:doc "Summarize a vector of integers."}
+^{:doc {:default "Summarize a vector of integers."}
+  :examples
+  [["(summarize [2 3 5])"
+    ";; => (Summary :count 3 :total 10)"]]}
 (defn ^Summary summarize
   [^{:type (Vector Int)} values]
   (Summary

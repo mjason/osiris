@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 3
+revision: 4
 source: ../../syntax.md
-source-revision: 3
+source-revision: 4
 translation-status: Current
 ---
 
@@ -125,6 +125,9 @@ node：
   :osiris/names
   {"zh-CN" {:preferred 全部加一
              :aliases [逐项加一]}}
+  :examples
+  [["(increment-all [1 2 3])"
+    ";; => [2 3 4]"]]
   :agent/tags [:data :transform]}
 (defn ^{:type (Vector Int)} increment-all
   [^{:type (Vector Int)} values]
@@ -144,6 +147,21 @@ node：
 但任何语言都合法。其他 key 必须是标准 BCP 47 language tag，例如 `"en"`、
 `"zh-CN"` 或 `"ja"`。工具按 RFC 4647 lookup，最后回退到 `:default`，且不能伪称
 这个无标签回退属于某个 locale。
+
+文档示例使用 examples vector，其中每个 example 仍是一个 vector，并且每个 string
+只保存一行源码：
+
+```clojure
+:examples
+[["(reduce + 0 [1 2 3 4])"
+  ";; => 10"]
+ ["(reduce + [1 2 3 4])"
+  ";; => 10"]]
+```
+
+不要在一个 string 中写转义换行。外层 vector 区分多个 example，内层 vector 保留经过
+统一格式化的源码行。LSP、LSC、package interface 和面向 Agent 的 JSON 使用同一份
+metadata。
 
 Phase 1 可以用 `meta`、`with-meta` 和 `vary-meta` 读取并以不可变方式更新 metadata。
 Metadata 不能冒充编译器验证过的类型、effect、temporal 或 data fact。
@@ -371,6 +389,17 @@ Generated Python 对 Osiris 保持 standalone。Reachable standard operation 需
 support 时，linker 在 owning package 的 reserved `__osiris_runtime__` 下生成 ordinary
 Python。Osiris source 禁止声明该 package 或直接 import 其中的 private name。
 
+## 标准库资源
+
+Compiler 只内嵌 Kernel 与 Bootstrap source。Public standard-library module 是随匹配
+`osiris-lang` distribution 发布的普通 `.osr` resource。Compilation、LSP、LSC、source
+map 和 linking 统一通过一个 validated resource provider 读取它们。
+
+Compiler 携带完整 standard resource tree 的 SHA-256 identity。Resource 缺失或被修改
+表示安装损坏，compiler 不会静默使用 executable 中另一份 public source。
+`osiris-stdlib:///osiris/core/transform.osr` 是由 provider 解析的稳定 logical URI，不表示
+源码内嵌在 binary 中。Generated Python 仍然不依赖 `osiris-lang` runtime。
+
 ## 完整最小模块
 
 ```clojure
@@ -384,6 +413,9 @@ Python。Osiris source 禁止声明该 package 或直接 import 其中的 privat
 
 ^{:doc {:default "Return positive Cartesian sums."
         "zh-CN" "返回笛卡尔组合中的正数和。"}
+  :examples
+  [["(positive-sums [-2 1] [1 3])"
+    ";; => [1 2 4]"]]
   :osiris/names
   {"zh-CN" {:preferred 正数组合}}}
 (defn ^{:type (Vector Int)} positive-sums
@@ -395,7 +427,10 @@ Python。Osiris source 禁止声明该 package 或直接 import 其中的 privat
         :when (> sum 0)]
     sum))
 
-^{:doc "Summarize a vector of integers."}
+^{:doc {:default "Summarize a vector of integers."}
+  :examples
+  [["(summarize [2 3 5])"
+    ";; => (Summary :count 3 :total 10)"]]}
 (defn ^Summary summarize
   [^{:type (Vector Int)} values]
   (Summary

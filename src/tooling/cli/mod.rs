@@ -66,6 +66,20 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
     if let Some(outcome) = registry::help_request(arguments) {
         return outcome;
     }
+    if arguments.first().is_some_and(|command| {
+        matches!(
+            command.as_str(),
+            "check" | "build" | "compile" | "run" | "expand" | "lsc"
+        )
+    }) {
+        if let Err(error) = crate::stdlib::validate_resources() {
+            return CliOutcome::failure(
+                1,
+                String::new(),
+                format!("osr: invalid compiler installation: {error}\n"),
+            );
+        }
+    }
     match arguments {
         [] => CliOutcome::success(registry::root_help()),
         [argument] if argument == "-V" || argument == "--version" => {

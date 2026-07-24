@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Load public standard-library source from the validated installed resource tree.
+- Keep Kernel source compiler-owned while preserving navigable standard source URIs.
+- Align examples and syntax documentation with OEP-0004 documentation metadata.
+
 ## 0.3.2
 
 - Improve standard-library hover and LSC output with task-oriented examples.

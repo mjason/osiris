@@ -313,7 +313,7 @@ fn collect_standard_core(
             }
             Err(error) => expander.diagnostics.push(Diagnostic::error(
                 "OSR-M0010",
-                format!("cannot load embedded standard interface: {error}"),
+                format!("cannot load standard interface: {error}"),
                 surface.module.span,
             )),
         }
@@ -336,7 +336,7 @@ fn collect_standard_core(
             Err(error) => {
                 expander.diagnostics.push(Diagnostic::error(
                     "OSR-M0010",
-                    format!("cannot load embedded standard interface: {error}"),
+                    format!("cannot load standard interface: {error}"),
                     import.span,
                 ));
                 continue;

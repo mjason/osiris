@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-24
-revision: 10
+revision: 11
 requires: [0, 1, 2]
 replaces: []
 superseded-by: null
@@ -173,9 +173,30 @@ documentation records.
 Metadata, and their implementation bodies MUST have the distributed `.osr`
 source as the normative source of truth. A Rust table, generated facade, Python
 template, or checked-in `.osri` file MUST NOT independently define a public
-standard API. Generated artifacts MAY be cached or embedded for startup, but a
+standard API. Public standard source MUST NOT be embedded into the native
+compiler as Rust string or byte constants. Generated `.osri`, macro IR, source
+indexes, and Linkable artifacts MAY be cached or embedded for startup, but a
 release build MUST validate them against the packaged source and reject stale
-or divergent artifacts.
+or divergent artifacts. This permission for generated artifacts MUST NOT be
+interpreted as permission to duplicate the normative public source inside the
+compiler binary.
+
+**OEP-0003-R005CA:** The compiler and every generated standard cache MUST carry
+the cryptographic identity of the complete packaged standard resource tree.
+At startup, the standard-resource provider MUST locate and validate that tree
+before it supplies source to compilation, LSP, LSC, source maps, or linking.
+Missing, stale, or divergent resources MUST produce an installation diagnostic;
+the provider MUST NOT silently fall back to another public-source copy embedded
+in the executable. Kernel and Bootstrap source remain compiler-owned and MAY be
+embedded.
+
+**OEP-0003-R005CB:** `osiris-stdlib:///` is a stable logical URI scheme, not an
+embedded-storage scheme. Every consumer MUST resolve it through the same
+validated standard-resource provider. A future single-file compiler
+distribution MAY carry an explicit, inspectable resource bundle, but that
+bundle is the source-distributed standard package and MUST obey the same tree
+identity and source-navigation rules; arbitrary Rust source constants do not
+constitute such a bundle.
 
 **OEP-0003-R005D:** A public callable or value that wraps a Kernel leaf MUST be
 an authored ordinary `defn` or `def` in the standard source package; the public
@@ -390,7 +411,7 @@ runtime imports of `osiris.core` remain invalid rather than being merged.
 The reserved standard-package bootstrap namespaces (`osiris.core` and the
 standard namespaces and implementation descendants listed by this OEP) MUST
 author their core dependencies explicitly. They MUST NOT receive implicit core
-referral while the compiler is constructing the embedded standard interfaces;
+referral while the compiler is constructing the validated standard interfaces;
 this exception prevents an interface-initialization cycle and is not available
 to ordinary packages.
 
@@ -533,6 +554,9 @@ Phase-1 Bootstrap
 ```
 
 No later layer may mutate an earlier interface or core export manifest.
+The packaged-source step MUST use the validated standard-resource provider from
+R005CA. Compiler subsystems MUST NOT maintain independent standard-source
+loaders or storage fallbacks.
 
 **OEP-0003-R049:** User projects MUST NOT declare a standard-library or Osiris
 runtime dependency. Installing the matching `osiris-lang` release as a build
@@ -1015,6 +1039,10 @@ This OEP cannot become Final while any required initial namespace is missing.
 
 ## Change History
 
+- Revision 11, 2026-07-24: Prohibited embedding public standard source as Rust
+  constants, required one hash-validated standard-resource provider for the
+  compiler and tooling, and clarified that `osiris-stdlib:///` identifies
+  logical packaged source rather than binary storage.
 - Revision 10, 2026-07-24: Restored Clojure-style implicit `osiris.core`
   referral, defined explicit core imports as complete overrides, and specified
   local shadowing, qualified lookup, and identical runtime/type/macro-phase

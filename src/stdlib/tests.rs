@@ -11,7 +11,7 @@ fn facade_ids_are_unique_and_every_interface_matches_normative_source() {
         .map(|binding| binding.id())
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(ids.len(), catalog.len());
-    let artifacts = embedded_artifacts().expect("compiled standard artifacts");
+    let artifacts = standard_artifacts().expect("compiled standard artifacts");
     for namespace in NAMESPACES {
         let source_ids = exports(namespace)
             .map(|binding| binding.id().as_str().to_owned())

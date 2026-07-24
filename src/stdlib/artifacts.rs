@@ -21,8 +21,12 @@ mod source;
 #[cfg(test)]
 pub(super) use source::compilation_source_artifact;
 pub(crate) use source::{binding_metadata, facade_macro_names};
-use source::{compilation_sources, sources};
+use source::{compilation_sources, sources, standard_resource_hash, validate_standard_resources};
 pub use source::{source_artifact, source_artifact_by_uri};
+
+pub fn validate_resources() -> Result<(), String> {
+    validate_standard_resources()
+}
 
 #[derive(Clone, Debug)]
 pub struct StandardArtifactResource {
@@ -33,17 +37,18 @@ pub struct StandardArtifactResource {
 }
 
 #[derive(Clone, Debug)]
-pub struct EmbeddedStandardArtifacts {
+pub struct StandardArtifacts {
     pub schema: &'static str,
     pub compiler_version: &'static str,
     pub language_version: &'static str,
     pub standard_library_abi: u32,
+    pub source_tree_hash: &'static str,
     pub semantic_hash: String,
     pub manifest_hash: String,
     pub resources: Vec<StandardArtifactResource>,
 }
 
-static ARTIFACTS: OnceLock<Result<EmbeddedStandardArtifacts, String>> = OnceLock::new();
+static ARTIFACTS: OnceLock<Result<StandardArtifacts, String>> = OnceLock::new();
 static INTERFACES: OnceLock<Result<BTreeMap<String, Interface>, String>> = OnceLock::new();
 static CORE_INTERFACE: OnceLock<Result<Interface, String>> = OnceLock::new();
 static COMPILED_SOURCES: OnceLock<Result<Vec<crate::compiler::CompileResult>, String>> =
@@ -68,43 +73,45 @@ pub(super) fn binding_source_location(binding: StandardBinding) -> super::Standa
     source::binding_source_location(binding)
 }
 
-pub fn embedded_artifacts() -> Result<&'static EmbeddedStandardArtifacts, String> {
+pub fn standard_artifacts() -> Result<&'static StandardArtifacts, String> {
     ARTIFACTS
         .get_or_init(build_artifacts)
         .as_ref()
         .map_err(Clone::clone)
 }
 
-pub fn validate_embedded_artifacts() -> Result<(), String> {
-    let artifacts = embedded_artifacts()?;
+pub fn validate_standard_artifacts() -> Result<(), String> {
+    validate_standard_resources()?;
+    let artifacts = standard_artifacts()?;
     if artifacts.schema != "osiris-standard-artifacts/v1"
         || artifacts.language_version != crate::LANGUAGE_VERSION
         || artifacts.standard_library_abi != crate::STANDARD_LIBRARY_ABI
+        || artifacts.source_tree_hash != standard_resource_hash()
     {
-        return Err("embedded standard artifact manifest has incompatible identity".to_owned());
+        return Err("standard artifact manifest has incompatible identity".to_owned());
     }
     let mut interfaces = BTreeMap::new();
     for resource in &artifacts.resources {
         if digest(&resource.bytes) != resource.content_hash {
             return Err(format!(
-                "embedded standard resource `{}` failed its hash",
+                "standard resource `{}` failed its hash",
                 resource.path
             ));
         }
         if resource.kind == "interface" {
             let source = std::str::from_utf8(&resource.bytes).map_err(|error| error.to_string())?;
             let interface = interface::read(source).map_err(|error| {
-                format!("invalid embedded interface `{}`: {error}", resource.path)
+                format!("invalid standard interface `{}`: {error}", resource.path)
             })?;
             interfaces.insert(interface.module.clone(), interface);
         }
     }
     if artifacts.semantic_hash != semantic_hash_for_interfaces(&interfaces) {
-        return Err("embedded standard semantic hash is stale".to_owned());
+        return Err("standard semantic hash is stale".to_owned());
     }
     let expected = manifest_hash(&artifacts.resources);
     if expected != artifacts.manifest_hash {
-        return Err("embedded standard artifact manifest hash is stale".to_owned());
+        return Err("standard artifact manifest hash is stale".to_owned());
     }
     Ok(())
 }
@@ -114,8 +121,8 @@ pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
         return CORE_INTERFACE.get_or_init(compile_core_interface).clone();
     }
     let interfaces = INTERFACES.get_or_init(|| {
-        validate_embedded_artifacts()?;
-        let artifacts = embedded_artifacts()?;
+        validate_standard_artifacts()?;
+        let artifacts = standard_artifacts()?;
         artifacts
             .resources
             .iter()
@@ -134,11 +141,11 @@ pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
         .map_err(Clone::clone)?
         .get(namespace)
         .cloned()
-        .ok_or_else(|| format!("embedded standard interface `{namespace}` is missing"))
+        .ok_or_else(|| format!("standard interface `{namespace}` is missing"))
 }
 
 fn compile_core_interface() -> Result<Interface, String> {
-    let compilation_sources = compilation_sources();
+    let compilation_sources = compilation_sources()?;
     let namespaces = ["osiris.core.kernel", CORE_NAMESPACE];
     let options = namespaces
         .iter()
@@ -182,12 +189,14 @@ fn compile_core_interface() -> Result<Interface, String> {
     interface::read(&encoded).map_err(|error| format!("invalid embedded core interface: {error}"))
 }
 
-fn build_artifacts() -> Result<EmbeddedStandardArtifacts, String> {
+fn build_artifacts() -> Result<StandardArtifacts, String> {
+    validate_standard_resources()?;
     let compiled = compiled_sources()?;
+    let sources = sources()?;
     let mut resources = Vec::new();
     let mut interfaces = BTreeMap::new();
     for (namespace, result) in NAMESPACES.iter().copied().zip(compiled) {
-        let source = &sources()[namespace];
+        let source = &sources[namespace];
         add_resource(
             &mut resources,
             source_path(namespace, "osr"),
@@ -262,7 +271,7 @@ fn compiled_sources() -> Result<&'static Vec<crate::compiler::CompileResult>, St
 }
 
 fn compile_sources() -> Result<Vec<crate::compiler::CompileResult>, String> {
-    let compilation_sources = compilation_sources();
+    let compilation_sources = compilation_sources()?;
     let namespaces = compilation_sources
         .keys()
         .copied()
@@ -348,7 +357,7 @@ fn compile_sources() -> Result<Vec<crate::compiler::CompileResult>, String> {
 fn finish_artifacts(
     mut resources: Vec<StandardArtifactResource>,
     interfaces: BTreeMap<String, Interface>,
-) -> Result<EmbeddedStandardArtifacts, String> {
+) -> Result<StandardArtifacts, String> {
     let core_interface = interfaces
         .get(CORE_NAMESPACE)
         .ok_or_else(|| "compiled osiris.core interface is missing".to_owned())?;
@@ -377,11 +386,12 @@ fn finish_artifacts(
     resources.sort_by(|left, right| left.path.cmp(&right.path));
     let manifest_hash = manifest_hash(&resources);
     let semantic_hash = semantic_hash_for_interfaces(&interfaces);
-    Ok(EmbeddedStandardArtifacts {
+    Ok(StandardArtifacts {
         schema: "osiris-standard-artifacts/v1",
         compiler_version: crate::version(),
         language_version: crate::LANGUAGE_VERSION,
         standard_library_abi: crate::STANDARD_LIBRARY_ABI,
+        source_tree_hash: standard_resource_hash(),
         semantic_hash,
         manifest_hash,
         resources,
@@ -464,7 +474,7 @@ pub(crate) fn linked_standard_support(
             );
             support.source_maps.push(crate::source_map::generate(
                 crate::source_map::GenerateInput {
-                    source_name: &sources()[namespace].uri,
+                    source_name: &sources()?[namespace].uri,
                     generated_name: &generated_name,
                     generated_source: &output.source,
                     module: &module,
@@ -571,9 +581,9 @@ mod tests {
     use crate::stdlib::exports;
 
     #[test]
-    fn embedded_standard_resources_are_complete_and_validated() {
-        validate_embedded_artifacts().expect("embedded standard artifacts");
-        let artifacts = embedded_artifacts().unwrap();
+    fn standard_resources_are_complete_and_validated() {
+        validate_standard_artifacts().expect("standard artifacts");
+        let artifacts = standard_artifacts().unwrap();
         assert_eq!(artifacts.language_version, crate::LANGUAGE_VERSION);
         for namespace in NAMESPACES {
             let prefix = namespace.replace('.', "/");

@@ -165,6 +165,50 @@ fn main() {
     let database_hash = hash_bytes(&fs::read(&database).expect("read documentation database"));
     println!("cargo:rustc-env=OSIRIS_DOC_SNAPSHOT_HASH={snapshot_hash}");
     println!("cargo:rustc-env=OSIRIS_DOC_DATABASE_HASH={database_hash}");
+    let standard_root = Path::new("stdlib");
+    println!("cargo:rerun-if-changed={}", standard_root.display());
+    println!(
+        "cargo:rustc-env=OSIRIS_STDLIB_TREE_HASH={}",
+        standard_resource_hash(standard_root)
+    );
+}
+
+fn standard_resource_hash(root: &Path) -> String {
+    let mut files = Vec::new();
+    collect_standard_resources(root, root, &mut files);
+    files.sort();
+    let mut digest = Sha256::new();
+    for path in files {
+        let relative = path
+            .strip_prefix(root)
+            .expect("standard resource path")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bytes = fs::read(&path).expect("read standard resource");
+        digest.update((relative.len() as u64).to_be_bytes());
+        digest.update(relative.as_bytes());
+        digest.update((bytes.len() as u64).to_be_bytes());
+        digest.update(bytes);
+    }
+    format!("sha256:{:x}", digest.finalize())
+}
+
+fn collect_standard_resources(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(directory).expect("read standard resource directory") {
+        let path = entry.expect("standard resource entry").path();
+        if path.is_dir() {
+            collect_standard_resources(root, &path, files);
+        } else {
+            let relative = path.strip_prefix(root).expect("standard resource path");
+            let named_resource = matches!(
+                relative.to_string_lossy().replace('\\', "/").as_str(),
+                "README.md" | "pyproject.toml" | "osiris.jsonc" | "uv.lock"
+            );
+            if named_resource || relative.extension().is_some_and(|value| value == "osr") {
+                files.push(path);
+            }
+        }
+    }
 }
 
 fn validate_manifest(manifest: &Manifest) {

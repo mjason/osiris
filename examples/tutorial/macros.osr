@@ -9,7 +9,8 @@
 ;; 对象。value# 一类自动 gensym 也可用于避免捕获调用方局部名称。
 ^{:doc
   {:default "Evaluate body when the condition is false and return its last value."
-   "zh-CN" "条件为假时执行 body，并返回最后一个表达式。"}}
+   "zh-CN" "条件为假时执行 body，并返回最后一个表达式。"}
+  :examples [["(unless ready?" "  \"waiting\")" ";; => \"waiting\" when ready? is false"]]}
 (defmacro unless [condition & body]
   `(if (not ~condition)
      (do
@@ -20,7 +21,8 @@
 ;; 同时不会捕获调用方恰好同名的变量。
 ^{:doc
   {:default "Evaluate an expression once and add the result to itself."
-   "zh-CN" "只求值一次，并把结果与自身相加。"}}
+   "zh-CN" "只求值一次，并把结果与自身相加。"}
+  :examples [["(twice (+ 2 1))" ";; => 6"]]}
 (defmacro twice [expression]
   `(let [value# ~expression]
      (+ value# value#)))

@@ -12,45 +12,29 @@ use crate::{
 
 use super::super::{CORE_NAMESPACE, NAMESPACES, StandardBinding};
 
-const CORE_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core.osr");
+mod provider;
+
 const CORE_KERNEL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/kernel.osr");
-const CORE_FUNCTION_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/function.osr");
-const CORE_TRANSFORM_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/transform.osr");
-const CORE_SEQUENCE_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/sequence.osr");
-const CORE_COLLECTION_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/collection.osr");
-const CORE_PREDICATE_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/predicate.osr");
-const CORE_TYPES_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/types.osr");
-const CORE_CONTROL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/control.osr");
-const CORE_COMPREHENSION_SOURCE: &str =
-    include_str!("../../../stdlib/src/osiris/core/comprehension.osr");
-const CORE_RECURSION_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/recursion.osr");
-const CORE_CONCURRENT_SOURCE: &str = include_str!("../../../stdlib/src/osiris/core/concurrent.osr");
-const COLLECTION_SOURCE: &str = include_str!("../../../stdlib/src/osiris/collection.osr");
 const COLLECTION_KERNEL_SOURCE: &str =
     include_str!("../../../stdlib/src/osiris/collection/kernel.osr");
-const SEQUENCE_SOURCE: &str = include_str!("../../../stdlib/src/osiris/sequence.osr");
 const SEQUENCE_KERNEL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/sequence/kernel.osr");
-const STRING_SOURCE: &str = include_str!("../../../stdlib/src/osiris/string.osr");
 const STRING_KERNEL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/string/kernel.osr");
-const MATH_SOURCE: &str = include_str!("../../../stdlib/src/osiris/math.osr");
 const MATH_KERNEL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/math/kernel.osr");
-const CONCURRENT_SOURCE: &str = include_str!("../../../stdlib/src/osiris/concurrent.osr");
 const CONCURRENT_KERNEL_SOURCE: &str =
     include_str!("../../../stdlib/src/osiris/concurrent/kernel.osr");
-const PYTHON_SOURCE: &str = include_str!("../../../stdlib/src/osiris/python.osr");
 const PYTHON_KERNEL_SOURCE: &str = include_str!("../../../stdlib/src/osiris/python/kernel.osr");
 
-const CORE_FACADE_SOURCES: &[(&str, &str)] = &[
-    ("osiris.core.function", CORE_FUNCTION_SOURCE),
-    ("osiris.core.transform", CORE_TRANSFORM_SOURCE),
-    ("osiris.core.sequence", CORE_SEQUENCE_SOURCE),
-    ("osiris.core.collection", CORE_COLLECTION_SOURCE),
-    ("osiris.core.predicate", CORE_PREDICATE_SOURCE),
-    ("osiris.core.types", CORE_TYPES_SOURCE),
-    ("osiris.core.control", CORE_CONTROL_SOURCE),
-    ("osiris.core.comprehension", CORE_COMPREHENSION_SOURCE),
-    ("osiris.core.recursion", CORE_RECURSION_SOURCE),
-    ("osiris.core.concurrent", CORE_CONCURRENT_SOURCE),
+const CORE_FACADE_NAMESPACES: &[&str] = &[
+    "osiris.core.function",
+    "osiris.core.transform",
+    "osiris.core.sequence",
+    "osiris.core.collection",
+    "osiris.core.predicate",
+    "osiris.core.types",
+    "osiris.core.control",
+    "osiris.core.comprehension",
+    "osiris.core.recursion",
+    "osiris.core.concurrent",
 ];
 
 #[derive(Clone)]
@@ -60,16 +44,29 @@ pub(super) struct StandardSource {
     pub(super) lines: BTreeMap<String, u32>,
 }
 
-static SOURCES: OnceLock<BTreeMap<&'static str, StandardSource>> = OnceLock::new();
+static SOURCES: OnceLock<Result<BTreeMap<&'static str, StandardSource>, String>> = OnceLock::new();
+
+pub(crate) fn validate_standard_resources() -> Result<(), String> {
+    provider::validate()?;
+    sources().map(|_| ())
+}
+
+pub(super) const fn standard_resource_hash() -> &'static str {
+    provider::expected_hash()
+}
 
 #[must_use]
 pub fn source_artifact(namespace: &str) -> Option<String> {
-    sources().get(namespace).map(|source| source.text.clone())
+    sources()
+        .ok()?
+        .get(namespace)
+        .map(|source| source.text.clone())
 }
 
 #[cfg(test)]
 pub(crate) fn compilation_source_artifact(namespace: &str) -> Option<String> {
     compilation_sources()
+        .ok()?
         .get(namespace)
         .map(|source| source.text.clone())
 }
@@ -77,6 +74,7 @@ pub(crate) fn compilation_source_artifact(namespace: &str) -> Option<String> {
 #[must_use]
 pub fn source_artifact_by_uri(uri: &str) -> Option<String> {
     compilation_sources()
+        .ok()?
         .values()
         .find(|source| source.uri == uri)
         .map(|source| source.text.clone())
@@ -86,11 +84,12 @@ pub(super) fn binding_source_location(
     binding: StandardBinding,
 ) -> super::super::StandardSourceLocation {
     if binding.namespace == CORE_NAMESPACE {
-        for (namespace, text) in CORE_FACADE_SOURCES {
+        for namespace in CORE_FACADE_NAMESPACES {
+            let text = packaged_source(namespace).expect("validated standard facade source");
             let source = StandardSource {
                 uri: format!("osiris-stdlib:///{}.osr", namespace.replace('.', "/")),
-                text: (*text).to_owned(),
-                lines: declaration_lines(CORE_NAMESPACE, text),
+                lines: declaration_lines(CORE_NAMESPACE, &text),
+                text,
             };
             if let Some(line) = source.lines.get(binding.id().as_str()) {
                 return super::super::StandardSourceLocation {
@@ -102,8 +101,9 @@ pub(super) fn binding_source_location(
         }
     }
     let source = sources()
+        .expect("validated standard resources")
         .get(binding.namespace)
-        .expect("standard namespace has embedded source");
+        .expect("standard namespace has packaged source");
     super::super::StandardSourceLocation {
         uri: source.uri.clone(),
         line: source
@@ -115,30 +115,23 @@ pub(super) fn binding_source_location(
     }
 }
 
-pub(super) fn sources() -> &'static BTreeMap<&'static str, StandardSource> {
-    SOURCES.get_or_init(|| {
-        NAMESPACES
-            .iter()
-            .copied()
-            .map(|namespace| (namespace, build_source(namespace)))
-            .collect()
-    })
+pub(super) fn sources() -> Result<&'static BTreeMap<&'static str, StandardSource>, String> {
+    SOURCES
+        .get_or_init(|| {
+            NAMESPACES
+                .iter()
+                .copied()
+                .map(|namespace| build_source(namespace).map(|source| (namespace, source)))
+                .collect()
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
-pub(super) fn compilation_sources() -> BTreeMap<&'static str, StandardSource> {
-    let mut result = sources().clone();
+pub(super) fn compilation_sources() -> Result<BTreeMap<&'static str, StandardSource>, String> {
+    let mut result = sources()?.clone();
     for (namespace, source) in [
         ("osiris.core.kernel", CORE_KERNEL_SOURCE),
-        ("osiris.core.function", CORE_FUNCTION_SOURCE),
-        ("osiris.core.transform", CORE_TRANSFORM_SOURCE),
-        ("osiris.core.sequence", CORE_SEQUENCE_SOURCE),
-        ("osiris.core.collection", CORE_COLLECTION_SOURCE),
-        ("osiris.core.predicate", CORE_PREDICATE_SOURCE),
-        ("osiris.core.types", CORE_TYPES_SOURCE),
-        ("osiris.core.control", CORE_CONTROL_SOURCE),
-        ("osiris.core.comprehension", CORE_COMPREHENSION_SOURCE),
-        ("osiris.core.recursion", CORE_RECURSION_SOURCE),
-        ("osiris.core.concurrent", CORE_CONCURRENT_SOURCE),
         ("osiris.collection.kernel", COLLECTION_KERNEL_SOURCE),
         ("osiris.sequence.kernel", SEQUENCE_KERNEL_SOURCE),
         ("osiris.string.kernel", STRING_KERNEL_SOURCE),
@@ -148,28 +141,33 @@ pub(super) fn compilation_sources() -> BTreeMap<&'static str, StandardSource> {
     ] {
         result.insert(namespace, build_source_from_text(namespace, source));
     }
-    result.insert(CORE_NAMESPACE, core_facade_compilation_source());
-    result
+    for namespace in CORE_FACADE_NAMESPACES {
+        let source = packaged_source(namespace)?;
+        result.insert(namespace, build_source_from_text(namespace, &source));
+    }
+    result.insert(CORE_NAMESPACE, core_facade_compilation_source()?);
+    Ok(result)
 }
 
-fn core_facade_compilation_source() -> StandardSource {
+fn core_facade_compilation_source() -> Result<StandardSource, String> {
     let names = facade_macro_names().into_iter().collect::<Vec<_>>();
-    let mut text = CORE_SOURCE.trim_end().to_owned();
+    let mut text = packaged_source(CORE_NAMESPACE)?.trim_end().to_owned();
     text.push_str("\n\n;; Facade implementations are authored in osiris.core.* modules.\n");
     text.push_str("(export [");
     text.push_str(&names.join(" "));
     text.push_str("])\n");
     let modules = facade_module_names();
-    for (namespace, source) in CORE_FACADE_SOURCES {
+    for namespace in CORE_FACADE_NAMESPACES {
         if modules.contains(*namespace) {
-            if let Some(body) = implementation_body(source) {
+            let source = packaged_source(namespace)?;
+            if let Some(body) = implementation_body(&source) {
                 text.push('\n');
                 text.push_str(body.trim());
                 text.push('\n');
             }
         }
     }
-    build_source_from_text(CORE_NAMESPACE, &text)
+    Ok(build_source_from_text(CORE_NAMESPACE, &text))
 }
 
 fn implementation_body(source: &str) -> Option<&str> {
@@ -189,7 +187,8 @@ fn implementation_body(source: &str) -> Option<&str> {
 }
 
 fn module_metadata_symbols(key: &str) -> BTreeSet<String> {
-    let lowered = ast::lower_document(&crate::reader::read(CORE_SOURCE));
+    let source = packaged_source(CORE_NAMESPACE).expect("validated standard core source");
+    let lowered = ast::lower_document(&crate::reader::read(&source));
     lowered
         .module
         .metadata
@@ -219,11 +218,11 @@ pub(crate) fn facade_macro_names() -> BTreeSet<String> {
     module_metadata_symbols("osiris/facade-macros")
 }
 
-fn build_source(namespace: &'static str) -> StandardSource {
+fn build_source(namespace: &'static str) -> Result<StandardSource, String> {
     if namespace == CORE_NAMESPACE {
         core_facade_compilation_source()
     } else {
-        build_source_from_text(namespace, packaged_source(namespace))
+        packaged_source(namespace).map(|source| build_source_from_text(namespace, &source))
     }
 }
 
@@ -234,17 +233,8 @@ fn build_source_from_text(namespace: &'static str, source: &str) -> StandardSour
     StandardSource { uri, text, lines }
 }
 
-fn packaged_source(namespace: &str) -> &'static str {
-    match namespace {
-        "osiris.core" => CORE_SOURCE,
-        "osiris.collection" => COLLECTION_SOURCE,
-        "osiris.sequence" => SEQUENCE_SOURCE,
-        "osiris.string" => STRING_SOURCE,
-        "osiris.math" => MATH_SOURCE,
-        "osiris.concurrent" => CONCURRENT_SOURCE,
-        "osiris.python" => PYTHON_SOURCE,
-        _ => "",
-    }
+fn packaged_source(namespace: &str) -> Result<String, String> {
+    provider::read(&format!("src/{}.osr", namespace.replace('.', "/")))
 }
 
 fn declaration_lines(namespace: &str, source: &str) -> BTreeMap<String, u32> {
@@ -362,7 +352,7 @@ fn declaration_line_number(source: &str, span: Span, name: &str) -> u32 {
 }
 
 pub(crate) fn binding_metadata(binding: StandardBinding) -> Result<Vec<MetadataEntry>, String> {
-    let source = sources()
+    let source = sources()?
         .get(binding.namespace)
         .ok_or_else(|| format!("unknown standard namespace `{}`", binding.namespace))?;
     declaration_metadata(binding, &source.text)

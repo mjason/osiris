@@ -12,10 +12,10 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-24
-revision: 10
+revision: 11
 language: zh-CN
 source: ../../0003-standard-library.md
-source-revision: 10
+source-revision: 11
 translation-status: Current
 requires: [0, 1, 2]
 replaces: []
@@ -133,8 +133,22 @@ diagnostic 是 OEP-0001 管理的 compiler diagnostic，不是 API documentation
 **OEP-0003-R005C：** Public standard declaration、signature、Rich Metadata 和
 implementation body 必须以分发的 `.osr` source 为 normative source of truth。Rust table、
 generated facade、Python template 或 checked-in `.osri` 不得独立定义 public standard API。
-Generated artifact 可以缓存或内嵌以优化启动，但 release build 必须根据 packaged source
-验证并拒绝 stale/divergent artifact。
+Public standard source 不得作为 Rust string 或 byte constant 内嵌到 native compiler。
+Generated `.osri`、macro IR、source index 和 Linkable artifact 可以缓存或内嵌以优化启动，
+但 release build 必须根据 packaged source 验证并拒绝 stale/divergent artifact。允许内嵌
+generated artifact 不得解释为允许在 compiler binary 中复制 normative public source。
+
+**OEP-0003-R005CA：** Compiler 和每一个 generated standard cache 必须携带完整 packaged
+standard resource tree 的 cryptographic identity。启动时，standard-resource provider 必须先
+定位并校验该 resource tree，才能向 compilation、LSP、LSC、source map 或 linker 提供源码。
+Resource 缺失、过期或不一致时必须产生安装诊断；provider 不得静默退回到 executable 内嵌的
+另一份 public source。Kernel 与 Bootstrap source 仍由 compiler ownership，可以内嵌。
+
+**OEP-0003-R005CB：** `osiris-stdlib:///` 是稳定的 logical URI scheme，不是 embedded
+storage scheme。所有 consumer 必须通过同一个 validated standard-resource provider 解析它。
+未来的 single-file compiler distribution 可以携带显式、可检查的 resource bundle，但该 bundle
+就是 source-distributed standard package，必须遵守相同的 tree identity 与源码导航规则；散落的
+Rust source constant 不构成这种 bundle。
 
 **OEP-0003-R005D：** 包装 Kernel leaf 的 public callable/value 必须是 standard source
 package 中手写的普通 `defn`/`def`；public declaration 自身不得是 `extern`。Leaf 的 typed
@@ -318,7 +332,7 @@ runtime `osiris.core` import 仍属非法，不得自动合并。
 
 保留的 standard-package bootstrap namespace（`osiris.core` 以及本 OEP 列出的 standard
 namespace 和 implementation descendant）必须显式编写其 core dependency。Compiler 在构建
-embedded standard interface 时不得向它们提供隐式 core referral；该例外用于避免
+validated standard interface 时不得向它们提供隐式 core referral；该例外用于避免
 interface initialization cycle，普通 package 不能使用该例外。
 
 ### 初始 module contract
@@ -441,7 +455,9 @@ Phase-1 Bootstrap
 -> project modules
 ```
 
-后层不得修改前层 interface 或 core export manifest。
+后层不得修改前层 interface 或 core export manifest。Packaged-source step 必须使用 R005CA
+定义的 validated standard-resource provider；compiler subsystem 不得维护独立的
+standard-source loader 或 storage fallback。
 
 **OEP-0003-R049：** User project 不得声明 standard-library 或 Osiris runtime dependency。
 作为 build tool 安装 matching `osiris-lang` 必须提供 compiler、packaged standard source、
@@ -861,6 +877,9 @@ Name-based solver 会破坏 alias、import、extension replacement 和 stable id
 
 ## 修订历史 (Change History)
 
+- Revision 11，2026-07-24：禁止把 public standard source 作为 Rust constant 内嵌，要求
+  compiler 与 tooling 统一使用 hash-validated standard-resource provider，并明确
+  `osiris-stdlib:///` 标识 logical packaged source，而不是 binary storage。
 - Revision 10，2026-07-24：恢复 Clojure 风格的隐式 `osiris.core` referral，将显式
   core import 定义为完整覆盖，并规定 local shadowing、qualified lookup 以及
   runtime/type/macro phase 一致的可见性。

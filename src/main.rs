@@ -10,6 +10,13 @@ fn main() -> ExitCode {
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     if arguments.as_slice() == ["lsp"] {
+        if let Err(error) = osiris::stdlib::validate_resources() {
+            let _ = writeln!(
+                io::stderr().lock(),
+                "osr: invalid compiler installation: {error}"
+            );
+            return ExitCode::FAILURE;
+        }
         return match osiris::lsp_stdio::run_stdio() {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
@@ -22,6 +29,13 @@ fn main() -> ExitCode {
         .first()
         .is_some_and(|argument| argument == "watch")
     {
+        if let Err(error) = osiris::stdlib::validate_resources() {
+            let _ = writeln!(
+                io::stderr().lock(),
+                "osr: invalid compiler installation: {error}"
+            );
+            return ExitCode::FAILURE;
+        }
         return match osiris::cli::run_watch_stdio(&arguments[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
