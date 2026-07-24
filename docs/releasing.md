@@ -27,8 +27,8 @@ with `id-token: write`.
 After the version is committed and pushed, publish with:
 
 ```console
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 The tag triggers `.github/workflows/publish-pypi.yml`, which checks the version,

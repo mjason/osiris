@@ -326,12 +326,22 @@ fn document_from_source(
 }
 
 fn front_matter(source: &str, key: &str) -> Option<String> {
-    let body = source.strip_prefix("---\n")?;
-    let header = body.split_once("\n---")?.0;
-    header.lines().find_map(|line| {
-        let (candidate, value) = line.split_once(':')?;
-        (candidate.trim() == key).then(|| value.trim().to_owned())
-    })
+    let mut lines = source.lines();
+    if lines.next()? != "---" {
+        return None;
+    }
+    for line in lines {
+        if line == "---" {
+            break;
+        }
+        let Some((candidate, value)) = line.split_once(':') else {
+            continue;
+        };
+        if candidate.trim() == key {
+            return Some(value.trim().to_owned());
+        }
+    }
+    None
 }
 
 fn headings(document: &Document) -> Vec<(String, String, String)> {
