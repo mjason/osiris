@@ -82,6 +82,10 @@ impl Lowerer {
         .unwrap_or_else(error_name);
         let mut alias = None;
         let mut members = Vec::new();
+        let mut refer_all = false;
+        let mut excluded = Vec::new();
+        let mut renamed = Vec::new();
+        let mut seen_options = BTreeSet::new();
         let mut index = 2;
         while index < parts.len() {
             let Some(keyword) = keyword_name(&parts[index]) else {
@@ -94,6 +98,13 @@ impl Lowerer {
                 continue;
             };
             let key = keyword.canonical.as_str();
+            if !seen_options.insert(key.to_owned()) {
+                self.error(
+                    AST_INVALID_KEYWORD_ARGS,
+                    format!("duplicate `{key}` option"),
+                    keyword_span(&parts[index]),
+                );
+            }
             let Some(value) = parts.get(index + 1) else {
                 self.error(
                     AST_EXPECTED_PAIR,
@@ -114,8 +125,31 @@ impl Lowerer {
                     alias = self.require_name(value, "import alias");
                 }
                 ":refer" | ":only" => {
-                    members.extend(self.lower_name_collection(value, "import member"));
+                    if keyword_name(value).is_some_and(|name| name.canonical == ":all") {
+                        refer_all = true;
+                    } else {
+                        members.extend(self.lower_name_collection(value, "import member"));
+                    }
                 }
+                ":exclude" => {
+                    excluded.extend(self.lower_name_collection(value, "excluded import member"));
+                }
+                ":rename" => match &value.kind {
+                    FormKind::Map(items) if items.len() % 2 == 0 => {
+                        for pair in items.chunks_exact(2) {
+                            let canonical = self.require_name(&pair[0], "renamed import member");
+                            let local = self.require_name(&pair[1], "local import name");
+                            if let (Some(canonical), Some(local)) = (canonical, local) {
+                                renamed.push(ImportRename { canonical, local });
+                            }
+                        }
+                    }
+                    _ => self.error(
+                        AST_INVALID_KEYWORD_ARGS,
+                        "import :rename requires a map of canonical names to local names",
+                        value.span,
+                    ),
+                },
                 _ => self.error(
                     AST_UNKNOWN_CLAUSE,
                     format!("unknown import option `{}`", keyword.spelling),
@@ -130,6 +164,9 @@ impl Lowerer {
             module,
             alias,
             members,
+            refer_all,
+            excluded,
+            renamed,
             phase: if syntax {
                 ImportPhase::Syntax
             } else {
@@ -300,10 +337,10 @@ impl Lowerer {
     pub(super) fn lower_def(&mut self, form: &Form) -> Def {
         let info = NodeInfo::from_form(form);
         let parts = list_parts(form).unwrap_or_default();
-        if parts.len() < 2 || parts.len() > 4 {
+        if parts.len() < 2 || parts.len() > 3 {
             self.error(
                 AST_WRONG_SHAPE,
-                "def expects a name, optional type, and value",
+                "def expects a name and optional value; attach its type with Rich Metadata",
                 form.span,
             );
         }
@@ -315,31 +352,8 @@ impl Lowerer {
             info.metadata,
             name_form.map_or(&[], |name| name.metadata.as_slice()),
         );
-        let (type_annotation, value) = match parts.len() {
-            0..=2 => (None, parts.get(2).map(|part| self.lower_expr(part))),
-            3 => (Some(self.lower_type(&parts[2])), None),
-            _ => (
-                Some(self.lower_type(&parts[2])),
-                Some(self.lower_expr(&parts[3])),
-            ),
-        };
-        if parts.len() == 3 {
-            // A three-form declaration is overwhelmingly the common `(def n
-            // value)` shape.  Treat it as a value unless the middle datum is
-            // recognisably type-like. A call is also a list, so collection
-            // shape alone cannot distinguish `(Array Float)` from
-            // `(Point :x 1)`.
-            let candidate = &parts[2];
-            if !looks_like_type(candidate) {
-                return Def {
-                    span: info.span,
-                    metadata,
-                    name,
-                    type_annotation: None,
-                    value: Some(self.lower_expr(candidate)),
-                };
-            }
-        }
+        let type_annotation = self.lower_metadata_type(&metadata, "definition").annotation;
+        let value = parts.get(2).map(|part| self.lower_expr(part));
         Def {
             span: info.span,
             metadata,
@@ -359,6 +373,7 @@ impl Lowerer {
     ) -> Function {
         let info = NodeInfo::from_form(form);
         let parts = list_parts(form).unwrap_or_default();
+        let type_params = self.lower_type_parameters(&info.metadata, "function");
         let mut index = 1;
         let name_form = if named { parts.get(index) } else { None };
         let name = if named {
@@ -391,35 +406,10 @@ impl Lowerer {
             .unwrap_or_default();
         index += usize::from(params_form.is_some());
 
-        let metadata_return_type = name_form
+        let return_type = name_form
             .map(|name| self.lower_metadata_type(&name.metadata, "function return"))
-            .unwrap_or_default();
-        let explicit_return_type = if parts
-            .get(index)
-            .and_then(symbol_name)
-            .is_some_and(|arrow| arrow.canonical == "->")
-        {
-            index += 1;
-            match parts.get(index) {
-                Some(type_form) => {
-                    index += 1;
-                    Some(self.lower_type(type_form))
-                }
-                None => {
-                    self.error(AST_WRONG_SHAPE, "`->` requires a return type", form.span);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        if explicit_return_type.is_some() && metadata_return_type.present {
-            self.report_type_annotation_conflict(
-                "function return",
-                name_form.map_or(form.span, |name| name.span),
-            );
-        }
-        let return_type = explicit_return_type.or(metadata_return_type.annotation);
+            .unwrap_or_default()
+            .annotation;
         let contract = if extern_declaration
             && parts
                 .get(index)
@@ -457,7 +447,13 @@ impl Lowerer {
         } else {
             parts[index..]
                 .iter()
-                .map(|part| self.lower_expr(part))
+                .map(|part| {
+                    if phase == FunctionPhase::Runtime {
+                        self.lower_expr(part)
+                    } else {
+                        self.lower_quoted_template(part)
+                    }
+                })
                 .collect::<Vec<_>>()
         };
         if body_required && body.is_empty() {
@@ -467,6 +463,7 @@ impl Lowerer {
             span: info.span,
             metadata: info.metadata,
             name,
+            type_params,
             params,
             return_type,
             contract,

@@ -1,0 +1,69 @@
+;; Internal typed Kernel contracts for osiris.math.
+^{:osiris/internal true}
+(module osiris.math.kernel)
+
+(export
+  [kernel-leaf-abs kernel-leaf-floor kernel-leaf-ceil kernel-leaf-trunc
+   kernel-leaf-sqrt kernel-leaf-exp kernel-leaf-log10 kernel-leaf-sin
+   kernel-leaf-cos kernel-leaf-tan kernel-leaf-asin kernel-leaf-acos
+   kernel-leaf-atan kernel-leaf-round kernel-leaf-log kernel-leaf-pow
+   kernel-leaf-atan2 kernel-leaf-finite? kernel-leaf-infinite?
+   kernel-leaf-nan? kernel-leaf-pi kernel-leaf-e kernel-leaf-tau
+   kernel-leaf-inf kernel-leaf-nan])
+
+(extern python "osiris.kernel"
+  ^{:python/name "abs"}
+  (defn ^{:type Float} kernel-leaf-abs [^{:type (Union Int Float)} value])
+  ^{:python/name "floor"}
+  (defn ^{:type Float} kernel-leaf-floor [^{:type (Union Int Float)} value])
+  ^{:python/name "ceil"}
+  (defn ^{:type Float} kernel-leaf-ceil [^{:type (Union Int Float)} value])
+  ^{:python/name "trunc"}
+  (defn ^{:type Float} kernel-leaf-trunc [^{:type (Union Int Float)} value])
+  ^{:python/name "sqrt"}
+  (defn ^{:type Float} kernel-leaf-sqrt [^{:type (Union Int Float)} value])
+  ^{:python/name "exp"}
+  (defn ^{:type Float} kernel-leaf-exp [^{:type (Union Int Float)} value])
+  ^{:python/name "log10"}
+  (defn ^{:type Float} kernel-leaf-log10 [^{:type (Union Int Float)} value])
+  ^{:python/name "sin"}
+  (defn ^{:type Float} kernel-leaf-sin [^{:type (Union Int Float)} value])
+  ^{:python/name "cos"}
+  (defn ^{:type Float} kernel-leaf-cos [^{:type (Union Int Float)} value])
+  ^{:python/name "tan"}
+  (defn ^{:type Float} kernel-leaf-tan [^{:type (Union Int Float)} value])
+  ^{:python/name "asin"}
+  (defn ^{:type Float} kernel-leaf-asin [^{:type (Union Int Float)} value])
+  ^{:python/name "acos"}
+  (defn ^{:type Float} kernel-leaf-acos [^{:type (Union Int Float)} value])
+  ^{:python/name "atan"}
+  (defn ^{:type Float} kernel-leaf-atan [^{:type (Union Int Float)} value])
+  ^{:python/name "round"}
+  (defn ^{:type Float} kernel-leaf-round
+    [^{:type (Union Int Float)} value [^{:type (Option Int)} option = none]])
+  ^{:python/name "log"}
+  (defn ^{:type Float} kernel-leaf-log
+    [^{:type (Union Int Float)} value
+     [^{:type (Option (Union Int Float))} option = none]])
+  ^{:python/name "pow"}
+  (defn ^{:type Float} kernel-leaf-pow
+    [^{:type (Union Int Float)} left ^{:type (Union Int Float)} right])
+  ^{:python/name "atan2"}
+  (defn ^{:type Float} kernel-leaf-atan2
+    [^{:type (Union Int Float)} left ^{:type (Union Int Float)} right])
+  ^{:python/name "finite_p"}
+  (defn ^{:type Bool} kernel-leaf-finite? [^{:type (Union Int Float)} value])
+  ^{:python/name "infinite_p"}
+  (defn ^{:type Bool} kernel-leaf-infinite? [^{:type (Union Int Float)} value])
+  ^{:python/name "nan_p"}
+  (defn ^{:type Bool} kernel-leaf-nan? [^{:type (Union Int Float)} value])
+  ^{:python/name "pi"}
+  (def ^Float kernel-leaf-pi)
+  ^{:python/name "e"}
+  (def ^Float kernel-leaf-e)
+  ^{:python/name "tau"}
+  (def ^Float kernel-leaf-tau)
+  ^{:python/name "inf"}
+  (def ^Float kernel-leaf-inf)
+  ^{:python/name "nan"}
+  (def ^Float kernel-leaf-nan))

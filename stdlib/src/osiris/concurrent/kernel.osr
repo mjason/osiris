@@ -1,0 +1,40 @@
+;; Internal typed Kernel contracts for osiris.concurrent.
+^{:osiris/internal true}
+(module osiris.concurrent.kernel)
+
+(export
+  [kernel-leaf-apply kernel-leaf-future-call kernel-leaf-future-done?
+   kernel-leaf-future-cancelled? kernel-leaf-future-cancel
+   kernel-leaf-pmap kernel-leaf-promise kernel-leaf-deliver
+   kernel-leaf-deref kernel-leaf-lock])
+
+(import osiris.core :refer [Future Promise Delay Lock])
+
+(extern python "osiris.kernel"
+  ^{:python/name "apply" :type-params [A F P R]}
+  (defn ^{:type R} kernel-leaf-apply
+    [^{:type F} function ^{:type P} prefix ^{:type A} arguments])
+  ^{:python/name "future_call" :type-params [A]}
+  (defn ^{:type (Future A)} kernel-leaf-future-call
+    [^{:type (Fn [] -> A)} function])
+  ^{:python/name "future_done_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-future-done? [^{:type (Future A)} future])
+  ^{:python/name "future_cancelled_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-future-cancelled? [^{:type (Future A)} future])
+  ^{:python/name "future_cancel" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-future-cancel [^{:type (Future A)} future])
+  ^{:python/name "pmap" :type-params [A B C]}
+  (defn ^{:type (Vector B)} kernel-leaf-pmap
+    [^{:type (Fn [A] -> B)} function & ^{:type C} collections])
+  ^{:python/name "promise" :type-params [A]}
+  (defn ^{:type (Promise A)} kernel-leaf-promise [])
+  ^{:python/name "deliver" :type-params [A]}
+  (defn ^{:type (Promise A)} kernel-leaf-deliver
+    [^{:type (Promise A)} promise ^{:type A} value])
+  ^{:python/name "deref" :type-params [A]}
+  (defn ^{:type A} kernel-leaf-deref
+    [^{:type (Union (Delay A) (Future A) (Promise A) A)} value
+     [^{:type (Option (Union Int Float))} timeout-ms = none]
+     [^{:type (Option A)} timeout-value = none]])
+  ^{:python/name "lock"}
+  (defn ^{:type Lock} kernel-leaf-lock []))

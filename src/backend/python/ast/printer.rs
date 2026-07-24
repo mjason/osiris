@@ -1,6 +1,6 @@
 use super::*;
 
-/// Render a module as Python 3.9 source.
+/// Render a module as Python 3.11 source.
 pub fn render(module: &Module) -> Result<String, PrintError> {
     let mut printer = Printer::default();
     printer.print_module(module)?;

@@ -1,0 +1,9 @@
+{
+  "$schema": "../schemas/osiris.schema.json",
+  "source": ["src"],
+  "outDir": "dist",
+  "targetPython": "3.11",
+  "strict": true,
+  "displayLocale": "zh-CN"
+}
+

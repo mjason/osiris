@@ -27,17 +27,6 @@ const DEFAULT_MAX_EVAL_STEPS: usize = 100_000;
 const DEFAULT_MAX_EVAL_DEPTH: usize = 128;
 const DEFAULT_MAX_RESULT_NODES: usize = 65_536;
 
-// The standard macros are ordinary phase-1 definitions. Keeping their source
-// as an Osiris resource bootstraps the prelude without introducing a second
-// expansion engine; packaged preludes can later provide the same definitions
-// through `.osri`.
-const BOOTSTRAP_PRELUDE: &str = concat!(
-    include_str!("../../stdlib/macros/control.osr"),
-    include_str!("../../stdlib/macros/comprehensions.osr"),
-    include_str!("../../stdlib/macros/recursion.osr"),
-    include_str!("../../stdlib/macros/concurrency.osr"),
-);
-
 mod expander;
 
 #[derive(Clone, Copy, Debug)]
@@ -232,7 +221,7 @@ pub fn expand_with_imported_phase_forms(
 ) -> ExpansionResult {
     let module_name = document_module_name(document).unwrap_or("osiris.anonymous");
     let mut expander = Expander::new(options, module_name);
-    collect_bootstrap_prelude(&mut expander);
+    collect_standard_core(&mut expander, document, &[]);
     expander.collect_phase_one_declarations(imported_phase_forms);
     expand_document(document, expander)
 }
@@ -265,19 +254,120 @@ pub fn expand_with_imported_phase_modules_for_module(
 ) -> ExpansionResult {
     let module_name = document_module_name(document).unwrap_or(fallback_module_name);
     let mut expander = Expander::new(options, module_name);
-    collect_bootstrap_prelude(&mut expander);
+    collect_standard_core(&mut expander, document, imported_phase_modules);
     expander.collect_imported_phase_modules(imported_phase_modules);
     expand_document(document, expander)
 }
 
-fn collect_bootstrap_prelude(expander: &mut Expander) {
-    let prelude = crate::reader::read(BOOTSTRAP_PRELUDE);
-    debug_assert!(
-        prelude.diagnostics.is_empty(),
-        "bootstrap prelude must remain valid Osiris source: {:?}",
-        prelude.diagnostics
-    );
-    expander.collect_phase_one_declarations_in_module(&prelude.forms, "osiris.prelude");
+fn collect_standard_core(
+    expander: &mut Expander,
+    document: &Document,
+    imported_phase_modules: &[ImportedPhaseModule],
+) {
+    let surface = crate::ast::lower_document(document);
+    let mut descriptors = Vec::new();
+    for item in &surface.module.items {
+        let crate::ast::ItemKind::Import(import) = &item.kind else {
+            continue;
+        };
+        if !crate::stdlib::is_standard_namespace(&import.module.canonical) {
+            continue;
+        }
+        if imported_phase_modules
+            .iter()
+            .any(|module| module.namespace == import.module.canonical)
+        {
+            continue;
+        }
+        let interface = match crate::stdlib::interface_artifact(&import.module.canonical) {
+            Ok(interface) => interface,
+            Err(error) => {
+                expander.diagnostics.push(Diagnostic::error(
+                    "OSR-M0010",
+                    format!("cannot load embedded standard interface: {error}"),
+                    import.span,
+                ));
+                continue;
+            }
+        };
+        let macro_names = interface
+            .macros
+            .iter()
+            .map(|macro_| macro_.canonical.clone())
+            .collect::<BTreeSet<_>>();
+        if macro_names.is_empty() {
+            continue;
+        }
+        let excluded = import
+            .excluded
+            .iter()
+            .map(|name| name.canonical.as_str())
+            .collect::<BTreeSet<_>>();
+        let renamed = import
+            .renamed
+            .iter()
+            .map(|rename| {
+                (
+                    rename.canonical.canonical.as_str(),
+                    rename.local.canonical.as_str(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let qualifier = import
+            .alias
+            .as_ref()
+            .map_or(import.module.canonical.as_str(), |alias| {
+                alias.canonical.as_str()
+            });
+        let mut visible = BTreeMap::new();
+        for canonical in &macro_names {
+            if excluded.contains(canonical.as_str()) {
+                continue;
+            }
+            visible.insert(format!("{qualifier}/{canonical}"), canonical.clone());
+            visible.insert(format!("{qualifier}.{canonical}"), canonical.clone());
+        }
+        let referred = if import.refer_all {
+            macro_names.iter().cloned().collect::<BTreeSet<_>>()
+        } else {
+            import
+                .members
+                .iter()
+                .map(|name| name.canonical.clone())
+                .collect()
+        };
+        for canonical in referred {
+            if excluded.contains(canonical.as_str()) || !macro_names.contains(&canonical) {
+                continue;
+            }
+            let local = renamed
+                .get(canonical.as_str())
+                .copied()
+                .unwrap_or(canonical.as_str());
+            visible.insert(local.to_owned(), canonical);
+        }
+        descriptors.push(
+            ImportedPhaseModule::new(
+                import.module.canonical.clone(),
+                interface.imported_phase_forms(),
+                visible,
+            )
+            .with_definition_names(
+                interface
+                    .bindings
+                    .iter()
+                    .map(|binding| (binding.canonical.clone(), binding.canonical.clone()))
+                    .chain(
+                        interface
+                            .macros
+                            .iter()
+                            .map(|macro_| (macro_.canonical.clone(), macro_.canonical.clone())),
+                    )
+                    .collect(),
+            ),
+        );
+    }
+    expander.collect_imported_phase_modules(&descriptors);
 }
 
 fn document_module_name(document: &Document) -> Option<&str> {

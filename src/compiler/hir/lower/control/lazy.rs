@@ -17,7 +17,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0025",
-                "osiris.prelude/lazy-seq* expects one zero-argument function",
+                "osiris.kernel/lazy-seq* expects one zero-argument function",
                 span,
             );
             return Expr::error(span);
@@ -83,7 +83,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0028",
-                "osiris.prelude/delay* expects one zero-argument function",
+                "osiris.kernel/delay* expects one zero-argument function",
                 span,
             );
             return Expr::error(span);
@@ -152,7 +152,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0029",
-                "osiris.prelude/force* expects exactly one positional argument",
+                "osiris.kernel/force* expects exactly one positional argument",
                 span,
             );
             return Expr::error(span);
@@ -207,7 +207,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0034",
-                "osiris.prelude/deref* expects one argument or value/timeout/default",
+                "osiris.kernel/deref* expects one argument or value/timeout/default",
                 span,
             );
             return Expr::error(span);

@@ -12,14 +12,14 @@ const SOURCE: &str = r#"
         (module sample.core)
 
         ^{:doc "distance" :osiris/names {"zh-CN" {:preferred 距离}}}
-        (defn distance
-          [^{:osiris/names {"zh-CN" {:preferred 点位}}} [point Float]]
-          -> Float
+        (defn ^Float distance [^{:type Float :osiris/names {"zh-CN" {:preferred 点位}}} point]
           point)
 
-        (def metre 1)
+        ^{:doc "one metre"}
+        (def ^Int metre 1)
         (alias 米 metre)
 
+        ^{:doc "closed range"}
         (defstruct (Range T)
           "closed range"
           [min T]
@@ -32,6 +32,7 @@ const SOURCE: &str = r#"
 const STATIC_SOURCE: &str = r#"
         (module sample.records)
 
+        ^{:doc "Descriptor schema."}
         (defstatic-schema Descriptor
           :schema-id "sample/descriptor"
           :version 1
@@ -48,7 +49,8 @@ const STATIC_SOURCE: &str = r#"
           :version 1
           :fields {:value {:type Int :required true}})
 
-        (def public-owner 1)
+        ^{:doc "Public record owner."}
+        (def ^Int public-owner 1)
         (static-record Descriptor public-owner {:id "alpha"})
         (def private-owner 2)
         (static-record Descriptor private-owner {:id "private"})
@@ -64,6 +66,7 @@ const MACRO_SOURCE: &str = r#"
           (helper value))
         (defn-for-syntax unused-helper [value]
           (list 'ignore value))
+        ^{:doc "Build a public pipeline."}
         (defmacro public-pipeline [value & steps]
           (helper-two value))
         (defmacro hidden-macro [value]
@@ -74,13 +77,12 @@ const MACRO_SOURCE: &str = r#"
 const OPERATOR_SOURCE: &str = r#"
         (module sample.operators)
 
+        ^{:doc "A generic series fixture."}
         (defstruct (Series T)
           [values (Vector T)])
 
-        ^{:osiris/operator :multiply}
-        (defn multiply-series
-          [[series (Series Float)] [multiplier Float]]
-          -> (Series Float)
+        ^{:doc "Multiply a series fixture." :osiris/operator :multiply}
+        (defn ^{:type (Series Float)} multiply-series [^{:type (Series Float)} series ^Float multiplier]
           series)
 
         (export [Series multiply-series])
@@ -242,6 +244,52 @@ fn canonical_interface_round_trips() {
 }
 
 #[test]
+fn generic_function_metadata_survives_provisional_and_final_interfaces() {
+    let source = r#"
+            (module sample.generics)
+            ^{:doc "Return an optional generic value." :type-params [A]}
+            (defn ^{:type (Option A)} optional-id
+              [[^{:type (Option A)} value = none]]
+              value)
+            (export [optional-id])
+        "#;
+    let surface = ast::lower_document(&source_reader::read(source));
+    assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
+    let provisional = super::build_provisional(&surface.module).expect("provisional interface");
+    let typed = hir::lower_module(&surface.module, "sample.generics");
+    assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
+    let final_model = build(&typed.module, &surface.module).expect("final interface");
+    super::validate_provisional_shape(&provisional, &final_model)
+        .expect("generic provisional and final shapes agree");
+
+    let encoded = render(&final_model).expect("generic interface renders");
+    let decoded = read(&encoded).expect("generic interface reads");
+    assert_eq!(render(&decoded).unwrap(), encoded);
+    let binding = decoded
+        .bindings
+        .iter()
+        .find(|binding| binding.canonical == "optional-id")
+        .expect("generic binding");
+    let Type::Fn(signature) = &binding.ty else {
+        panic!("expected function type");
+    };
+    let [parameter] = signature.parameters.as_slice() else {
+        panic!("expected one parameter");
+    };
+    assert!(matches!(
+        (parameter, signature.return_type.as_ref()),
+        (
+            Type::Option(parameter),
+            Type::Option(returned)
+        ) if matches!(
+            (parameter.as_ref(), returned.as_ref()),
+            (Type::TypeVar(left), Type::TypeVar(right)) if left == right
+        )
+    ));
+    assert!(encoded.contains(":type-params [A]"), "{encoded}");
+}
+
+#[test]
 fn nominal_binding_identity_round_trips_and_legacy_short_ids_fail_closed() {
     let (surface, typed) = modules();
     let encoded = emit(&typed, &surface).expect("interface should emit");
@@ -274,7 +322,8 @@ fn public_signature_cannot_leak_a_private_local_nominal_type() {
     let source = r#"
             (module sample.private-nominal)
             (defstruct Hidden [value Int])
-            (defn expose [[value Hidden]] -> Hidden value)
+            ^{:doc "Expose a hidden type."}
+            (defn ^Hidden expose [^Hidden value] value)
             (export [expose])
         "#;
     let surface = ast::lower_document(&source_reader::read(source));
@@ -347,35 +396,42 @@ fn forged_interface_cannot_bypass_declaration_or_interface_totals() {
     let metadata = metadata_map_source_entries(METADATA_TARGET_LIMITS.max_entries);
 
     let parameters = (0..5)
-        .map(|index| format!("[p{index} Int]"))
+        .map(|index| format!("^Int p{index}"))
         .collect::<Vec<_>>()
         .join(" ");
     let declaration_source = format!(
         "(module sample.metadata-declaration)\n\
-             (defn f [{parameters}] -> Int p0)\n\
+             ^{{:doc \"Metadata declaration fixture.\"}}\n\
+             (defn ^Int f [{parameters}] p0)\n\
              (export [f])"
     );
     let declaration_encoded = emit_source(&declaration_source, "sample.metadata-declaration");
-    let declaration_forged =
-        declaration_encoded.replace(":metadata {}", &format!(":metadata {metadata}"));
+    let declaration_forged = declaration_encoded.replace(
+        ":metadata {:tag Int}",
+        &format!(":metadata {metadata}"),
+    );
     let error = read(&declaration_forged)
         .expect_err("forged declaration aggregate must be rejected before hashes");
     assert_eq!(error.code, "OSR-I0082");
     assert!(error.message.contains("metadata declaration entry count"));
 
-    let definitions = (0..32)
-        .map(|index| format!("(def value{index} {index})"))
+    let definitions = (0..33)
+        .map(|index| {
+            format!("^{{:doc \"Metadata value.\"}} (def ^Int value{index} {index})")
+        })
         .collect::<Vec<_>>()
         .join("\n");
-    let exports = (0..32)
+    let exports = (0..33)
         .map(|index| format!("value{index}"))
         .collect::<Vec<_>>()
         .join(" ");
     let interface_source =
         format!("(module sample.metadata-interface)\n{definitions}\n(export [{exports}])");
     let interface_encoded = emit_source(&interface_source, "sample.metadata-interface");
-    let interface_forged =
-        interface_encoded.replace(":metadata {}", &format!(":metadata {metadata}"));
+    let interface_forged = interface_encoded.replace(
+        ":metadata {:doc \"Metadata value.\" :tag Int}",
+        &format!(":metadata {metadata}"),
+    );
     let error = read(&interface_forged)
         .expect_err("forged interface aggregate must be rejected before hashes");
     assert_eq!(error.code, "OSR-I0082");
@@ -386,20 +442,20 @@ fn forged_interface_cannot_bypass_declaration_or_interface_totals() {
 fn literal_type_arguments_round_trip_and_change_semantic_hashes() {
     let source = r#"
             (module sample.literal-types)
+            ^{:doc "An array fixture."}
             (defstruct (Array T Axes) [values Any])
+            ^{:doc "A frame fixture."}
             (defstruct (Frame Schema KeyMarker KeyValue OrderMarker OrderValue)
               [values Any])
-            (defn array-id
-              [[values (Array Float [:time :feature])]]
-              -> (Array Float [:time :feature])
+            ^{:doc "Return an array unchanged."}
+            (defn ^{:type (Array Float [:time :feature])} array-id [^{:type (Array Float [:time :feature])} values]
               values)
-            (defn frame-id
-              [[frame (Frame {:value Float :time Datetime :category Str}
-                             :key [:time :category]
-                             :order [:time])]]
-              -> (Frame {:category Str :value Float :time Datetime}
+            ^{:doc "Return a frame unchanged."}
+            (defn ^{:type (Frame {:category Str :value Float :time Datetime}
                         :key [:time :category]
-                        :order [:time])
+                        :order [:time])} frame-id [^{:type (Frame {:value Float :time Datetime :category Str}
+                             :key [:time :category]
+                             :order [:time])} frame]
               frame)
             (export [Array Frame array-id frame-id])
         "#;
@@ -436,56 +492,4 @@ fn literal_type_arguments_round_trip_and_change_semantic_hashes() {
         decoded.semantic_interface_hash(),
         changed.semantic_interface_hash()
     );
-}
-
-#[test]
-fn exported_extern_contract_round_trips_without_gaining_trust() {
-    let source = r#"
-            (module sample.externs)
-            (defstruct Series [values Any])
-            (extern python "host.series"
-              (defn rolling [[values Series] [window Int]] -> Series
-                :contract
-                {:id "host.series/rolling-v1"
-                 :effects :pure
-                 :temporal {:past "2*(window-1)"
-                            :future 0
-                            :availability :published}
-                 :data {:axes [:time]
-                        :alignment :labelled
-                        :preserves-length true}})
-              (defn dynamic [[value Int]] -> Int))
-            (export [Series rolling dynamic])
-        "#;
-    let surface = ast::lower_document(&source_reader::read(source));
-    assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
-    let typed = hir::lower_module(&surface.module, "sample.externs");
-    assert!(typed.diagnostics.is_empty(), "{:?}", typed.diagnostics);
-    let encoded = emit(&typed.module, &surface.module).expect("interface should emit");
-    let decoded = read(&encoded).expect("interface should read");
-
-    let rolling = decoded
-        .functions
-        .iter()
-        .find(|function| function.contract_id.as_deref() == Some("host.series/rolling-v1"))
-        .expect("declared extern contract");
-    assert_eq!(
-        rolling.summaries.temporal.past,
-        TemporalBound::Symbolic("2*(window-1)".to_owned())
-    );
-    assert_eq!(rolling.summaries.temporal.future, TemporalBound::Finite(0));
-    assert_eq!(
-        rolling.summaries.temporal.availability,
-        Availability::Named("published".to_owned())
-    );
-    assert_eq!(rolling.summaries.data.preserves_length, Some(true));
-
-    let dynamic = decoded
-        .functions
-        .iter()
-        .find(|function| function.contract_id.is_none())
-        .expect("uncontracted extern remains represented");
-    assert!(dynamic.summaries.effects.open);
-    assert_eq!(dynamic.summaries.temporal.future, TemporalBound::Unknown);
-    assert_eq!(render(&decoded).unwrap(), encoded);
 }

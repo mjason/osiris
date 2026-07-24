@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0022",
-                "osiris.prelude/loop* expects a callback and zero or more initial values",
+                "osiris.kernel/loop* expects a callback and zero or more initial values",
                 span,
             );
             return Expr::error(span);
@@ -61,7 +61,7 @@ impl<'a> Lowerer<'a> {
         let Type::Fn(signature) = &function.ty else {
             self.error(
                 "OSR-T0022",
-                "osiris.prelude/loop* callback must be a function",
+                "osiris.kernel/loop* callback must be a function",
                 function.span,
             );
             return Expr::error(span);

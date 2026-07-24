@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn check_accepts_unicode_and_rich_metadata() {
     let fixture = SourceFixture::new(
-        "^:deprecated\n^{:doc {\"zh-CN\" \"归一化数据\"}}\n(defn 归一化数据 [输入值 下界 上界] none)\n",
+        "^:deprecated\n^{:doc {:default \"Normalize data.\" \"zh-CN\" \"归一化数据\"}}\n(defn 归一化数据 [输入值 下界 上界] none)\n",
     );
     let output = osr(&["check", path_argument(&fixture.path)]);
 
@@ -42,7 +42,8 @@ fn check_analyzes_project_imports_against_source_interfaces() {
         "src/demo/math.osr",
         r#"(module demo.math)
             (export [add-one])
-            (defn add-one [[value Int]] -> Int (+ value 1))
+            ^{:doc "Increment an integer."}
+            (defn ^Int add-one [^Int value] (+ value 1))
         "#,
     );
     fs::write(
@@ -67,12 +68,47 @@ fn check_analyzes_project_imports_against_source_interfaces() {
 }
 
 #[test]
-fn inspect_json_contains_lossless_tokens_forms_and_metadata() {
+fn check_defaults_to_the_current_project_and_accepts_a_project_directory() {
+    let fixture = SourceFixture::new("(def outside-source-root 0)\n");
+    fixture.write("src/main.osr", "(module main)\n(def answer 42)\n");
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"project-check\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .unwrap();
+
+    let directory = osr(&["check", path_argument(&fixture.directory)]);
+    assert!(
+        directory.status.success(),
+        "{}",
+        String::from_utf8_lossy(&directory.stderr)
+    );
+
+    let current = Command::new(env!("CARGO_BIN_EXE_osr"))
+        .arg("check")
+        .current_dir(&fixture.directory)
+        .output()
+        .unwrap();
+    assert!(
+        current.status.success(),
+        "{}",
+        String::from_utf8_lossy(&current.stderr)
+    );
+    assert!(!fixture.directory.join("dist").exists());
+}
+
+#[test]
+fn lsc_syntax_json_contains_lossless_tokens_forms_and_metadata() {
     let source = "; 数据\n^:sample ^[Frame _] (defn 归一化 [frame] none)\n";
     let fixture = SourceFixture::new(source);
     let output = osr(&[
-        "inspect",
-        "--syntax",
+        "lsc",
+        "syntax",
         path_argument(&fixture.path),
         "--format",
         "json",
@@ -86,8 +122,12 @@ fn inspect_json_contains_lossless_tokens_forms_and_metadata() {
     assert!(output.stderr.is_empty());
     let document: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("inspect output should be JSON");
+    let document = &document["result"];
     assert_eq!(document["version"], 1);
-    assert_eq!(document["source_len"], source.len());
+    assert_eq!(
+        document["source"].as_str().map(str::len),
+        Some(source.len())
+    );
     assert_eq!(
         document["forms"][0]["metadata"].as_array().map(Vec::len),
         Some(2)
@@ -106,18 +146,19 @@ fn inspect_json_contains_lossless_tokens_forms_and_metadata() {
 }
 
 #[test]
-fn inspect_semantic_json_exposes_aliases_facts_and_operation_graph() {
+fn lsc_semantic_json_exposes_aliases_facts_and_operation_graph() {
     let fixture = SourceFixture::new(
         r#"(module sample)
-            ^{:osiris/names {"zh-CN" {:preferred 归一化}}}
-            (defn normalize [[value Float]] -> Float (+ value 1.0))
+            ^{:doc "Normalize a value."
+              :osiris/names {"zh-CN" {:preferred 归一化}}}
+            (defn ^Float normalize [^Float value] (+ value 1.0))
             (alias 标准化 normalize)
             (export [normalize 标准化])
         "#,
     );
     let output = osr(&[
-        "inspect",
-        "--semantic",
+        "lsc",
+        "semantic",
         path_argument(&fixture.path),
         "--format",
         "json",
@@ -130,6 +171,7 @@ fn inspect_semantic_json_exposes_aliases_facts_and_operation_graph() {
     );
     let semantic: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("semantic view should be JSON");
+    let semantic = &semantic["result"];
     assert_eq!(semantic["version"], 1);
     assert_eq!(semantic["module"], "sample");
     assert!(semantic["symbols"].as_array().is_some_and(|symbols| {
@@ -150,13 +192,73 @@ fn inspect_semantic_json_exposes_aliases_facts_and_operation_graph() {
 }
 
 #[test]
-fn inspect_keeps_recovered_document_on_error() {
+fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
+    let fixture = SourceFixture::new(
+        r#"(module sample)
+^{:doc {:default "默认中文。" "en" "English documentation."}
+  :osiris/names {"en" {:preferred calculate-value :aliases [compute-value]}}}
+(defn calculate [value] value)
+"#,
+    );
+    let at = format!("{}:4:7", fixture.path.display());
+    let default = osr(&["lsc", "hover", "--at", &at, "--format", "json"]);
+    assert!(
+        default.status.success(),
+        "{}",
+        String::from_utf8_lossy(&default.stderr)
+    );
+    let default: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
+    let result = &default["result"];
+    assert_eq!(result["binding_id"], "sample::function::calculate");
+    assert_eq!(result["module"], "sample");
+    assert_eq!(result["documentation"]["default"], "默认中文。");
+    assert_eq!(
+        result["documentation"]["translations"]["en"],
+        "English documentation."
+    );
+    assert!(result["documentation"]["selection"]["requestedLocale"].is_null());
+    assert!(result["documentation"]["selection"]["resolvedLocale"].is_null());
+    assert_eq!(result["documentation"]["selection"]["text"], "默认中文。");
+    assert_eq!(result["names"]["canonical"], "calculate");
+    assert_eq!(result["names"]["selection"]["label"], "calculate");
+    assert!(
+        result["metadata"]["authored"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty())
+    );
+
+    let localized = osr(&[
+        "lsc", "hover", "--at", &at, "--locale", "en-US", "--format", "json",
+    ]);
+    assert!(
+        localized.status.success(),
+        "{}",
+        String::from_utf8_lossy(&localized.stderr)
+    );
+    let localized: serde_json::Value = serde_json::from_slice(&localized.stdout).unwrap();
+    let result = &localized["result"];
+    assert_eq!(result["requestedLocale"], "en-US");
+    assert_eq!(result["resolvedLocale"], "en");
+    assert_eq!(result["resolvedNameLocale"], "en");
+    assert_eq!(result["selectedDocumentation"], "English documentation.");
+    assert_eq!(result["label"], "calculate-value");
+}
+
+#[test]
+fn lsc_syntax_keeps_recovered_document_on_error() {
     let fixture = SourceFixture::new("^{:doc \"incomplete\"} (defn value [x]\n");
-    let output = osr(&["inspect", path_argument(&fixture.path), "--format", "json"]);
+    let output = osr(&[
+        "lsc",
+        "syntax",
+        path_argument(&fixture.path),
+        "--format",
+        "json",
+    ]);
 
     assert_eq!(output.status.code(), Some(1));
     let document: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("recovered document should be JSON");
+    let document = &document["result"];
     assert!(document["forms"].is_array());
     assert!(
         !document["diagnostics"]
@@ -164,15 +266,21 @@ fn inspect_keeps_recovered_document_on_error() {
             .expect("diagnostics should be an array")
             .is_empty()
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("OSR-R0002"));
+    assert!(output.stderr.is_empty());
 }
 
 #[test]
-fn inspect_rejects_an_unknown_format_as_cli_misuse() {
+fn lsc_rejects_an_unknown_format_as_cli_misuse() {
     let fixture = SourceFixture::new("none\n");
-    let output = osr(&["inspect", path_argument(&fixture.path), "--format", "yaml"]);
+    let output = osr(&[
+        "lsc",
+        "syntax",
+        path_argument(&fixture.path),
+        "--format",
+        "yaml",
+    ]);
 
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("expected 'text' or 'json'"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("must be 'text' or 'json'"));
 }

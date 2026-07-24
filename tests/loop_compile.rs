@@ -27,7 +27,8 @@ fn temporary_directory() -> std::path::PathBuf {
 fn loop_recur_lowers_to_constant_stack_runtime() {
     let source = r#"
 (module loop_compile)
-(defn sum-down [[n Int] [total Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int sum-down [^Int n ^Int total]
   (loop [value n acc total]
     (if (= value 0)
       acc
@@ -41,7 +42,7 @@ fn loop_recur_lowers_to_constant_stack_runtime() {
     );
     let python = result.python.expect("loop should generate Python").source;
     assert!(
-        python.contains("from osiris.prelude import loop as"),
+        python.contains("from __osiris_runtime__ import loop as"),
         "{python}"
     );
     assert!(python.contains("recur as"), "{python}");
@@ -56,7 +57,8 @@ fn loop_recur_lowers_to_constant_stack_runtime() {
 fn function_recur_lowers_to_constant_stack_runtime() {
     let source = r#"
 (module loop_compile)
-(defn sum-down [[n Int] [total Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int sum-down [^Int n ^Int total]
   (if (= n 0)
     total
     (recur (- n 1) (+ total n))))
@@ -72,7 +74,7 @@ fn function_recur_lowers_to_constant_stack_runtime() {
         .expect("function recur should generate Python")
         .source;
     assert!(
-        python.contains("from osiris.prelude import loop as"),
+        python.contains("from __osiris_runtime__ import loop as"),
         "{python}"
     );
     assert!(python.contains("return _u0_osiris_loop"), "{python}");
@@ -86,7 +88,8 @@ fn function_recur_lowers_to_constant_stack_runtime() {
 fn function_recur_executes_large_input_without_python_recursion() {
     let source = r#"
 (module loop_compile)
-(defn sum-down [[n Int] [total Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int sum-down [^Int n ^Int total]
   (if (= n 0)
     total
     (recur (- n 1) (+ total n))))
@@ -97,22 +100,32 @@ fn function_recur_executes_large_input_without_python_recursion() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
+    let generated = result.python.expect("generated Python");
     let root = temporary_directory();
-    fs::write(root.join("loop_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("loop_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("recur should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from loop_compile import sum_down\nassert sum_down(10000, 0) == 50005000\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated function recur Python");
     assert!(
@@ -120,7 +133,7 @@ fn function_recur_executes_large_input_without_python_recursion() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -130,7 +143,8 @@ fn function_recur_executes_large_input_without_python_recursion() {
 fn function_recur_checks_arity_and_type() {
     let arity = r#"
 (module loop_compile)
-(defn invalid [[value Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int invalid [^Int value]
   (if (= value 0) value (recur)))
 "#;
     let result = compile(arity, &options());
@@ -146,7 +160,8 @@ fn function_recur_checks_arity_and_type() {
 
     let type_error = r#"
 (module loop_compile)
-(defn invalid [[value Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int invalid [^Int value]
   (if (= value 0) value (recur "wrong")))
 "#;
     let result = compile(type_error, &options());
@@ -165,7 +180,8 @@ fn function_recur_checks_arity_and_type() {
 fn function_recur_must_be_in_tail_position() {
     let source = r#"
 (module loop_compile)
-(defn invalid [[value Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int invalid [^Int value]
   (+ 1 (recur (- value 1))))
 "#;
     let result = compile(source, &options());
@@ -184,7 +200,8 @@ fn function_recur_must_be_in_tail_position() {
 fn anonymous_fn_supports_function_recur() {
     let source = r#"
 (module loop_compile)
-(defn make-sum [[start Int]] -> Any
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Any make-sum [^Int start]
   (fn [^Int value]
     (if (= value 0)
       0
@@ -204,7 +221,8 @@ fn anonymous_fn_supports_function_recur() {
 fn loop_supports_destructured_state() {
     let source = r#"
 (module loop_compile)
-(defn pair-sum [[pair (Vector Int)]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int pair-sum [^{:type (Vector Int)} pair]
   (loop [[left right] pair]
     (if (= left 0)
       right
@@ -223,7 +241,8 @@ fn loop_supports_destructured_state() {
 
 #[test]
 fn loop_allows_an_empty_state_vector() {
-    let source = "(module loop_compile) (def value (loop [] 42))";
+    let source =
+        "(module loop_compile) (import osiris.core :refer [loop]) (def value (loop [] 42))";
     let result = compile(source, &options());
     assert!(
         result.analysis.diagnostics.is_empty(),
@@ -241,7 +260,8 @@ fn loop_allows_an_empty_state_vector() {
 fn nested_loops_bind_recur_to_the_nearest_callback() {
     let source = r#"
 (module loop_compile)
-(defn nested [[n Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int nested [^Int n]
   (loop [outer n total 0]
     (if (= outer 0)
       total
@@ -262,7 +282,7 @@ fn nested_loops_bind_recur_to_the_nearest_callback() {
 
 #[test]
 fn recur_outside_loop_is_rejected() {
-    let source = "(module loop_compile) (def value (recur 1))";
+    let source = "(module loop_compile) (import osiris.core :refer [recur]) (def value (recur 1))";
     let result = compile(source, &options());
     assert!(
         result
@@ -277,7 +297,8 @@ fn recur_outside_loop_is_rejected() {
 fn recur_state_values_follow_loop_types() {
     let source = r#"
 (module loop_compile)
-(defn broken [[n Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int broken [^Int n]
   (loop [value n]
     (if (= value 0)
       value
@@ -297,7 +318,8 @@ fn recur_state_values_follow_loop_types() {
 fn recur_in_nested_lambda_cannot_capture_outer_loop() {
     let source = r#"
 (module loop_compile)
-(defn invalid [[n Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int invalid [^Int n]
   (loop [value n]
     (let [step (fn [] (recur value))]
       (if (= value 0) 0 (step)))))
@@ -316,7 +338,8 @@ fn recur_in_nested_lambda_cannot_capture_outer_loop() {
 fn recur_must_be_in_tail_position() {
     let source = r#"
 (module loop_compile)
-(defn invalid [[n Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int invalid [^Int n]
   (loop [value n]
     (+ 1 (recur (- value 1)))))
 "#;
@@ -334,9 +357,10 @@ fn recur_must_be_in_tail_position() {
 fn trampoline_and_lazy_seq_are_runtime_primitives() {
     let source = r#"
 (module loop_compile)
-(defn trampoline-id [[value Int]] -> Int
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^Int trampoline-id [^Int value]
   (trampoline (fn [item] item) value))
-(defn delayed-values [[value Int]] -> Any
+(defn ^Any delayed-values [^Int value]
   (lazy-seq [value]))
 "#;
     let result = compile(source, &options());
@@ -357,9 +381,10 @@ fn trampoline_and_lazy_seq_are_runtime_primitives() {
 fn trampoline_rejects_a_known_nonzero_arity_bounce() {
     let source = r#"
 (module loop_compile)
-(defn bad-step [[value Int]] -> (Fn [Int] -> Int)
-  (fn [[argument Int]] -> Int argument))
-(defn bad [[value Int]] -> Any
+(import osiris.core :refer [lazy-seq loop recur trampoline])
+(defn ^{:type (Fn [Int] -> Int)} bad-step [^Int value]
+  (fn ^Int [^Int argument] argument))
+(defn ^Any bad [^Int value]
   (trampoline bad-step value))
 "#;
     let result = compile(source, &options());

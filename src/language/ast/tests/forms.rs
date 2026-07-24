@@ -91,8 +91,30 @@ fn lowers_struct_generics_fields_and_checks() {
 }
 
 #[test]
+fn lowers_function_type_parameters_from_rich_metadata() {
+    let document = read(
+        "^{:type-params [A B]}\n\
+         (defn ^{:type B} transform [^{:type A} value ^{:type (Fn [A] -> B)} function]\n\
+           (function value))",
+    );
+    let lowered = lower_document(&document);
+    assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
+    let ItemKind::Defn(function) = &lowered.module.items[0].kind else {
+        panic!("expected defn");
+    };
+    assert_eq!(
+        function
+            .type_params
+            .iter()
+            .map(|parameter| parameter.canonical.as_str())
+            .collect::<Vec<_>>(),
+        ["A", "B"]
+    );
+}
+
+#[test]
 fn type_expression_is_structured_but_keeps_extension_literals() {
-    let document = read("(defn f [[value (Array Float [:time])]] -> (Union Int Float) value)");
+    let document = read("(defn ^{:type (Union Int Float)} f [^{:type (Array Float [:time])} value] value)");
     let lowered = lower_document(&document);
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let function = match &lowered.module.items[0].kind {
@@ -165,7 +187,7 @@ fn def_name_metadata_is_preserved_with_name_precedence() {
 #[test]
 fn exposes_closed_operator_metadata_without_interpreting_it() {
     let lowered = lower_document(&read(
-        "^{:osiris/operator :multiply} (defn scale [[value Float]] -> Float value)",
+        "^{:osiris/operator :multiply} (defn ^Float scale [^Float value] value)",
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let function = match &lowered.module.items[0].kind {
@@ -178,7 +200,7 @@ fn exposes_closed_operator_metadata_without_interpreting_it() {
     );
 
     let malformed = lower_document(&read(
-        "^{:osiris/operator [:multiply]} (defn scale [[value Float]] -> Float value)",
+        "^{:osiris/operator [:multiply]} (defn ^Float scale [^Float value] value)",
     ));
     let malformed_function = match &malformed.module.items[0].kind {
         ItemKind::Defn(function) => function,

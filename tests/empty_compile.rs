@@ -24,9 +24,10 @@ fn temporary_directory() -> std::path::PathBuf {
 fn empty_predicate_is_a_typed_runtime_sequence_boundary() {
     let source = r#"
 (module empty_compile)
-(defn empty-values [[values (Vector Int)]] -> Bool (empty? values))
-(defn empty-any [[value Any]] -> Bool (empty? value))
-(defn empty-none [] -> Bool (empty? none))
+(import osiris.core :refer [empty?])
+(defn ^Bool empty-values [^{:type (Vector Int)} values] (empty? values))
+(defn ^Bool empty-any [^Any value] (empty? value))
+(defn ^Bool empty-none [] (empty? none))
 "#;
     let result = compile(source, &options());
     assert!(
@@ -34,11 +35,25 @@ fn empty_predicate_is_a_typed_runtime_sequence_boundary() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("empty_q"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(generated.source.contains("empty_p"), "{}", generated.source);
 
     let root = temporary_directory();
-    fs::write(root.join("empty_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("empty_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("empty? should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -53,13 +68,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -67,7 +78,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

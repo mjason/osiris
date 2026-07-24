@@ -50,8 +50,8 @@ impl SemanticDocument {
                 }
                 all_occurrences.sort_by_key(|span| (span.start, span.end));
                 all_occurrences.dedup();
-                let preferred = preferred_alias(&binding_aliases, &binding.metadata);
-                let labels = labels_for_name(&binding.name.canonical, preferred);
+                let localized = localized_names(&binding.metadata);
+                let labels = labels_for_name(&binding.name.canonical, &localized);
                 SemanticSymbol {
                     binding_id: id,
                     canonical: binding.name.canonical.clone(),
@@ -65,6 +65,11 @@ impl SemanticDocument {
                     metadata: layers,
                     summary,
                     labels,
+                    names: SemanticNames {
+                        canonical: binding.name.canonical.clone(),
+                        localized,
+                    },
+                    documentation: documentation(&binding.metadata),
                     span: binding.name.span,
                     definition,
                     references: occurrences,
@@ -134,23 +139,41 @@ impl SemanticDocument {
 
     #[must_use]
     pub fn symbol_at(&self, offset: usize) -> Option<&SemanticSymbol> {
-        self.symbols
+        let occurrence = self
+            .symbols
             .iter()
-            .filter(|symbol| {
-                symbol
-                    .occurrences
-                    .iter()
-                    .any(|span| contains(*span, offset))
-            })
-            .min_by_key(|symbol| {
-                symbol
+            .filter_map(|symbol| {
+                let width = symbol
                     .occurrences
                     .iter()
                     .filter(|span| contains(**span, offset))
                     .map(|span| span.end.saturating_sub(span.start))
-                    .min()
-                    .unwrap_or(usize::MAX)
+                    .min()?;
+                Some((width, symbol))
             })
+            .min_by_key(|(width, _)| *width);
+        let operation = self
+            .operation_graph
+            .nodes
+            .iter()
+            .filter(|operation| contains(operation.span, offset))
+            .filter_map(|operation| {
+                let binding = operation.binding_id.as_deref()?;
+                let symbol = self
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.binding_id == binding)?;
+                Some((
+                    operation.span.end.saturating_sub(operation.span.start),
+                    symbol,
+                ))
+            })
+            .min_by_key(|(width, _)| *width);
+        match (occurrence, operation) {
+            (Some(left), Some(right)) => Some(if left.0 <= right.0 { left.1 } else { right.1 }),
+            (Some((_, symbol)), None) | (None, Some((_, symbol))) => Some(symbol),
+            (None, None) => None,
+        }
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {

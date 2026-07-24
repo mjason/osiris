@@ -77,6 +77,6 @@ fn operation_nodes_have_localized_labels_and_spans() {
         document
             .operations
             .iter()
-            .all(|node| !node.labels.en.is_empty())
+            .all(|node| !node.labels.default.is_empty())
     );
 }

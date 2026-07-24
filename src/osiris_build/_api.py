@@ -34,6 +34,14 @@ def get_requires_for_build_sdist(config_settings: Optional[Mapping[str, Any]] = 
     return _locked_requirements()
 
 
+def get_requires_for_build_editable(
+    config_settings: Optional[Mapping[str, Any]] = None,
+) -> List[str]:
+    """Return the locked requirements used by the PEP 660 editable wheel."""
+
+    return _locked_requirements()
+
+
 def prepare_metadata_for_build_wheel(
     metadata_directory: str,
     config_settings: Optional[Mapping[str, Any]] = None,
@@ -55,6 +63,13 @@ def prepare_metadata_for_build_wheel(
     return dist_info
 
 
+def prepare_metadata_for_build_editable(
+    metadata_directory: str,
+    config_settings: Optional[Mapping[str, Any]] = None,
+) -> str:
+    return prepare_metadata_for_build_wheel(metadata_directory, config_settings)
+
+
 def build_wheel(
     wheel_directory: str,
     config_settings: Optional[Mapping[str, Any]] = None,
@@ -67,6 +82,21 @@ def build_wheel(
     destination = Path(wheel_directory).resolve() / filename
     _write_atomic(destination, data)
     return filename
+
+
+def build_editable(
+    wheel_directory: str,
+    config_settings: Optional[Mapping[str, Any]] = None,
+    metadata_directory: Optional[str] = None,
+) -> str:
+    """Build the validated PEP 660 wheel used for an editable installation.
+
+    Osiris source and interfaces stay inside the wheel contract so extension
+    discovery never scans an arbitrary source tree. Reinstalling the editable
+    project refreshes the deterministic generated snapshot.
+    """
+
+    return build_wheel(wheel_directory, config_settings, metadata_directory)
 
 
 def build_sdist(

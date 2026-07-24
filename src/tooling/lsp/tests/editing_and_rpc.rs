@@ -91,6 +91,22 @@ fn strict_unicode_lints_are_lsp_warnings_not_compiler_errors() {
 }
 
 #[test]
+fn public_metadata_contract_errors_are_published_during_analysis() {
+    let mut state = LspState::new();
+    let diagnostics = state.did_open(
+        "file:///workspace/metadata-contract.osr",
+        1,
+        "(module metadata-contract)\n(def ^Int value 1)\n(export [value])\n",
+    );
+    assert!(
+        diagnostics
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-I0087")
+    );
+}
+
+#[test]
 fn positions_use_lsp_utf16_units() {
     let source = "a😀中\nvalue";
     let offset = source.find('中').expect("Chinese character");
@@ -124,7 +140,7 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
             "id": 1,
             "method": "initialize",
             "params": {
-                "initializationOptions": { "displayLocale": "zh-CN" }
+                "locale": "zh-CN"
             }
         })
         .to_string(),
@@ -167,17 +183,17 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
     assert!(result["symbols"].is_array());
     assert!(result["operation_graph"]["nodes"].is_array());
 
-    let inspected = machine.handle(
+    let symbols = machine.handle(
         &json!({
             "jsonrpc": "2.0",
             "id": 3,
-            "method": "osiris/inspect",
+            "method": "osiris/symbol",
             "params": { "uri": URI, "symbol": "加一" }
         })
         .to_string(),
     );
     assert_eq!(
-        inspected.response.as_ref().expect("response")["result"]["canonical"],
+        symbols.response.as_ref().expect("response")["result"][0]["canonical"],
         "add-one"
     );
 
@@ -209,20 +225,96 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
 }
 
 #[test]
+fn standard_hover_definition_and_virtual_source_share_one_artifact() {
+    let mut machine = JsonRpcMachine::new();
+    machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "locale": "zh-CN" }
+        })
+        .to_string(),
+    );
+    machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": URI,
+                "languageId": "osiris",
+                "version": 1,
+                "text": "(module demo)\n(import osiris.concurrent :refer [pmap])\n(defn ^{:type (Vector Int)} run\n [^{:type (Fn [Int] -> Int)} function ^{:type (Vector Int)} values]\n  (pmap function values))\n"
+            }}
+        })
+        .to_string(),
+    );
+    let position = json!({ "line": 4, "character": 4 });
+    let hover = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "textDocument/hover",
+            "params": { "textDocument": { "uri": URI }, "position": position }
+        })
+        .to_string(),
+    );
+    let hover_text = hover.response.as_ref().unwrap()["result"]["contents"]["value"]
+        .as_str()
+        .unwrap();
+    assert!(
+        hover_text.contains("立即提交映射任务，保持结果顺序，并传播解引用失败。"),
+        "{hover_text}"
+    );
+    assert!(hover_text.contains("osiris.concurrent::function::pmap"));
+
+    let definition = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "textDocument/definition",
+            "params": { "textDocument": { "uri": URI }, "position": position }
+        })
+        .to_string(),
+    );
+    let location = &definition.response.as_ref().unwrap()["result"];
+    let standard_uri = location["uri"].as_str().unwrap();
+    assert!(standard_uri.starts_with("osiris-stdlib:///"));
+
+    let source = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "osiris/standardSource",
+            "params": { "uri": standard_uri }
+        })
+        .to_string(),
+    );
+    let source = &source.response.as_ref().unwrap()["result"];
+    assert_eq!(source["uri"], standard_uri);
+    let line = location["range"]["start"]["line"].as_u64().unwrap() as usize;
+    assert!(source["text"].as_str().unwrap().lines().nth(line).unwrap().contains("pmap"));
+}
+
+#[test]
 fn expand_preview_includes_macro_trace() {
     let mut state = LspState::new();
-    state.did_open(URI, 1, "(module demo)\n(def result (-> 1 (+ 2)))\n");
+    state.did_open(
+        URI,
+        1,
+        "(module demo)\n(import osiris.core :refer :all)\n(def result (-> 1 (+ 2)))\n",
+    );
     let preview = state.expand_preview(URI).expect("preview");
     assert!(preview.text.contains("(+ 1 2)"));
     assert!(!preview.macro_traces.is_empty());
     assert_eq!(
         preview.macro_traces[0].macro_binding_id,
-        "osiris.prelude::macro::->"
+        "osiris.core::macro::->"
     );
     let serialized = serde_json::to_value(preview).expect("preview serializes");
     assert_eq!(
         serialized["macroTraces"][0]["macro_binding_id"],
-        "osiris.prelude::macro::->"
+        "osiris.core::macro::->"
     );
 }
 

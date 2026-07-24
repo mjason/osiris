@@ -1,4 +1,25 @@
 impl LspState {
+    pub fn formatting(&self, uri: &str) -> Result<Vec<TextEdit>, LspStateError> {
+        let document = self.document(uri).ok_or_else(|| document_not_found(uri))?;
+        let formatted = crate::formatter::format_source(&document.text).map_err(|error| {
+            let message = error
+                .diagnostics
+                .first()
+                .map_or("source cannot be formatted", |diagnostic| diagnostic.message.as_str());
+            LspStateError::new(INVALID_PARAMS, message)
+        })?;
+        if formatted == document.text {
+            return Ok(Vec::new());
+        }
+        Ok(vec![TextEdit {
+            range: Range {
+                start: Position::default(),
+                end: offset_to_position(&document.text, document.text.len()),
+            },
+            new_text: formatted,
+        }])
+    }
+
     #[must_use]
     pub fn diagnostics(&self, uri: &str) -> Option<PublishDiagnosticsParams> {
         let document = self.document(uri)?;
@@ -63,8 +84,39 @@ impl LspState {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
         let symbol = document.semantic.symbol_at(offset)?;
-        let locale = effective_display_locale(document, locale, &self.display_locale);
+        let locale = effective_display_locale(
+            document,
+            locale,
+            self.session_locale.as_deref(),
+            &self.display_locale,
+        );
+        if let Some(standard) = crate::stdlib::query_api(&symbol.binding_id, Some(locale))
+            .into_iter()
+            .next()
+        {
+            let value = format!(
+                "**{}** ({})\n\n{}\n\nType: {}  \nBinding: {}  \nEvaluation: {}  \nSource: {}:{}:{}",
+                escape_markdown(&standard.label),
+                escape_markdown(standard.api.canonical),
+                escape_markdown(&standard.selected_documentation),
+                escape_markdown(&standard.api.signature),
+                escape_markdown(&standard.api.binding_id),
+                standard.api.evaluation,
+                standard.api.source.uri,
+                standard.api.source.line,
+                standard.api.source.column,
+            );
+            return Some(Hover {
+                contents: MarkupContent {
+                    kind: "markdown".to_owned(),
+                    value,
+                },
+                range: occurrence_at(symbol, offset)
+                    .map(|span| span_to_range(&document.text, span)),
+            });
+        }
         let label = symbol.labels.for_locale(locale);
+        let (documentation, _) = symbol.documentation.for_locale(Some(locale));
         let aliases = symbol
             .aliases
             .iter()
@@ -82,6 +134,9 @@ impl LspState {
             escape_markdown(&symbol.python),
             escape_markdown(&symbol.binding_id),
         );
+        if !documentation.is_empty() {
+            value.push_str(&format!("\n\n{}", escape_markdown(documentation)));
+        }
         if !aliases.is_empty() {
             value.push_str(&format!("\n\nAliases: {}", escape_markdown(&aliases)));
         }
@@ -100,6 +155,19 @@ impl LspState {
         })
     }
 
+    /// Return the full semantic symbol behind a position for non-LSP tooling
+    /// projections such as `osr lsc hover --format json`.
+    #[must_use]
+    pub fn semantic_symbol_at(
+        &self,
+        uri: &str,
+        position: Position,
+    ) -> Option<&crate::semantic::SemanticSymbol> {
+        let document = self.document(uri)?;
+        let offset = position_to_offset(&document.text, position)?;
+        document.semantic.symbol_at(offset)
+    }
+
     #[must_use]
     pub fn completion(
         &self,
@@ -112,14 +180,18 @@ impl LspState {
         };
         let offset = position_to_offset(&document.text, position).unwrap_or(document.text.len());
         let prefix = completion_prefix(&document.text, offset);
-        let locale = effective_display_locale(document, locale, &self.display_locale);
-        let chinese = is_chinese_locale(locale);
+        let locale = effective_display_locale(
+            document,
+            locale,
+            self.session_locale.as_deref(),
+            &self.display_locale,
+        );
         let mut items = document
             .semantic
             .symbols
             .iter()
             .filter(|symbol| symbol_matches_prefix(symbol, &prefix))
-            .map(|symbol| completion_item(symbol, chinese))
+            .flat_map(|symbol| completion_items(symbol, Some(locale)))
             .collect::<Vec<_>>();
         items.sort_by(|left, right| {
             (&left.sort_text, &left.label, &left.insert_text).cmp(&(
@@ -167,7 +239,12 @@ impl LspState {
                 document,
                 trace,
                 offset,
-                effective_display_locale(document, locale, &self.display_locale),
+                effective_display_locale(
+                    document,
+                    locale,
+                    self.session_locale.as_deref(),
+                    &self.display_locale,
+                ),
             );
         }
         let call = runtime_call?;
@@ -185,15 +262,16 @@ impl LspState {
         let source_argument = active_source_argument(items, &arguments, offset);
         let active_parameter = active_parameter(&signature.parameters, &arguments, source_argument)
             .map(|index| index as u32);
-        let chinese = is_chinese_locale(effective_display_locale(
+        let locale = effective_display_locale(
             document,
             locale,
+            self.session_locale.as_deref(),
             &self.display_locale,
-        ));
+        );
         let parameter_labels = signature
             .parameters
             .iter()
-            .map(|parameter| signature_parameter_label(parameter, chinese))
+            .map(|parameter| signature_parameter_label(parameter, Some(locale)))
             .collect::<Vec<_>>();
         let label = format!(
             "{}({}) -> {}",
@@ -219,9 +297,11 @@ impl LspState {
 fn effective_display_locale<'a>(
     document: &'a OpenDocument,
     requested: Option<&'a str>,
+    session: Option<&'a str>,
     fallback: &'a str,
 ) -> &'a str {
     requested
+        .or(session)
         .or(document.display_locale.as_deref())
         .unwrap_or(fallback)
 }

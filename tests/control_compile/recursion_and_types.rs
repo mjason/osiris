@@ -4,8 +4,8 @@ use super::*;
 fn clojure_type_metadata_reaches_python_annotations() {
     let source = r#"
 (module control_compile)
-(defn ^{:type (Vector Int)} increment-all
-  [^{:type (Vector Int)} values]
+(import osiris.core :refer :all)
+(defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} values]
   (mapv (fn [^Int value] (+ value 1)) values))
 "#;
     let result = compile(source, &options());
@@ -25,15 +25,16 @@ fn clojure_type_metadata_reaches_python_annotations() {
 fn trampoline_handles_mutual_bounce_functions() {
     let source = r#"
 (module control_compile)
-(defn even-step [[value Int]] -> Any
+(import osiris.core :refer :all)
+(defn ^Any even-step [^Int value]
   (if (= value 0)
     true
     (fn [] (odd-step (- value 1)))))
-(defn odd-step [[value Int]] -> Any
+(defn ^Any odd-step [^Int value]
   (if (= value 0)
     false
     (fn [] (even-step (- value 1)))))
-(defn parity [[value Int]] -> Any
+(defn ^Any parity [^Int value]
   (trampoline even-step value))
 "#;
     let result = compile(source, &options());
@@ -42,22 +43,18 @@ fn trampoline_handles_mutual_bounce_functions() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated trampoline Python").source;
+    let generated = result.python.expect("generated trampoline Python");
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from control_compile import parity\nassert parity(10001) is False\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated trampoline Python");
     assert!(
@@ -65,7 +62,7 @@ fn trampoline_handles_mutual_bounce_functions() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     fs::remove_dir_all(root).expect("remove temporary directory");
 }
@@ -74,89 +71,86 @@ fn trampoline_handles_mutual_bounce_functions() {
 fn derived_clojure_control_macros_compile_and_execute() {
     let source = r#"
 (module control_compile)
+(import osiris.core :refer :all)
 (extern python "control_support"
-  (defn record [[value Int]] -> None)
-  (defn ready [] -> Bool)
-  (defn tick [] -> None))
+  (defn ^None record [^Int value])
+  (defn ^Bool ready [])
+  (defn ^None tick []))
 
-(defn increment [[value Int]] -> Int (+ value 1))
-(defn double [[value Int]] -> Int (* value 2))
+(defn ^Int increment [^Int value] (+ value 1))
+(defn ^Int double [^Int value] (* value 2))
 
-(defn value-or [[value (Option Int)] [fallback Int]] -> Int
+(defn ^Int value-or [^{:type (Option Int)} value ^Int fallback]
   (if-let [found value] found fallback))
 
-(defn binding-truth [[value Any]] -> Str
+(defn ^Str binding-truth [^Any value]
   (if-let [found value] "bound" "missing"))
 
-(defn some-binding-truth [[value Any]] -> Str
+(defn ^Str some-binding-truth [^Any value]
   (if-some [found value] "bound" "missing"))
 
-(defn maybe-pipeline [[value (Option Int)]] -> (Option Int)
+(defn ^{:type (Option Int)} maybe-pipeline [^{:type (Option Int)} value]
   (some-> value increment double))
 
-(defn maybe-bool [[value (Option Bool)]] -> (Option Bool)
+(defn ^{:type (Option Bool)} maybe-bool [^{:type (Option Bool)} value]
   (some-> value))
 
-(defn selected-label [[value Int]] -> Str
+(defn ^Str selected-label [^Int value]
   (case value (1 2) "small" 3 "three" "other"))
 
-(defn named-thread [[value Int]] -> Int
+(defn ^Int named-thread [^Int value]
   (as-> value current (+ current 1) (* current current)))
 
-(defn conditional-map
-  [[values (Vector Int)] [ready Bool]] -> (Vector Int)
+(defn ^{:type (Vector Int)} conditional-map [^{:type (Vector Int)} values ^Bool ready]
   (cond->> values ready (mapv increment)))
 
-(defn prefix-before-three [[values (Vector Int)]] -> (Vector Int)
-  (for [value values :while (< value 3)] value))
+(defn ^{:type (Vector Int)} prefix-before-three [^{:type (Vector Int)} values]
+  (forv [value values :while (< value 3)] value))
 
-(defn nested-prefix
-  [[lefts (Vector Int)] [rights (Vector Int)]] -> (Vector Int)
-  (for [left lefts
+(defn ^{:type (Vector Int)} nested-prefix [^{:type (Vector Int)} lefts ^{:type (Vector Int)} rights]
+  (forv [left lefts
         right rights
         :while (< right left)]
     (+ left right)))
 
-(defn negative-label [[ready Bool]] -> Str
+(defn ^Str negative-label [^Bool ready]
   (if-not ready "wait" "run"))
 
-(defn unless-ready [[ready Bool]] -> (Option Str)
+(defn ^{:type (Option Str)} unless-ready [^Bool ready]
   (when-not ready "wait"))
 
-(defn commented [] -> Int
+(defn ^Int commented []
   (do (comment (unknown-call)) 7))
 
-(defn first-ran [[values (Vector (Option Int))]] -> (Option Str)
+(defn ^{:type (Option Str)} first-ran [^{:type (Vector (Option Int))} values]
   (when-first [value values] "ran"))
 
-(defn none-first [] -> None
+(defn ^None none-first []
   (when-first [value none] none))
 
-(defn recur-through-if-let
-  [[value (Option Int)] [remaining Int] [total Int]] -> Int
+(defn ^Int recur-through-if-let [^{:type (Option Int)} value ^Int remaining ^Int total]
   (if (= remaining 0)
     total
     (if-let [present value]
       (recur value (- remaining 1) (+ total present))
       total)))
 
-(defn run-doseq [[values (Vector Int)]] -> None
+(defn ^None run-doseq [^{:type (Vector Int)} values]
   (doseq [value values :when (> value 0)]
     (record value)))
 
-(defn run-dotimes [[count Int]] -> None
+(defn ^None run-dotimes [^Int count]
   (dotimes [index count]
     (record index)))
 
-(defn run-while [] -> None
+(defn ^None run-while []
   (while (ready)
     (tick)))
 
-(defn run-doto [[value Int]] -> Int
+(defn ^Int run-doto [^Int value]
   (doto value record record))
 
-(defn run-doseq-while
-  [[lefts (Vector Int)] [rights (Vector Int)]] -> None
+(defn ^None run-doseq-while [^{:type (Vector Int)} lefts ^{:type (Vector Int)} rights]
   (doseq [left lefts
           right rights
           :while (< right left)]
@@ -168,23 +162,30 @@ fn derived_clojure_control_macros_compile_and_execute() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated control Python").source;
+    let generated = result.python.expect("generated control Python");
     assert!(
-        generated.contains("truthy as _u0_osiris_truthy"),
-        "{generated}"
+        generated.source.contains("truthy as _u0_osiris_truthy"),
+        "{}",
+        generated.source
     );
     assert!(
-        generated.contains("present as _u0_osiris_present"),
-        "{generated}"
+        generated.source.contains("present as _u0_osiris_present"),
+        "{}",
+        generated.source
     );
-    assert!(generated.contains("seq as _u0_osiris_seq"), "{generated}");
+    assert!(generated.source.contains("seq"), "{}", generated.source);
     assert!(
-        generated.contains("doseq as _u0_osiris_doseq"),
-        "{generated}"
+        generated.source.contains("doseq as _u0_osiris_doseq"),
+        "{}",
+        generated.source
     );
-    assert!(generated.contains("return _u0_osiris_doseq"), "{generated}");
+    assert!(
+        generated.source.contains("return _u0_osiris_doseq"),
+        "{}",
+        generated.source
+    );
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     fs::write(
         root.join("control_support.py"),
         r#"events = []
@@ -275,13 +276,9 @@ print("ok")
 "#,
     )
     .expect("write control smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated control Python");
     assert!(
@@ -289,7 +286,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

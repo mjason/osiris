@@ -12,6 +12,7 @@ pub(super) fn project_options(
     module_name: String,
 ) -> CompileOptions {
     CompileOptions::new(&module_name, project.target_python)
+        .with_strict(project.strict)
         .with_source_name(path.display().to_string())
         .with_expected_module_name(module_name)
         .with_provider(
@@ -119,19 +120,9 @@ pub(super) fn fallback_module_name(uri: &str) -> String {
 }
 
 pub(super) fn normalize_locale(locale: String) -> String {
-    if is_chinese_locale(&locale) {
-        "zh-CN".to_owned()
-    } else if locale.is_empty() {
-        "en".to_owned()
-    } else {
-        locale
-    }
-}
-
-pub(super) fn is_chinese_locale(locale: &str) -> bool {
-    locale.eq_ignore_ascii_case("zh")
-        || locale.eq_ignore_ascii_case("zh-cn")
-        || locale.to_ascii_lowercase().starts_with("zh-")
+    oxilangtag::LanguageTag::parse_and_normalize(&locale)
+        .map(|tag| tag.to_string())
+        .unwrap_or_else(|_| "zh-CN".to_owned())
 }
 
 pub(super) fn rename_group_has_declaration(

@@ -64,6 +64,21 @@ pub fn build_with_static_data(
     Ok(interface)
 }
 
+/// Build an interface whose compatibility header records the selected Python
+/// language target before semantic and graph hashes are finalized.
+pub fn build_with_static_data_for_target(
+    typed: &hir::Module,
+    surface: &ast::Module,
+    static_data: &records::StaticModuleData,
+    target: crate::types::PythonVersion,
+) -> InterfaceResult<Interface> {
+    let mut interface = build_with_static_data(typed, surface, static_data)?;
+    interface.python_target = target;
+    refresh_standalone_hashes(&mut interface)?;
+    validate_model(&interface)?;
+    Ok(interface)
+}
+
 fn collect_operator_instances(
     typed: &hir::Module,
     surface: &ast::Module,
@@ -291,7 +306,7 @@ fn collect_operator_instances(
     Ok(instances)
 }
 
-fn collect_phase_interface(
+pub(crate) fn collect_phase_interface(
     surface: &ast::Module,
     module: &str,
 ) -> InterfaceResult<(Vec<MacroInterface>, Vec<PhaseHelperInterface>)> {

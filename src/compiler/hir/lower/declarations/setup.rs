@@ -6,6 +6,7 @@ impl<'a> Lowerer<'a> {
         module: &ast::Module,
         interfaces: Option<&'a dyn InterfaceProvider>,
         trust_policy: &'a ContractTrustPolicy,
+        strict: bool,
     ) -> Self {
         let _ = module;
         let mut lowerer = Self {
@@ -40,6 +41,7 @@ impl<'a> Lowerer<'a> {
             function_recur_contexts: Vec::new(),
             struct_fields: BTreeMap::new(),
             trust_policy,
+            strict,
             contract_evidence_stack: Vec::new(),
             unknown_nominal_types: BTreeSet::new(),
         };
@@ -71,6 +73,15 @@ impl<'a> Lowerer<'a> {
         for item in &module.items {
             match &item.kind {
                 AstItemKind::Import(import) => {
+                    let embedded_standard =
+                        crate::stdlib::is_standard_namespace(&import.module.canonical)
+                            && self.interfaces.is_none_or(|interfaces| {
+                                interfaces.interface(&import.module.canonical).is_none()
+                            });
+                    if embedded_standard {
+                        self.predeclare_standard_import(import);
+                        continue;
+                    }
                     let name = import.alias.as_ref().unwrap_or(&import.module);
                     self.declare(
                         name,

@@ -36,15 +36,17 @@ mod model;
 mod rules;
 mod validate;
 
-pub use build::{build, build_with_static_data, from_hir};
+pub use build::{build, build_with_static_data, build_with_static_data_for_target, from_hir};
 pub(crate) use build::{build_provisional, validate_provisional_shape};
 use common::*;
+pub(crate) use common::{normalize_form, normalize_metadata};
 use decode::{
     decode_body, decode_graph, decode_hashes, decode_header, normalize_model,
     reject_duplicate_maps, unwrap,
 };
 pub use encode::install_hash_group;
-use encode::{MetadataProjection, calculate_hashes, file_forms, refresh_standalone_hashes};
+pub(crate) use encode::refresh_standalone_hashes;
+use encode::{MetadataProjection, calculate_hashes, file_forms};
 pub use model::*;
 use rules::*;
 use validate::{
@@ -90,7 +92,15 @@ pub fn read(source: &str) -> InterfaceResult<Interface> {
     let body = unwrap(&document.forms[1], "osiris-interface/body")?;
     let graph = unwrap(&document.forms[2], "osiris-interface/graph")?;
     let hashes = unwrap(&document.forms[3], "osiris-interface/hashes")?;
-    let (format_version, compiler_abi, language_abi) = decode_header(header)?;
+    let (
+        format_version,
+        compiler_abi,
+        language_version,
+        language_abi,
+        standard_library_abi,
+        linkable_helper_format,
+        python_target,
+    ) = decode_header(header)?;
     let (
         module,
         metadata,
@@ -107,7 +117,11 @@ pub fn read(source: &str) -> InterfaceResult<Interface> {
     let mut interface = Interface {
         format_version,
         compiler_abi,
+        language_version,
         language_abi,
+        standard_library_abi,
+        linkable_helper_format,
+        python_target,
         module,
         metadata,
         bindings,

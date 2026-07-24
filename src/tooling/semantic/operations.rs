@@ -4,7 +4,6 @@ pub(super) fn build_operation_graph(
     module: &hir::Module,
     traces: &[ExpansionTrace],
 ) -> OperationGraph {
-    let aliases = aliases_by_target(module);
     let mut builder = OperationBuilder {
         next: 0,
         nodes: Vec::new(),
@@ -15,11 +14,8 @@ pub(super) fn build_operation_graph(
             .iter()
             .map(|binding| {
                 let id = binding.name.id.as_str().to_owned();
-                let binding_aliases = aliases.get(&id).map(Vec::as_slice).unwrap_or_default();
-                let label = labels_for_name(
-                    &binding.name.canonical,
-                    preferred_alias(binding_aliases, &binding.metadata),
-                );
+                let names = localized_names(&binding.metadata);
+                let label = labels_for_name(&binding.name.canonical, &names);
                 (id, (binding.name.canonical.clone(), label))
             })
             .collect(),
@@ -383,8 +379,8 @@ pub(super) fn operation_labels(kind: &str) -> LocalizedLabel {
         "error" => "错误",
         _ => kind,
     };
-    LocalizedLabel {
-        zh_cn: zh_cn.to_owned(),
-        en: kind.to_owned(),
-    }
+    LocalizedLabel::new(
+        kind.to_owned(),
+        BTreeMap::from([("zh-CN".to_owned(), zh_cn.to_owned())]),
+    )
 }

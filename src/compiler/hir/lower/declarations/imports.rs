@@ -23,8 +23,42 @@ impl<'a> Lowerer<'a> {
 
         self.merge_imported_operator_instances(&interface, import.span);
 
+        let exported = interface
+            .bindings
+            .iter()
+            .map(|binding| binding.canonical.clone())
+            .chain(
+                interface
+                    .aliases
+                    .iter()
+                    .map(|alias| alias.canonical.clone()),
+            )
+            .chain(
+                interface
+                    .macros
+                    .iter()
+                    .map(|macro_| macro_.canonical.clone()),
+            )
+            .collect::<BTreeSet<_>>();
+        let excluded = self.validate_interface_exclusions(import, &exported);
+        let renamed = self.validate_interface_renames(import, &exported, &excluded);
+        let referred = self.validate_interface_refers(import, &exported, &excluded);
+        for canonical in &referred {
+            if interface
+                .macros
+                .iter()
+                .any(|macro_| macro_.canonical == *canonical)
+            {
+                self.phase_one_names
+                    .insert(renamed.get(canonical).unwrap_or(canonical).clone());
+            }
+        }
+
         let mut bindings = BTreeMap::<String, BindingId>::new();
         for public in &interface.bindings {
+            if excluded.contains(&public.canonical) {
+                continue;
+            }
             if let Some(id) =
                 self.install_imported_binding(public, &interface, None, metadata, import.span)
             {
@@ -63,38 +97,46 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let mut requested = BTreeSet::new();
-        for member in &import.members {
-            requested.insert(member.canonical.clone());
-            let Some(public) = find_imported_binding(&interface, &member.canonical) else {
-                self.error(
-                    "OSR-H0011",
-                    format!(
-                        "module `{module_name}` does not export imported member `{}`",
-                        member.spelling
-                    ),
-                    member_span(member, import.span),
-                );
+        for canonical in &referred {
+            let Some(public) = find_imported_binding(&interface, canonical) else {
                 continue;
             };
+            let local = renamed.get(canonical).unwrap_or(canonical);
             let Some(id) = self.install_imported_binding(
                 public,
                 &interface,
-                Some(member.canonical.as_str()),
+                Some(local),
                 metadata,
                 import.span,
             ) else {
                 continue;
             };
-            self.globals.insert(member.canonical.clone(), id);
+            self.globals.insert(local.clone(), id.clone());
+            if local != canonical {
+                self.aliases.push(Alias {
+                    spelling: local.clone(),
+                    canonical: local.clone(),
+                    target: id,
+                    span: import.span,
+                    public: false,
+                });
+            }
         }
 
-        // Keep a direct alias spelling available for `:refer` requests even
-        // when the interface normalized its canonical alias separately.
+        // Preserve authored spellings for explicitly referred public aliases.
         for alias in &interface.aliases {
-            if requested.contains(&alias.canonical) || requested.contains(&alias.spelling) {
+            let explicitly_requested = import.members.iter().any(|member| {
+                member.canonical == alias.canonical || member.canonical == alias.spelling
+            });
+            if explicitly_requested && !excluded.contains(&alias.canonical) {
                 if let Some(id) = bindings.get(&alias_target_canonical(&interface, alias)) {
-                    let local = requested_alias_key(&requested, alias);
+                    let requested = import
+                        .members
+                        .iter()
+                        .map(|member| member.canonical.clone())
+                        .collect::<BTreeSet<_>>();
+                    let canonical = requested_alias_key(&requested, alias);
+                    let local = renamed.get(&canonical).unwrap_or(&canonical).clone();
                     self.globals.insert(local.clone(), id.clone());
                     if !self
                         .aliases

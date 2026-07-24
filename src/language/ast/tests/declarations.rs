@@ -54,11 +54,11 @@ fn python_decorator_requires_a_target_and_expression() {
 }
 
 #[test]
-fn def_distinguishes_call_values_from_type_only_declarations() {
+fn def_uses_metadata_for_type_only_declarations() {
     let lowered = lower_document(&read(
         "(def array (np.asarray [1 2]))\n\
              (def point (Point :x 1))\n\
-             (def declared (Array Float [:time]))",
+             (def ^{:type (Array Float [:time])} declared)",
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
 
@@ -146,7 +146,7 @@ fn static_record_recovers_flat_fields_with_a_shape_diagnostic() {
 #[test]
 fn extern_contains_nested_declarations() {
     let lowered = lower_document(&read(
-        "(extern python \"math\" (defn isfinite [[value Float]] -> Bool))",
+        "(extern python \"math\" (defn ^Bool isfinite [^Float value]))",
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let external = match &lowered.module.items[0].kind {
@@ -164,7 +164,7 @@ fn extern_contains_nested_declarations() {
 fn extern_contract_is_lowered_as_closed_static_data() {
     let lowered = lower_document(&read(
         r#"(extern python "host.data"
-                 (defn moving-average [[values Series] [n Int]] -> Series
+                 (defn ^Series moving-average [^Series values ^Int n]
                    :contract
                    {:id "host.data/moving-average-v1"
                     :effects [:io :host/cache]
@@ -231,7 +231,7 @@ fn extern_contract_is_lowered_as_closed_static_data() {
 fn malformed_extern_contract_fails_closed() {
     let lowered = lower_document(&read(
         r#"(extern python "host.series"
-                 (defn lead [[values Series]] -> Series
+                 (defn ^Series lead [^Series values]
                    :contract
                    {:id "host.series/lead-v1"
                     :id "duplicate"
@@ -261,7 +261,7 @@ fn malformed_extern_contract_fails_closed() {
 
 #[test]
 fn runtime_function_still_requires_a_body() {
-    let lowered = lower_document(&read("(defn incomplete [[value Int]] -> Int)"));
+    let lowered = lower_document(&read("(defn ^Int incomplete [^Int value])"));
     assert!(lowered.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == super::AST_WRONG_SHAPE
             && diagnostic.message == "function body cannot be empty"

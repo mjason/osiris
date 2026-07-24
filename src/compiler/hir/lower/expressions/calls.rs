@@ -11,7 +11,12 @@ impl<'a> Lowerer<'a> {
             if let Some(lowered) = self.lower_known_call(name, call, span, scope) {
                 return lowered;
             }
-            if name == "abs" {
+            let standard = self
+                .resolve_named_call_binding(name, scope)
+                .and_then(|id| crate::stdlib::find_by_id(&id).map(|binding| (id, binding)));
+            if standard.as_ref().is_some_and(|(_, binding)| {
+                binding.namespace == "osiris.math" && binding.canonical == "abs"
+            }) {
                 if !call.keywords.is_empty() || call.positional.len() != 1 {
                     for argument in &call.keywords {
                         let _ = self.lower_expr(&argument.value, scope);
@@ -19,7 +24,9 @@ impl<'a> Lowerer<'a> {
                     self.error("OSR-T0006", "abs expects one positional operand", span);
                     return Expr::error(span);
                 }
-                return self.lower_abs(&call.positional[0], span, scope);
+                let mut lowered = self.lower_abs(&call.positional[0], span, scope);
+                self.replace_direct_call_binding(&mut lowered, standard.expect("checked").0);
+                return lowered;
             }
             if let Some(mut operator) = operator_from_name(name) {
                 if !call.keywords.is_empty() {
@@ -40,7 +47,11 @@ impl<'a> Lowerer<'a> {
                 };
                 return self.lower_operator(operator, &call.positional, span, scope);
             }
-            if name == "get" || name == "index" {
+            if name == "index"
+                || standard.as_ref().is_some_and(|(_, binding)| {
+                    binding.namespace == crate::stdlib::CORE_NAMESPACE && binding.canonical == "get"
+                })
+            {
                 return self.lower_index_call(call, span, scope);
             }
         }
@@ -55,55 +66,83 @@ impl<'a> Lowerer<'a> {
         span: Span,
         scope: &mut Scope,
     ) -> Option<Expr> {
-        let qualified = canonical.strip_prefix("osiris.prelude/");
-        let source_name = qualified.or_else(|| (!canonical.contains('/')).then_some(canonical))?;
+        let internal = canonical.strip_prefix("osiris.kernel/");
+        let standard = self
+            .resolve_named_call_binding(canonical, scope)
+            .and_then(|id| crate::stdlib::find_by_id(&id).map(|binding| (id, binding)));
+        let source_name =
+            internal.or_else(|| standard.as_ref().map(|(_, binding)| binding.canonical))?;
 
         if let Some(operation) = SequenceOperation::from_source_name(source_name) {
-            return Some(self.lower_sequence_call(call, span, scope, operation));
+            let mut lowered = self.lower_sequence_call(call, span, scope, operation);
+            if let Some((id, _)) = &standard {
+                self.replace_direct_call_binding(&mut lowered, id.clone());
+            }
+            return Some(lowered);
         }
         if source_name == "mapv" {
-            return Some(self.lower_mapv(call, span, scope));
+            let mut lowered = self.lower_mapv(call, span, scope);
+            if let Some((id, _)) = &standard {
+                self.replace_direct_call_binding(&mut lowered, id.clone());
+            }
+            return Some(lowered);
+        }
+        if let Some((id, binding)) = &standard
+            && binding.namespace == "osiris.concurrent"
+            && binding.canonical == "pmap"
+        {
+            let mut lowered = self.lower_mapv(call, span, scope);
+            lowered.summaries = lowered.summaries.join(&CallSummaries::unknown());
+            self.replace_direct_call_binding(&mut lowered, id.clone());
+            return Some(lowered);
         }
         if let Some(operation) = CollectionOperation::from_source_name(source_name) {
-            return Some(self.lower_map_like(call, span, scope, operation));
+            let mut lowered = self.lower_map_like(call, span, scope, operation);
+            if let Some((id, _)) = &standard {
+                self.replace_direct_call_binding(&mut lowered, id.clone());
+            }
+            return Some(lowered);
         }
-        match source_name {
-            "reduce" => return Some(self.lower_reduce(call, span, scope, false)),
-            "fold" => return Some(self.lower_reduce(call, span, scope, true)),
+        let mut lowered = match source_name {
+            "reduce" => Some(self.lower_reduce(call, span, scope, false)),
+            "fold" => Some(self.lower_reduce(call, span, scope, true)),
             "reduced" => {
-                return Some(self.lower_reduced_operation(
-                    call,
-                    span,
-                    scope,
-                    ReducedOperation::Wrap,
-                ));
+                Some(self.lower_reduced_operation(call, span, scope, ReducedOperation::Wrap))
             }
             "reduced?" => {
-                return Some(self.lower_reduced_operation(
-                    call,
-                    span,
-                    scope,
-                    ReducedOperation::Predicate,
-                ));
+                Some(self.lower_reduced_operation(call, span, scope, ReducedOperation::Predicate))
             }
             "unreduced" => {
-                return Some(self.lower_reduced_operation(
-                    call,
-                    span,
-                    scope,
-                    ReducedOperation::Unwrap,
-                ));
+                Some(self.lower_reduced_operation(call, span, scope, ReducedOperation::Unwrap))
             }
-            "delay" if qualified.is_none() => return Some(self.lower_delay(call, span, scope)),
-            "force" if qualified.is_none() => return Some(self.lower_force(call, span, scope)),
-            "deref" if qualified.is_none() => return Some(self.lower_deref(call, span, scope)),
-            "realized?" if qualified.is_none() => {
-                return Some(self.lower_realized(call, span, scope));
+            _ => None,
+        };
+        if let Some(expression) = &mut lowered {
+            if let Some((id, _)) = &standard {
+                self.replace_direct_call_binding(expression, id.clone());
             }
-            _ => {}
+            return lowered;
         }
 
-        let intrinsic = qualified?;
+        if let Some((id, binding)) = &standard {
+            let mut expression = match binding.canonical {
+                "future-call" => self.lower_future_call(call, span, scope),
+                "future-done?" => self.lower_future_predicate(call, span, scope, "future_done"),
+                "future-cancelled?" => {
+                    self.lower_future_predicate(call, span, scope, "future_cancelled")
+                }
+                "future-cancel" => self.lower_future_predicate(call, span, scope, "future_cancel"),
+                "promise" => self.lower_promise(call, span, scope),
+                "deliver" => self.lower_deliver(call, span, scope),
+                "deref" => self.lower_deref(call, span, scope),
+                "lock" => self.lower_lock(call, span, scope),
+                _ => return None,
+            };
+            self.replace_direct_call_binding(&mut expression, id.clone());
+            return Some(expression);
+        }
+
+        let intrinsic = internal?;
         Some(match intrinsic {
             "assert*" => self.lower_assert(call, span, scope),
             "truthy*" => self.lower_control_intrinsic(call, span, scope, ControlIntrinsic::Truthy),
@@ -140,6 +179,21 @@ impl<'a> Lowerer<'a> {
             "letfn*" => self.lower_letfn(call, span, scope),
             _ => return None,
         })
+    }
+
+    fn resolve_named_call_binding(&self, name: &str, scope: &Scope) -> Option<BindingId> {
+        scope
+            .resolve(name)
+            .cloned()
+            .or_else(|| self.resolve_global_name(name))
+            .or_else(|| self.qualified_imports.get(name).cloned())
+    }
+
+    fn replace_direct_call_binding(&self, expression: &mut Expr, binding: BindingId) {
+        let ExprKind::Call { callee, .. } = &mut expression.kind else {
+            return;
+        };
+        callee.kind = ExprKind::Binding(binding);
     }
 
     fn lower_index_call(&mut self, call: &ast::CallExpr, span: Span, scope: &mut Scope) -> Expr {

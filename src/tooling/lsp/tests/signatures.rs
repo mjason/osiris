@@ -18,10 +18,7 @@ fn signature_help_uses_cross_module_types_aliases_and_default_presence() {
         source_root.join("math.osr"),
         r#"(module demo.math)
 (export [rolling])
-(defn rolling
-  [[values Float]
-   ^{:osiris/names {"zh-CN" {:preferred 周期}}} [window Int = 14]]
-  -> Float
+(defn ^Float rolling [^Float values [^{:type Int :osiris/names {"zh-CN" {:preferred 周期}}} window = 14]]
   values)
 "#,
     )

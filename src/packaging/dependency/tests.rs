@@ -212,12 +212,11 @@ fn resolves_locked_marker_and_static_interface() {
     fs::create_dir_all(&dist_info).unwrap();
     fs::create_dir_all(&package).unwrap();
 
-    let options = CompileOptions::new("sample.core", PythonVersion::new(3, 9))
+    let source =
+        "(module sample.core) ^{:doc \"The answer.\"} (def ^Int answer 42) (export [answer])";
+    let options = CompileOptions::new("sample.core", PythonVersion::new(3, 11))
         .with_provider("sample-ext", "1.0");
-    let compiled = compiler::compile(
-        "(module sample.core) (def answer Int 42) (export [answer])",
-        &options,
-    );
+    let compiled = compiler::compile(source, &options);
     assert!(
         compiled.analysis.diagnostics.is_empty(),
         "{:?}",
@@ -226,18 +225,37 @@ fn resolves_locked_marker_and_static_interface() {
     let interface = compiled.interface.expect("interface should be emitted");
     let parsed = crate::interface::read(&interface).unwrap();
     fs::write(package.join("sample.osri"), interface).unwrap();
+    fs::write(package.join("sample.osr"), source).unwrap();
+    let source_hash = crate::hash::sha256(source.as_bytes());
+    let source_map = serde_json::to_vec(&serde_json::json!({
+        "version": 3,
+        "language_version": crate::LANGUAGE_VERSION,
+        "python_target": "3.11",
+        "source": "sample_ext/sample.osr",
+        "source_hash": source_hash,
+        "generated": "sample_ext/sample.py",
+        "mappings": [],
+    }))
+    .unwrap();
+    fs::write(package.join("sample.py.map"), &source_map).unwrap();
     fs::write(
         dist_info.join("METADATA"),
         "Metadata-Version: 2.4\nName: Sample.Ext\nVersion: 1.0\n\n",
     )
     .unwrap();
     fs::write(
-            dist_info.join("osiris.toml"),
-            format!(
-                "schema = 1\ncompiler_abi = 1\nlanguage_abi = 2\nsource_hash = \"{HASH_A}\"\n\n[[extension]]\nid = \"sample\"\ninterface = \"sample_ext/sample.osri\"\n"
-            ),
-        )
-        .unwrap();
+        dist_info.join("osiris.toml"),
+        format!(
+            "schema = 2\ncompiler_abi = 1\nlanguage_abi = 2\nlanguage_version = \"{}\"\nstandard_library_abi = {}\nlinkable_helper_format = {}\ndistribution = \"sample-ext\"\nversion = \"1.0\"\npython_target = \"3.11\"\ndependencies = []\n\n[[extension]]\nid = \"sample\"\ninterface = \"sample_ext/sample.osri\"\ninterface_hash = \"{}\"\nsource = \"sample_ext/sample.osr\"\nsource_hash = \"{}\"\nsource_map = \"sample_ext/sample.py.map\"\nsource_map_hash = \"{}\"\n",
+            crate::LANGUAGE_VERSION,
+            crate::STANDARD_LIBRARY_ABI,
+            crate::LINKABLE_HELPER_FORMAT,
+            parsed.semantic_interface_hash(),
+            source_hash,
+            crate::hash::sha256(&source_map),
+        ),
+    )
+    .unwrap();
     fs::write(
         root.join("pyproject.toml"),
         r#"[project]

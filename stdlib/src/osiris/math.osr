@@ -1,0 +1,230 @@
+;; Source-distributed Osiris standard module. Kernel leaves are linked privately.
+(module osiris.math)
+
+(export
+  [abs floor ceil trunc sqrt exp log10 sin cos tan asin acos atan round
+   log pow atan2 finite? infinite? nan? pi e tau inf nan])
+
+(import osiris.math.kernel :refer :all)
+
+^{:doc
+  {:default "Return the scalar absolute value using target Python numeric semantics."
+   "zh-CN" "按目标 Python 数值语义返回标量绝对值。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} abs [^{:type (Union Int Float)} value]
+  (kernel-leaf-abs value))
+
+^{:doc
+  {:default "Return the greatest integer not greater than a scalar value."
+   "zh-CN" "返回不大于标量值的最大整数。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} floor [^{:type (Union Int Float)} value]
+  (kernel-leaf-floor value))
+
+^{:doc
+  {:default "Return the least integer not less than a scalar value."
+   "zh-CN" "返回不小于标量值的最小整数。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} ceil [^{:type (Union Int Float)} value]
+  (kernel-leaf-ceil value))
+
+^{:doc
+  {:default "Truncate a scalar value toward zero." "zh-CN" "将标量值向零截断。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} trunc [^{:type (Union Int Float)} value]
+  (kernel-leaf-trunc value))
+
+^{:doc
+  {:default "Return the scalar square root or propagate the target Python domain error."
+   "zh-CN" "返回标量平方根，或传播目标 Python 的定义域错误。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} sqrt [^{:type (Union Int Float)} value]
+  (kernel-leaf-sqrt value))
+
+^{:doc
+  {:default "Return e raised to a scalar power using target Python semantics."
+   "zh-CN" "按目标 Python 语义返回 e 的标量幂。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} exp [^{:type (Union Int Float)} value]
+  (kernel-leaf-exp value))
+
+^{:doc
+  {:default "Return the base-ten scalar logarithm or propagate a domain error."
+   "zh-CN" "返回以十为底的标量对数，或传播定义域错误。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} log10 [^{:type (Union Int Float)} value]
+  (kernel-leaf-log10 value))
+
+^{:doc
+  {:default "Return the scalar sine in radians." "zh-CN" "返回以弧度计的标量正弦。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} sin [^{:type (Union Int Float)} value]
+  (kernel-leaf-sin value))
+
+^{:doc
+  {:default "Return the scalar cosine in radians." "zh-CN" "返回以弧度计的标量余弦。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} cos [^{:type (Union Int Float)} value]
+  (kernel-leaf-cos value))
+
+^{:doc
+  {:default "Return the scalar tangent in radians."
+   "zh-CN" "返回以弧度计的标量正切。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} tan [^{:type (Union Int Float)} value]
+  (kernel-leaf-tan value))
+
+^{:doc
+  {:default "Return the scalar inverse sine in radians or propagate a domain error."
+   "zh-CN" "返回以弧度计的标量反正弦，或传播定义域错误。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} asin [^{:type (Union Int Float)} value]
+  (kernel-leaf-asin value))
+
+^{:doc
+  {:default "Return the scalar inverse cosine in radians or propagate a domain error."
+   "zh-CN" "返回以弧度计的标量反余弦，或传播定义域错误。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} acos [^{:type (Union Int Float)} value]
+  (kernel-leaf-acos value))
+
+^{:doc
+  {:default "Return the scalar inverse tangent in radians."
+   "zh-CN" "返回以弧度计的标量反正切。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} atan [^{:type (Union Int Float)} value]
+  (kernel-leaf-atan value))
+
+^{:doc
+  {:default "Round a scalar with an optional digit count using target Python semantics."
+   "zh-CN" "按目标 Python 语义以可选位数舍入标量。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} round
+  [^{:type (Union Int Float)} value [^{:type (Option Int)} option = none]]
+  (kernel-leaf-round value option))
+
+^{:doc
+  {:default "Return a natural or explicitly based scalar logarithm."
+   "zh-CN" "返回自然对数或显式指定底数的标量对数。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} log
+  [^{:type (Union Int Float)} value
+   [^{:type (Option (Union Int Float))} option = none]]
+  (kernel-leaf-log value option))
+
+^{:doc
+  {:default "Raise one scalar to another using target Python numeric semantics."
+   "zh-CN" "按目标 Python 数值语义计算一个标量的另一个标量次幂。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} pow
+  [^{:type (Union Int Float)} left ^{:type (Union Int Float)} right]
+  (kernel-leaf-pow left right))
+
+^{:doc
+  {:default "Return the quadrant-aware angle in radians for y and x."
+   "zh-CN" "返回由 y 与 x 决定象限的弧度角。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Float} atan2
+  [^{:type (Union Int Float)} left ^{:type (Union Int Float)} right]
+  (kernel-leaf-atan2 left right))
+
+^{:doc
+  {:default "Test whether a scalar number is neither infinity nor NaN."
+   "zh-CN" "测试标量数是否既非无穷也非 NaN。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} finite? [^{:type (Union Int Float)} value]
+  (kernel-leaf-finite? value))
+
+^{:doc
+  {:default "Test whether a scalar number is positive or negative infinity."
+   "zh-CN" "测试标量数是否为正无穷或负无穷。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} infinite? [^{:type (Union Int Float)} value]
+  (kernel-leaf-infinite? value))
+
+^{:doc
+  {:default "Test whether a scalar value is floating-point NaN."
+   "zh-CN" "测试标量值是否为浮点 NaN。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} nan? [^{:type (Union Int Float)} value]
+  (kernel-leaf-nan? value))
+
+^{:doc
+  {:default "The target Python scalar approximation of the mathematical constant pi."
+   "zh-CN" "目标 Python 的圆周率 pi 标量近似值。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(def ^Float pi kernel-leaf-pi)
+
+^{:doc
+  {:default "The target Python scalar approximation of Euler's number e."
+   "zh-CN" "目标 Python 的自然常数 e 标量近似值。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(def ^Float e kernel-leaf-e)
+
+^{:doc
+  {:default "The target Python scalar constant equal to two times pi."
+   "zh-CN" "目标 Python 中等于二倍 pi 的标量常数 tau。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(def ^Float tau kernel-leaf-tau)
+
+^{:doc
+  {:default "The target Python positive floating-point infinity value."
+   "zh-CN" "目标 Python 的正浮点无穷值。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(def ^Float inf kernel-leaf-inf)
+
+^{:doc
+  {:default "The target Python floating-point not-a-number value."
+   "zh-CN" "目标 Python 的浮点非数值。"}
+  :category "math"
+  :since "0.3.0"
+  :deprecated false}
+(def ^Float nan kernel-leaf-nan)

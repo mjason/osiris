@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    artifact::{GeneratedPosition, SourceMap, SourceMapping},
+    artifact::{GeneratedPosition, MacroDefinitionOrigin, SourceMap, SourceMapping},
     hir::{self, ItemKind},
     macro_expand::ExpansionTrace,
     source::Span,
@@ -16,15 +16,29 @@ use crate::{
 /// complete module span. This gives traceback and editor consumers a useful,
 /// deterministic baseline while allowing the backend to add expression-level
 /// positions later without changing the artifact format.
+pub struct GenerateInput<'a> {
+    pub source_name: &'a str,
+    pub generated_name: &'a str,
+    pub generated_source: &'a str,
+    pub module: &'a hir::Module,
+    pub traces: &'a [ExpansionTrace],
+    pub python_target: crate::types::PythonVersion,
+    pub source_hash: &'a str,
+    pub build_hash: &'a str,
+}
+
 #[must_use]
-pub fn generate(
-    source_name: impl Into<String>,
-    generated_name: impl Into<String>,
-    generated_source: &str,
-    module: &hir::Module,
-    traces: &[ExpansionTrace],
-    build_hash: &str,
-) -> SourceMap {
+pub fn generate(input: GenerateInput<'_>) -> SourceMap {
+    let GenerateInput {
+        source_name,
+        generated_name,
+        generated_source,
+        module,
+        traces,
+        python_target,
+        source_hash,
+        build_hash,
+    } = input;
     let declarations = declaration_markers(module);
     let mut current_span = module.span;
     let mut mappings = Vec::new();
@@ -37,6 +51,7 @@ pub fn generate(
                 .unwrap_or(module.span);
         }
         let origin = expansion_origins(current_span, traces);
+        let macro_definitions = macro_definition_origins(current_span, traces);
         mappings.push(SourceMapping {
             generated_start: GeneratedPosition {
                 line: line_index + 1,
@@ -48,17 +63,49 @@ pub fn generate(
             },
             source_span: current_span,
             expansion_origin: origin,
+            macro_definitions,
         });
     }
 
     SourceMap {
-        version: 1,
-        source: source_name.into(),
-        generated: generated_name.into(),
+        version: 3,
+        language_version: crate::LANGUAGE_VERSION.to_owned(),
+        python_target: python_target.to_string(),
+        source: source_name.to_owned(),
+        source_hash: source_hash.to_owned(),
+        generated: generated_name.to_owned(),
         trust_policy_hash: module.trust_policy_hash.clone(),
         build_hash: build_hash.to_owned(),
         mappings,
     }
+}
+
+fn macro_definition_origins(span: Span, traces: &[ExpansionTrace]) -> Vec<MacroDefinitionOrigin> {
+    traces
+        .iter()
+        .filter(|trace| {
+            spans_overlap(trace.call_span, span) || spans_overlap(trace.expansion_span, span)
+        })
+        .filter_map(|trace| {
+            let binding = crate::stdlib::NAMESPACES
+                .iter()
+                .flat_map(|namespace| crate::stdlib::exports(namespace))
+                .find(|binding| binding.id().as_str() == trace.macro_binding_id)?;
+            let source = crate::stdlib::api_record(binding).source;
+            Some(MacroDefinitionOrigin {
+                binding_id: trace.macro_binding_id.clone(),
+                source: source.uri,
+                line: source.line,
+                column: source.column,
+            })
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn spans_overlap(left: Span, right: Span) -> bool {
+    left.start <= right.end && right.start <= left.end
 }
 
 fn declaration_markers(module: &hir::Module) -> Vec<(String, Span)> {

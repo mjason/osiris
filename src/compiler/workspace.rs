@@ -1,5 +1,9 @@
 use super::*;
 
+mod recover;
+
+pub use recover::analyze_workspace_recovering;
+
 pub(super) struct PreparedInput {
     pub(super) input_index: usize,
     pub(super) document: Document,
@@ -19,6 +23,47 @@ pub fn compile_workspace(
 ) -> WorkspaceCompileResult {
     if inputs.is_empty() {
         return WorkspaceCompileResult::default();
+    }
+
+    let target = inputs[0].options.target_python;
+    if let Some((input_index, input)) = inputs
+        .iter()
+        .enumerate()
+        .find(|(_, input)| input.options.target_python != target)
+    {
+        return WorkspaceCompileResult {
+            units: Vec::new(),
+            diagnostics: vec![LocatedDiagnostic {
+                input_index,
+                diagnostic: Diagnostic::error(
+                    "OSR-I0018",
+                    format!(
+                        "workspace Python target `{}` differs from `{target}`",
+                        input.options.target_python
+                    ),
+                    crate::source::Span::empty(0),
+                ),
+            }],
+        };
+    }
+    if let Some((module, interface)) = external_interfaces
+        .iter()
+        .find(|(_, interface)| interface.python_target != target)
+    {
+        return WorkspaceCompileResult {
+            units: Vec::new(),
+            diagnostics: vec![LocatedDiagnostic {
+                input_index: 0,
+                diagnostic: Diagnostic::error(
+                    "OSR-I0018",
+                    format!(
+                        "interface `{module}` targets Python {}, expected {target}",
+                        interface.python_target
+                    ),
+                    crate::source::Span::empty(0),
+                ),
+            }],
+        };
     }
 
     let mut prepared = Vec::with_capacity(inputs.len());
@@ -250,7 +295,10 @@ pub fn compile_workspace(
                 &imported_phase,
                 Some(&scc_interfaces),
             );
-            let Some(interface_model) = build_interface_model(&mut analysis) else {
+            let Some(interface_model) = build_interface_model(
+                &mut analysis,
+                inputs[unit.input_index].options.target_python,
+            ) else {
                 let mut diagnostics = analysis
                     .diagnostics
                     .iter()
@@ -425,60 +473,4 @@ pub fn compile_workspace(
             .collect(),
         diagnostics: Vec::new(),
     }
-}
-
-/// Analyzes every workspace source while preserving a semantic model for
-/// inputs that contain errors.
-///
-/// This entry point is intended for editor tooling. It uses provisional local
-/// interfaces so healthy modules retain workspace imports when another module
-/// is incomplete. Those interfaces are never rendered, hashed, or used as
-/// trusted build artifacts; [`compile_workspace`] remains the fail-closed API
-/// for builds.
-#[must_use]
-pub fn analyze_workspace_recovering(
-    inputs: &[CompileInput<'_>],
-    external_interfaces: &BTreeMap<String, interface::Interface>,
-) -> Vec<Analysis> {
-    let prepared = inputs
-        .iter()
-        .enumerate()
-        .map(|(input_index, input)| {
-            let document = reader::read(input.source);
-            let mut lowered = ast::lower_document(&document);
-            install_module_identity(&mut lowered.module, input.options, &mut lowered.diagnostics);
-            PreparedInput {
-                input_index,
-                document,
-                module_name: lowered
-                    .module
-                    .name
-                    .as_ref()
-                    .expect("implicit workspace module name was installed")
-                    .canonical
-                    .clone(),
-                header: lowered.module,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let mut interfaces = external_interfaces.clone();
-    for unit in &prepared {
-        if let Ok(model) = interface::build_provisional(&unit.header) {
-            interfaces.insert(unit.module_name.clone(), model);
-        }
-    }
-
-    prepared
-        .iter()
-        .map(|unit| {
-            let imported_phase = imported_phase_modules(&unit.header, &interfaces);
-            analyze_document(
-                &unit.document,
-                inputs[unit.input_index].options,
-                &imported_phase,
-                Some(&interfaces),
-            )
-        })
-        .collect()
 }

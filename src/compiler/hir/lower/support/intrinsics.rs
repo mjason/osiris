@@ -5,7 +5,7 @@ impl<'a> Lowerer<'a> {
         if let Some(binding) = &self.core_loop_binding {
             return binding.clone();
         }
-        let id = BindingId::new("osiris.prelude", "loop", BindingKind::Function);
+        let id = BindingId::new("osiris.kernel", "loop", BindingKind::Function);
         let signature =
             FunctionType::new(Vec::new(), Type::Any).with_summaries(CallSummaries::unknown());
         self.bindings.insert(
@@ -13,15 +13,15 @@ impl<'a> Lowerer<'a> {
             Binding {
                 name: BindingName {
                     id: id.clone(),
-                    canonical: "osiris.prelude/loop*".to_owned(),
+                    canonical: "osiris.kernel/loop*".to_owned(),
                     python: "_u0_osiris_loop".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },
-                source_spelling: "osiris.prelude/loop*".to_owned(),
+                source_spelling: "osiris.kernel/loop*".to_owned(),
                 ty: Type::Fn(signature),
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "loop".to_owned(),
                     python_module: false,
                 }),
@@ -41,7 +41,7 @@ impl<'a> Lowerer<'a> {
         if let Some(binding) = &self.core_recur_binding {
             return binding.clone();
         }
-        let id = BindingId::new("osiris.prelude", "recur", BindingKind::Function);
+        let id = BindingId::new("osiris.kernel", "recur", BindingKind::Function);
         let signature = FunctionType::new(vec![Type::Any; arity], Type::Never)
             .with_summaries(CallSummaries::pure_scalar());
         self.bindings.insert(
@@ -49,15 +49,15 @@ impl<'a> Lowerer<'a> {
             Binding {
                 name: BindingName {
                     id: id.clone(),
-                    canonical: "osiris.prelude/recur*".to_owned(),
+                    canonical: "osiris.kernel/recur*".to_owned(),
                     python: "_u0_osiris_recur".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },
-                source_spelling: "osiris.prelude/recur*".to_owned(),
+                source_spelling: "osiris.kernel/recur*".to_owned(),
                 ty: Type::Fn(signature),
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "recur".to_owned(),
                     python_module: false,
                 }),
@@ -77,7 +77,7 @@ impl<'a> Lowerer<'a> {
         if let Some(binding) = self.core_collection_bindings.get(name) {
             return binding.clone();
         }
-        let id = BindingId::new("osiris.prelude", name, BindingKind::Function);
+        let id = BindingId::new("osiris.kernel", name, BindingKind::Function);
         let signature =
             FunctionType::new(Vec::new(), Type::Any).with_summaries(CallSummaries::unknown());
         self.bindings.insert(
@@ -85,15 +85,15 @@ impl<'a> Lowerer<'a> {
             Binding {
                 name: BindingName {
                     id: id.clone(),
-                    canonical: format!("osiris.prelude/{name}"),
+                    canonical: format!("osiris.kernel/{name}"),
                     python: format!("_u0_osiris_{name}"),
                     kind: BindingKind::Function,
                     span,
                 },
-                source_spelling: format!("osiris.prelude/{name}"),
+                source_spelling: format!("osiris.kernel/{name}"),
                 ty: Type::Fn(signature),
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: name.to_owned(),
                     python_module: false,
                 }),
@@ -124,7 +124,7 @@ impl<'a> Lowerer<'a> {
                     args: Vec::new(),
                 },
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "Reduced".to_owned(),
                     python_module: false,
                 }),
@@ -152,7 +152,7 @@ impl<'a> Lowerer<'a> {
                     args: Vec::new(),
                 },
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "Delay".to_owned(),
                     python_module: false,
                 }),
@@ -180,7 +180,7 @@ impl<'a> Lowerer<'a> {
                     args: Vec::new(),
                 },
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "Future".to_owned(),
                     python_module: false,
                 }),
@@ -208,7 +208,7 @@ impl<'a> Lowerer<'a> {
                     args: Vec::new(),
                 },
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "Promise".to_owned(),
                     python_module: false,
                 }),
@@ -222,7 +222,7 @@ impl<'a> Lowerer<'a> {
         if let Some(binding) = &self.core_mapv_binding {
             return binding.clone();
         }
-        let id = BindingId::new("osiris.prelude", "mapv", BindingKind::Function);
+        let id = BindingId::new("osiris.kernel", "mapv", BindingKind::Function);
         let signature = FunctionType::new(vec![Type::Any, Type::Any], Type::Any)
             .with_summaries(CallSummaries::unknown());
         self.bindings.insert(
@@ -230,16 +230,16 @@ impl<'a> Lowerer<'a> {
             Binding {
                 name: BindingName {
                     id: id.clone(),
-                    canonical: "osiris.prelude/mapv".to_owned(),
+                    canonical: "osiris.kernel/mapv".to_owned(),
                     // This internal name cannot be produced by authored source.
                     python: "_u0_osiris_mapv".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },
-                source_spelling: "osiris.prelude/mapv".to_owned(),
+                source_spelling: "osiris.kernel/mapv".to_owned(),
                 ty: Type::Fn(signature),
                 runtime: Some(RuntimeBinding {
-                    module: "osiris.prelude".to_owned(),
+                    module: "osiris.kernel".to_owned(),
                     name: "mapv".to_owned(),
                     python_module: false,
                 }),

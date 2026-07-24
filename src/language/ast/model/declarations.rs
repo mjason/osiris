@@ -155,7 +155,16 @@ pub struct Import {
     pub module: Name,
     pub alias: Option<Name>,
     pub members: Vec<Name>,
+    pub refer_all: bool,
+    pub excluded: Vec<Name>,
+    pub renamed: Vec<ImportRename>,
     pub phase: ImportPhase,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ImportRename {
+    pub canonical: Name,
+    pub local: Name,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -216,6 +225,8 @@ pub struct Function {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub metadata: Metadata,
     pub name: Option<Name>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub type_params: Vec<Name>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
     #[serde(skip_serializing_if = "Option::is_none")]

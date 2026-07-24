@@ -30,7 +30,9 @@ impl<'a> Lowerer<'a> {
                     .as_ref()
                     .map(|default| self.lower_expr(default, &mut scope));
                 if let Some(default) = &default {
-                    self.check_assignable(&default.ty, &ty, default.span);
+                    if !contains_type_variable(&ty) {
+                        self.check_assignable(&default.ty, &ty, default.span);
+                    }
                     self.require_pure(default, "extern parameter default");
                 }
                 let local = self.declare_local(
@@ -116,7 +118,9 @@ impl<'a> Lowerer<'a> {
                 .as_ref()
                 .map(|default| self.lower_expr(default, &mut scope));
             if let Some(default) = &default {
-                self.check_assignable(&default.ty, &ty, default.span);
+                if !contains_type_variable(&ty) {
+                    self.check_assignable(&default.ty, &ty, default.span);
+                }
             }
             let local = self.declare_local(
                 &parameter.name,
@@ -178,10 +182,13 @@ impl<'a> Lowerer<'a> {
         let declared_return = self.types.resolve(&signature.return_type);
         let return_type = if function.return_type.is_some() {
             self.check_assignable(&body.ty, &declared_return, body.span);
-            declared_return
+            self.types.resolve(&declared_return)
         } else {
             body.ty.clone()
         };
+        for parameter in &mut parameters {
+            parameter.ty = self.types.resolve(&parameter.ty);
+        }
         let summaries = parameters
             .iter()
             .fold(body.summaries.clone(), |summary, parameter| {

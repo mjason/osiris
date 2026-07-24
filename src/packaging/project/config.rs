@@ -7,13 +7,14 @@ use std::{
 use serde::Deserialize;
 use unicode_normalization::UnicodeNormalization;
 use globset::{GlobSet, GlobSetBuilder};
+use oxilangtag::LanguageTag;
 
 use crate::extension::{is_valid_distribution_name, normalize_distribution_name};
 
 pub use crate::types::PythonVersion;
 
 impl PythonVersion {
-    pub const MINIMUM: Self = Self { major: 3, minor: 9 };
+    pub const MINIMUM: Self = Self { major: 3, minor: 11 };
     pub const DEFAULT_TARGET: Self = Self { major: 3, minor: 11 };
 }
 
@@ -142,11 +143,37 @@ impl ProjectConfig {
             ));
         }
 
+        let output_relative = PathBuf::from(
+            jsonc
+                .out_dir
+                .clone()
+                .unwrap_or_else(|| "dist".to_owned()),
+        );
+        validate_relative_path(&output_relative, "output directory")?;
         let sources = jsonc.source.unwrap_or_else(|| vec!["src".to_owned()]);
+        if sources.is_empty() {
+            return Err(ConfigError::Invalid(
+                "source must contain at least one source root".to_owned(),
+            ));
+        }
         let mut source_roots = Vec::with_capacity(sources.len());
+        let mut seen_sources = std::collections::BTreeSet::new();
         for source in sources {
             let relative = PathBuf::from(&source);
             validate_relative_path(&relative, "source root")?;
+            if !seen_sources.insert(relative.clone()) {
+                return Err(ConfigError::Invalid(format!(
+                    "duplicate normalized source root `{}`",
+                    relative.display()
+                )));
+            }
+            if relative == output_relative || relative.starts_with(&output_relative) {
+                return Err(ConfigError::Invalid(format!(
+                    "source root `{}` must not be inside output directory `{}`",
+                    relative.display(),
+                    output_relative.display()
+                )));
+            }
             source_roots.push(root.join(relative));
         }
 
@@ -155,17 +182,21 @@ impl ProjectConfig {
             .as_deref()
             .unwrap_or("3.11")
             .parse()?;
-        let display_locale = jsonc
-            .display_locale
-            .map(|locale| match locale.as_str() {
-                "en" | "zh-CN" => Ok(locale),
-                _ => Err(ConfigError::Invalid(format!(
-                    "unsupported displayLocale `{locale}`; expected `en` or `zh-CN`"
-                ))),
+        let display_locale = Some(
+            jsonc
+                .display_locale
+                .unwrap_or_else(|| "zh-CN".to_owned()),
+        )
+            .map(|locale| {
+                LanguageTag::parse_and_normalize(&locale)
+                    .map(|tag| tag.to_string())
+                    .map_err(|error| {
+                        ConfigError::Invalid(format!(
+                            "displayLocale `{locale}` is not a well-formed BCP 47 language tag: {error}"
+                        ))
+                    })
             })
             .transpose()?;
-        let output_relative = PathBuf::from(jsonc.out_dir.unwrap_or_else(|| "dist".to_owned()));
-        validate_relative_path(&output_relative, "output directory")?;
         let exclude = compile_exclude_patterns(jsonc.exclude.unwrap_or_default())?;
         let output_dir = root.join(output_relative);
 
@@ -195,9 +226,9 @@ impl ProjectConfig {
         } else {
             self.root.join(path)
         };
-        absolute
-            .strip_prefix(&self.root)
-            .is_ok_and(|relative| self.exclude.is_match(relative))
+        absolute.strip_prefix(&self.root).is_ok_and(|relative| {
+            absolute.starts_with(&self.output_dir) || self.exclude.is_match(relative)
+        })
     }
 
     /// Maps an existing `.osr` source to its module name using exactly one

@@ -19,7 +19,7 @@ fn project_document_uses_path_identity_and_dependency_interfaces() {
         .expect("Osiris configuration");
     fs::write(
         source_root.join("math.osr"),
-        "(module demo.math)\n(export [add-one])\n(defn add-one [[x Int]] -> Int (+ x 1))\n",
+        "(module demo.math)\n(export [add-one])\n^{:doc \"Increment an integer.\"} (defn ^Int add-one [^Int x] (+ x 1))\n",
     )
     .expect("dependency source");
     let app_source =
@@ -66,12 +66,12 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
         .expect("Osiris configuration");
     let alpha_source = r#"(module demo.alpha)
 (export [score 得分])
-(defn score [[value Int]] -> Int value)
+^{:doc "Return the alpha score."} (defn ^Int score [^Int value] value)
 (alias 得分 score)
 "#;
     let beta_source = r#"(module demo.beta)
 (export [score])
-(defn score [[value Int]] -> Int value)
+^{:doc "Return the beta score."} (defn ^Int score [^Int value] value)
 "#;
     let app_source = r#"(module demo.app)
 (import demo.alpha :as alpha :refer [得分])
@@ -83,7 +83,7 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
     let broken_source = r#"(module demo.broken)
 (import demo.alpha :as alpha)
 (def broken-result (alpha/score 4))
-(defn invalid [[x Int]] -> Int)
+(defn ^Int invalid [^Int x])
 "#;
     let alpha_path = source_root.join("alpha.osr");
     let beta_path = source_root.join("beta.osr");
@@ -172,7 +172,7 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
     let alpha_declaration = offset_to_position(
         alpha_source,
         alpha_source
-            .find("score [[value")
+            .find("score [^Int value")
             .expect("alpha declaration"),
     );
     let provider_references = state.references(&alpha_uri, alpha_declaration);
@@ -268,7 +268,7 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
 fn external_interface_without_source_has_no_definition_location() {
     let provider_source = r#"(module vendor.math)
 (export [score])
-(defn score [[value Int]] -> Int value)
+^{:doc "Return the vendor score."} (defn ^Int score [^Int value] value)
 "#;
     let provider_options = CompileOptions::new("vendor.math", PythonVersion::MINIMUM);
     let provider = compiler::analyze(provider_source, &provider_options);
@@ -354,7 +354,7 @@ fn project_errors_preserve_workspace_identity_imports_and_completion() {
         .expect("Osiris configuration");
     fs::write(
         source_root.join("math.osr"),
-        "(module demo.math)\n(export [add-one])\n(defn add-one [[x Int]] -> Int (+ x 1))\n",
+        "(module demo.math)\n(export [add-one])\n^{:doc \"Increment an integer.\"} (defn ^Int add-one [^Int x] (+ x 1))\n",
     )
     .expect("dependency source");
     let app_source =
@@ -362,7 +362,7 @@ fn project_errors_preserve_workspace_identity_imports_and_completion() {
     let app = source_root.join("app.osr");
     fs::write(&app, app_source).expect("application source");
     let broken_source =
-        "(module demo.broken)\n(import demo.math :as math)\n(defn invalid [[x Int]] -> Int)\n";
+        "(module demo.broken)\n(import demo.math :as math)\n(defn ^Int invalid [^Int x])\n";
     let broken = source_root.join("broken.osr");
     fs::write(&broken, broken_source).expect("broken source");
     let app_uri = format!("file://{}", app.display());

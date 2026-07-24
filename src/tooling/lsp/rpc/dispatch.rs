@@ -11,9 +11,7 @@ fn dispatch(
 ) -> Result<DispatchOutcome, LspStateError> {
     match method {
         "initialize" => {
-            if let Some(locale) = find_string(params, &["initializationOptions", "displayLocale"])
-                .or_else(|| find_string(params, &["locale"]))
-            {
+            if let Some(locale) = find_string(params, &["locale"]) {
                 state.set_display_locale(locale);
             }
             if let Some(site_roots) = find_value(params, &["initializationOptions", "siteRoots"]) {
@@ -155,6 +153,11 @@ fn dispatch(
                 .map_or(Ok(JsonValue::Null), serialize_value)?;
             Ok(result_outcome(result))
         }
+        "textDocument/formatting" => {
+            let uri = required_uri(params)?;
+            ensure_document(state, uri)?;
+            Ok(result_outcome(serialize_value(state.formatting(uri)?)?))
+        }
         "osiris/diagnostics" => {
             let uri = required_uri(params)?;
             let diagnostics = state
@@ -199,16 +202,29 @@ fn dispatch(
                 "nodes": &document.analysis.document.nodes,
             })))
         }
-        "osiris/inspect" => {
+        "osiris/symbol" => {
             let uri = required_uri(params)?;
             ensure_document(state, uri)?;
             let query = find_string(params, &["bindingId"])
                 .or_else(|| find_string(params, &["symbol"]))
                 .or_else(|| find_string(params, &["query"]));
-            let inspected = state
-                .inspect(uri, query.as_deref())
-                .unwrap_or(JsonValue::Null);
-            Ok(result_outcome(inspected))
+            let symbols = state.symbols(uri, query.as_deref()).unwrap_or_default();
+            Ok(result_outcome(serialize_value(symbols)?))
+        }
+        "osiris/standardSource" => {
+            let uri = required_uri(params)?;
+            let source = crate::stdlib::source_artifact_by_uri(uri).ok_or_else(|| {
+                LspStateError::new(
+                    DOCUMENT_NOT_FOUND,
+                    format!("standard source {uri} was not found"),
+                )
+            })?;
+            Ok(result_outcome(json!({
+                "uri": uri,
+                "languageId": "osiris",
+                "version": crate::version(),
+                "text": source,
+            })))
         }
         _ => Err(LspStateError::new(
             METHOD_NOT_FOUND,

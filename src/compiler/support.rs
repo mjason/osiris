@@ -31,8 +31,9 @@ pub(super) fn analysis_hashes(document: &Document, options: &CompileOptions) -> 
         .iter()
         .map(|token| token.text.as_str())
         .collect::<String>();
-    let source_hash = hash_fields([source.as_str()]);
+    let source_hash = crate::hash::sha256(source.as_bytes());
     let target_python = options.target_python.to_string();
+    let strict = options.strict.to_string();
     let cache_key = hash_fields([
         "osiris-analysis-cache-v1",
         interface::COMPILER_ABI,
@@ -40,6 +41,7 @@ pub(super) fn analysis_hashes(document: &Document, options: &CompileOptions) -> 
         &source_hash,
         &options.fallback_module_name,
         &target_python,
+        &strict,
         &options.trust_policy.hash,
     ]);
     (source_hash, cache_key)

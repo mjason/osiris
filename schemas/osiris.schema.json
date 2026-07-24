@@ -27,9 +27,10 @@
     },
     "strict": { "type": "boolean", "default": true },
     "displayLocale": {
-      "enum": ["en", "zh-CN"],
-      "default": "en",
-      "description": "Default language for LSP labels and documentation: en for English, zh-CN for Simplified Chinese."
+      "type": "string",
+      "minLength": 1,
+      "default": "zh-CN",
+      "description": "Default BCP 47 language tag for LSP labels and documentation. Examples include zh-CN, en, and ja; the compiler performs canonical validation and RFC 4647 lookup."
     }
   },
   "$defs": {

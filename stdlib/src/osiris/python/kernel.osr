@@ -1,0 +1,38 @@
+;; Internal typed Kernel contracts for osiris.python.
+^{:osiris/internal true}
+(module osiris.python.kernel)
+
+(export
+  [kernel-leaf-get-attr kernel-leaf-get-attr-or kernel-leaf-has-attr?
+   kernel-leaf-set-attr! kernel-leaf-del-attr! kernel-leaf-get-item
+   kernel-leaf-set-item! kernel-leaf-del-item! kernel-leaf-call
+   kernel-leaf-iter kernel-leaf-type-name])
+
+(extern python "osiris.kernel"
+  ^{:python/name "get_attr" :type-params [A]}
+  (defn ^{:type Any} kernel-leaf-get-attr [^{:type A} object ^{:type Str} name])
+  ^{:python/name "get_attr_or" :type-params [A]}
+  (defn ^{:type Any} kernel-leaf-get-attr-or
+    [^{:type A} object ^{:type Str} name ^{:type Any} fallback])
+  ^{:python/name "has_attr_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-has-attr? [^{:type A} object ^{:type Str} name])
+  ^{:python/name "set_attr_bang" :type-params [A]}
+  (defn ^{:type None} kernel-leaf-set-attr!
+    [^{:type A} object ^{:type Str} name ^{:type Any} value])
+  ^{:python/name "del_attr_bang" :type-params [A]}
+  (defn ^{:type None} kernel-leaf-del-attr! [^{:type A} object ^{:type Str} name])
+  ^{:python/name "get_item" :type-params [A]}
+  (defn ^{:type Any} kernel-leaf-get-item [^{:type A} object ^{:type Any} key])
+  ^{:python/name "set_item_bang" :type-params [A]}
+  (defn ^{:type None} kernel-leaf-set-item!
+    [^{:type A} object ^{:type Any} key ^{:type Any} value])
+  ^{:python/name "del_item_bang" :type-params [A]}
+  (defn ^{:type None} kernel-leaf-del-item! [^{:type A} object ^{:type Any} key])
+  ^{:python/name "call"}
+  (defn ^{:type Any} kernel-leaf-call
+    [^{:type Any} callable ^{:type (List Any)} args
+     [^{:type (Option (Map Str Any))} kwargs = none]])
+  ^{:python/name "iter" :type-params [A]}
+  (defn ^{:type (List Any)} kernel-leaf-iter [^{:type A} object])
+  ^{:python/name "type_name" :type-params [A]}
+  (defn ^{:type Str} kernel-leaf-type-name [^{:type A} object]))

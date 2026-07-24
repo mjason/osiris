@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::hash::sha256;
 
-pub const MARKER_SCHEMA: u32 = 1;
+pub const MARKER_SCHEMA: u32 = 2;
 pub const COMPILER_ABI: u32 = 1;
 pub const LANGUAGE_ABI: u32 = 2;
 
@@ -25,6 +25,8 @@ pub struct DistributionMetadata {
 pub struct ExtensionResource {
     pub id: String,
     pub interface: PathBuf,
+    pub source: Option<PathBuf>,
+    pub source_map: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,30 +37,7 @@ pub struct ExtensionDistribution {
     pub extensions: Vec<ExtensionResource>,
     pub records: Option<PathBuf>,
     pub records_hash: Option<String>,
-    marker_distribution: Option<String>,
-    marker_version: Option<String>,
-    marker_source_hash: Option<String>,
-}
-
-impl ExtensionDistribution {
-    /// Optional artifact hash explicitly recorded by a future marker schema.
-    /// v0 markers normally derive distribution/version from standard
-    /// `METADATA`; exposing this value lets the lock layer validate stricter
-    /// producers without making uv's wheel metadata redundant.
-    #[must_use]
-    pub fn marker_source_hash(&self) -> Option<&str> {
-        self.marker_source_hash.as_deref()
-    }
-
-    #[must_use]
-    pub fn marker_distribution(&self) -> Option<&str> {
-        self.marker_distribution.as_deref()
-    }
-
-    #[must_use]
-    pub fn marker_version(&self) -> Option<&str> {
-        self.marker_version.as_deref()
-    }
+    pub language_version: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -168,11 +147,17 @@ struct RawMarker {
     schema: u32,
     compiler_abi: u32,
     language_abi: u32,
-    distribution: Option<String>,
-    version: Option<String>,
-    source_hash: Option<String>,
+    language_version: String,
+    standard_library_abi: u32,
+    linkable_helper_format: u32,
+    python_target: String,
+    dependencies: Vec<String>,
+    distribution: String,
+    version: String,
     records: Option<String>,
     records_hash: Option<String>,
+    #[serde(default)]
+    linked_support: Vec<RawLinkedSupport>,
     #[serde(default, rename = "extension")]
     extensions: Vec<RawExtension>,
 }
@@ -182,4 +167,16 @@ struct RawMarker {
 struct RawExtension {
     id: String,
     interface: String,
+    interface_hash: String,
+    source: String,
+    source_hash: String,
+    source_map: String,
+    source_map_hash: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLinkedSupport {
+    manifest: String,
+    manifest_hash: String,
 }

@@ -29,7 +29,7 @@ fn struct_constructor_checks_fields_and_defaults() {
 fn struct_field_access_keeps_declared_type_and_summary() {
     let result = lower(
         r#"(defstruct Point [x Int] [y Float])
-               (defn distance [[point Point]] -> Float (+ point.x point.y))"#,
+               (defn ^Float distance [^Point point] (+ point.x point.y))"#,
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let function = result
@@ -57,6 +57,7 @@ fn struct_field_access_keeps_declared_type_and_summary() {
 fn imported_struct_field_access_uses_interface_field_type() {
     let document = read(
         r#"(module dep.fields)
+               ^{:doc "A generic series fixture."}
                (defstruct (Series T)
                  ^{:osiris/names {"zh-CN" {:preferred 值}}}
                  [values (Vector T)])
@@ -71,7 +72,7 @@ fn imported_struct_field_access_uses_interface_field_type() {
     let caller = read(
         r#"(module app)
                (import dep.fields)
-               (defn values [[series (Series Float)]] -> (Vector Float) series.值)"#,
+               (defn ^{:type (Vector Float)} values [^{:type (Series Float)} series] series.值)"#,
     );
     let caller_surface = lower_document(&caller);
     assert!(
@@ -95,7 +96,7 @@ fn imported_struct_field_access_uses_interface_field_type() {
 
 #[test]
 fn unknown_declared_struct_field_is_rejected() {
-    let result = lower("(defstruct Point [x Int]) (defn bad [[point Point]] -> Int point.missing)");
+    let result = lower("(defstruct Point [x Int]) (defn ^Int bad [^Point point] point.missing)");
     assert!(
         result
             .diagnostics
@@ -130,17 +131,13 @@ fn literal_type_arguments_reach_typed_hir_without_error_types() {
         r#"(defstruct (Array T Axes) [values Any])
                (defstruct (Frame Schema KeyMarker KeyValue OrderMarker OrderValue)
                  [values Any])
-               (defn array-id
-                  [[values (Array Float [:time :feature])]]
-                  -> (Array Float [:time :feature])
+               (defn ^{:type (Array Float [:time :feature])} array-id [^{:type (Array Float [:time :feature])} values]
                   values)
-               (defn frame-id
-                  [[frame (Frame {:value Float :time Datetime :category Str}
-                                 :key [:time :category]
-                                 :order [:time])]]
-                  -> (Frame {:category Str :value Float :time Datetime}
+               (defn ^{:type (Frame {:category Str :value Float :time Datetime}
                             :key [:time :category]
-                            :order [:time])
+                            :order [:time])} frame-id [^{:type (Frame {:value Float :time Datetime :category Str}
+                                 :key [:time :category]
+                                 :order [:time])} frame]
                   frame)"#,
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -178,7 +175,7 @@ fn literal_type_arguments_reach_typed_hir_without_error_types() {
 
 #[test]
 fn unknown_nominal_type_is_not_fabricated_in_typed_hir() {
-    let result = lower("(defn typo [[value Typo]] -> Typo value)");
+    let result = lower("(defn ^Typo typo [^Typo value] value)");
     assert!(result.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == "OSR-T0021" && diagnostic.message == "unknown nominal type `Typo`"
     }));
@@ -220,8 +217,8 @@ fn struct_check_keeps_typed_message_and_throw_summary() {
 #[test]
 fn parameter_aliases_are_canonicalized_and_type_checked() {
     let result = lower(
-        "(defn f [^{:osiris/names {\"zh-CN\" {:preferred 周期 :aliases [时长]}}}
-                       [window Int]] -> Int window)
+        "(defn ^Int f [^{:type Int :osiris/names {\"zh-CN\" {:preferred 周期 :aliases [时长]}}}
+                       window] window)
              (f :时长 2)",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -240,8 +237,8 @@ fn parameter_aliases_are_canonicalized_and_type_checked() {
 #[test]
 fn phase_one_names_do_not_collide_with_runtime_names() {
     let result = lower(
-        "(defn-for-syntax helper [] -> Int 1)
-             (defn helper [] -> Int 2)
+        "(defn-for-syntax ^Int helper [] 1)
+             (defn ^Int helper [] 2)
              (helper)",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -259,7 +256,7 @@ fn phase_one_names_do_not_collide_with_runtime_names() {
 #[test]
 fn exporting_an_alias_requires_an_explicit_canonical_export() {
     let rejected = lower(
-        "(defn canonical [] -> Int 1)
+        "(defn ^Int canonical [] 1)
              (alias 本地名 canonical)
              (export [本地名])",
     );
@@ -273,7 +270,7 @@ fn exporting_an_alias_requires_an_explicit_canonical_export() {
     assert!(!rejected.module.aliases[0].public);
 
     let accepted = lower(
-        "(defn canonical [] -> Int 1)
+        "(defn ^Int canonical [] 1)
              (alias 本地名 canonical)
              (export [canonical 本地名])",
     );
@@ -288,7 +285,7 @@ fn exporting_an_alias_requires_an_explicit_canonical_export() {
 
 #[test]
 fn rejects_local_python_identifier_collisions() {
-    let result = lower("(defn collision [[a-b Int] [a_b Int]] -> Int a-b)");
+    let result = lower("(defn ^Int collision [^Int a-b ^Int a_b] a-b)");
     assert!(
         result
             .diagnostics

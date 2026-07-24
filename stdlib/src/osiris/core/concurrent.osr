@@ -1,0 +1,214 @@
+;; Internal Phase-1 implementation for concurrency and resource forms.
+^{:osiris/internal true}
+(module osiris.core.concurrent)
+
+(export
+  [future future-call future-done? future-cancelled? future-cancel pvalues
+   pcalls promise deliver lock locking time binding with-open throw assert
+   comment])
+
+(defn-for-syntax osiris.kernel/concurrent-even-bindings? [bindings]
+  (if (empty? bindings)
+    true
+    (if (empty? (rest bindings))
+      false
+      (osiris.kernel/concurrent-even-bindings? (rest (rest bindings))))))
+
+;; Concurrency forms intentionally remain ordinary macros.  The compiler owns
+;; only the small, typed runtime entry points below; callback bodies continue
+;; through the regular lexical lowering path and therefore retain source maps
+;; and effect summaries.
+(defmacro future [& body]
+  `(osiris.kernel/future-call* (fn [] ~(if (empty? body)
+                                         none
+                                         `(do
+                                            ~@body)))))
+
+(defmacro future-call [function]
+  `(osiris.kernel/future-call* ~function))
+
+(defmacro future-done? [value]
+  `(osiris.kernel/future-done* ~value))
+
+(defmacro future-cancelled? [value]
+  `(osiris.kernel/future-cancelled* ~value))
+
+(defmacro future-cancel [value]
+  `(osiris.kernel/future-cancel* ~value))
+
+;; Parallel collection/control helpers are intentionally expressed in terms
+;; of the existing Future ABI.  They submit all work eagerly, then deref in
+;; source/input order, which keeps the result deterministic while making the
+;; concurrency boundary explicit in generated Osiris/Python code.  A failed
+;; deref propagates its first observed exception; already-submitted work is
+;; not implicitly cancelled.
+(defn-for-syntax osiris.kernel/parallel-params [prefix forms]
+  (if (empty? forms)
+    '()
+    (cons (gensym prefix) (osiris.kernel/parallel-params prefix (rest forms)))))
+
+(defn-for-syntax osiris.kernel/parallel-bindings [names forms]
+  (if (empty? names)
+    '()
+    (cons (first names)
+          (cons (first forms) (osiris.kernel/parallel-bindings (rest names) (rest forms))))))
+
+(defn-for-syntax osiris.kernel/parallel-deref-forms [names]
+  (if (empty? names)
+    '()
+    (cons `(deref ~(first names)) (osiris.kernel/parallel-deref-forms (rest names)))))
+
+(defn-for-syntax osiris.kernel/parallel-call-forms [names]
+  (if (empty? names)
+    '()
+    (cons `(future-call (fn [] (~(first names))))
+          (osiris.kernel/parallel-call-forms (rest names)))))
+
+(defn-for-syntax osiris.kernel/pvalues-future-expressions [forms]
+  (if (empty? forms)
+    '()
+    (cons `(future-call (fn [] ~(first forms)))
+          (osiris.kernel/pvalues-future-expressions (rest forms)))))
+
+(defmacro pvalues [& forms]
+  (if (empty? forms)
+    []
+    (let [future-names (osiris.kernel/parallel-params "pvalues-future" forms)
+          future-expressions (osiris.kernel/pvalues-future-expressions forms)]
+      `(let [~@(osiris.kernel/parallel-bindings future-names future-expressions)]
+         [~@(osiris.kernel/parallel-deref-forms future-names)]))))
+
+(defmacro pcalls [& functions]
+  (if (empty? functions)
+    []
+    (let [function-names
+          (osiris.kernel/parallel-params "pcall-function" functions)
+          future-names
+          (osiris.kernel/parallel-params "pcall-future" functions)
+          function-bindings
+          (osiris.kernel/parallel-bindings function-names functions)
+          future-expressions (osiris.kernel/parallel-call-forms function-names)
+          future-bindings
+          (osiris.kernel/parallel-bindings future-names future-expressions)]
+      `(let [~@function-bindings ~@future-bindings]
+         [~@(osiris.kernel/parallel-deref-forms future-names)]))))
+
+(defmacro promise [& args]
+  (if (empty? args)
+    `(osiris.kernel/promise*)
+    (syntax-error &form "promise does not accept arguments")))
+
+(defmacro deliver [value result]
+  `(osiris.kernel/deliver* ~value ~result))
+
+(defmacro lock [& args]
+  (if (empty? args)
+    `(osiris.kernel/lock*)
+    (syntax-error &form "lock does not accept arguments")))
+
+(defmacro locking [value & body]
+  `(osiris.kernel/locking* ~value (fn [] ~(if (empty? body)
+                                            none
+                                            `(do
+                                               ~@body)))))
+
+;; Keep timing as a surface macro so the measured expression remains ordinary
+;; typed code with its lexical scope and source map intact.  The runtime owns
+;; only clock access and the Clojure-compatible reporting format.
+^{:doc
+  {:default "Measure body execution and return its final value."
+   "zh-CN" "测量主体执行时间并返回最终值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro time [& expressions]
+  (if (empty? expressions)
+    (syntax-error &form "time requires at least one expression")
+    `(osiris.kernel/time* (fn [] (do
+                                   ~@expressions)))))
+
+(defn-for-syntax osiris.kernel/validate-binding-targets [bindings]
+  (if (empty? bindings)
+    true
+    (let [target (first bindings)]
+      (if (not (symbol? target))
+        (syntax-error target "binding targets must be dynamic Var symbols")
+        (osiris.kernel/validate-binding-targets (rest (rest bindings)))))))
+
+^{:doc
+  {:default "Install context-local dynamic values for a body."
+   "zh-CN" "为主体安装上下文本地动态值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro binding [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "binding requires a binding vector")
+    (if (not (osiris.kernel/concurrent-even-bindings? bindings))
+      (syntax-error bindings "binding requires target/value pairs")
+      (let [valid (osiris.kernel/validate-binding-targets bindings)]
+        `(osiris.kernel/binding* ~bindings (fn [] ~(if (empty? body)
+                                                     none
+                                                     `(do
+                                                        ~@body))))))))
+
+(defn-for-syntax osiris.kernel/with-open-form [call bindings body]
+  (if (empty? bindings)
+    `(do
+       ~@body)
+    (if (empty? (rest bindings))
+      (syntax-error call "with-open requires resource name/value pairs")
+      (let [name (first bindings)
+            value (nth bindings 1)
+            remaining (rest (rest bindings))]
+        (if (not (symbol? name))
+          (syntax-error name "with-open resource names must be symbols")
+          `(let [~name ~value]
+             (try
+               ~(osiris.kernel/with-open-form call remaining body)
+               (finally (osiris.kernel/close* ~name)))))))))
+
+^{:doc
+  {:default "Acquire resources in order and close them in reverse order."
+   "zh-CN" "按顺序获取资源并以逆序关闭。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro with-open [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "with-open requires a binding vector")
+    (osiris.kernel/with-open-form &form bindings body)))
+
+^{:doc
+  {:default "Raise the supplied exception value." "zh-CN" "抛出给定的异常值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro throw [value]
+  `(raise ~value))
+
+^{:doc
+  {:default "Raise an assertion failure when a condition is falsey."
+   "zh-CN" "条件为假时抛出断言失败。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro assert [condition & message]
+  (if (> (count message) 1)
+    (syntax-error &form "assert accepts at most one message expression")
+    (if (empty? message)
+      `(if (osiris.kernel/truthy* ~condition)
+         none
+         (osiris.kernel/assert* false))
+      `(if (osiris.kernel/truthy* ~condition)
+         none
+         (osiris.kernel/assert* false ~(first message))))))
+
+^{:doc
+  {:default "Discard enclosed forms during macro expansion."
+   "zh-CN" "在宏展开期间丢弃内部形式。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro comment [& forms]
+  none)

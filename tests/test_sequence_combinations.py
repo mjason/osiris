@@ -21,38 +21,38 @@ class SequenceCombinationTests(unittest.TestCase):
     def test_partition_supports_overlap_gaps_and_final_padding(self):
         self.assertEqual(
             list(prelude.partition(3, (0, 1, 2, 3, 4))),
-            [[0, 1, 2]],
+            [(0, 1, 2)],
         )
         self.assertEqual(
             list(prelude.partition(3, 2, range(6))),
-            [[0, 1, 2], [2, 3, 4]],
+            [(0, 1, 2), (2, 3, 4)],
         )
         self.assertEqual(
             list(prelude.partition(2, 3, range(7))),
-            [[0, 1], [3, 4]],
+            [(0, 1), (3, 4)],
         )
         self.assertEqual(
             list(prelude.partition(3, 2, (9, 8), (0, 1, 2, 3))),
-            [[0, 1, 2], [2, 3, 9]],
+            [(0, 1, 2), (2, 3, 9)],
         )
         self.assertEqual(
             list(prelude.partition(4, 4, (9,), (1, 2))),
-            [[1, 2, 9]],
+            [(1, 2, 9)],
         )
         self.assertEqual(list(prelude.partition(2, None)), [])
 
     def test_partition_all_retains_each_incomplete_trailing_window(self):
         self.assertEqual(
             list(prelude.partition_all(3, (0, 1, 2, 3, 4))),
-            [[0, 1, 2], [3, 4]],
+            [(0, 1, 2), (3, 4)],
         )
         self.assertEqual(
             list(prelude.partition_all(3, 1, (0, 1, 2))),
-            [[0, 1, 2], [1, 2], [2]],
+            [(0, 1, 2), (1, 2), (2,)],
         )
         self.assertEqual(
             list(prelude.partition_all(3, 4, range(6))),
-            [[0, 1, 2], [4, 5]],
+            [(0, 1, 2), (4, 5)],
         )
 
     def test_partition_realizes_only_the_requested_prefix_and_replays_it(self):
@@ -66,12 +66,12 @@ class SequenceCombinationTests(unittest.TestCase):
         windows = prelude.partition_all(2, source())
         self.assertEqual(events, [])
         iterator = iter(windows)
-        self.assertEqual(next(iterator), [0, 1])
+        self.assertEqual(next(iterator), (0, 1))
         self.assertEqual(events, [0, 1])
-        self.assertEqual(next(iter(windows)), [0, 1])
+        self.assertEqual(next(iter(windows)), (0, 1))
         self.assertEqual(events, [0, 1])
-        self.assertEqual(list(iterator), [[2, 3], [4]])
-        self.assertEqual(list(windows), [[0, 1], [2, 3], [4]])
+        self.assertEqual(list(iterator), [(2, 3), (4,)])
+        self.assertEqual(list(windows), [(0, 1), (2, 3), (4,)])
         self.assertEqual(events, [0, 1, 2, 3, 4])
 
     def test_partition_by_calls_the_key_once_per_value_without_eager_input(self):

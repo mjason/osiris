@@ -27,8 +27,9 @@ fn temporary_directory() -> std::path::PathBuf {
 fn with_open_closes_resources_in_reverse_order() {
     let source = r#"
 (module resource_compile)
+(import osiris.core :refer [with-open])
 (py/import builtins :as py)
-(defn read-resource [] -> Any
+(defn ^Any read-resource []
   (with-open [first (py.open "/dev/null" "w")
               second (py.open "/dev/null" "w")]
     (py.str first.closed)))
@@ -39,26 +40,33 @@ fn with_open_closes_resources_in_reverse_order() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result
-        .python
-        .expect("with-open should generate Python")
-        .source;
-    assert!(generated.contains("close as"), "{generated}");
+    let generated = result.python.expect("with-open should generate Python");
+    assert!(generated.source.contains("close"), "{}", generated.source);
     let root = temporary_directory();
-    fs::write(root.join("resource_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("resource_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("with-open should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from resource_compile import read_resource\nassert read_resource() == 'False'\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -66,7 +74,7 @@ fn with_open_closes_resources_in_reverse_order() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

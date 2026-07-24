@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use oxilangtag::LanguageTag;
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 
@@ -14,7 +15,7 @@ use crate::{
     diagnostic::Diagnostic,
     hir::{self, Expr, ExprKind, ItemKind},
     macro_expand::ExpansionTrace,
-    name::{BindingKind, contains_cjk},
+    name::BindingKind,
     source::Span,
     syntax::{Form, FormKind, MetadataEntry},
     types::{CallSummaries, DataProperties, EffectRow, TemporalSummary, Type},
@@ -23,31 +24,95 @@ use crate::{
 /// Bumped when the JSON shape of SemanticDocument changes incompatibly.
 pub const SEMANTIC_DOCUMENT_VERSION: u32 = 1;
 
-/// A localized label. Locale only affects presentation and completion order.
+/// An open BCP 47 label table. Locale only affects presentation.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct LocalizedLabel {
-    #[serde(rename = "zh-CN")]
-    pub zh_cn: String,
-    pub en: String,
+    pub default: String,
+    pub translations: BTreeMap<String, String>,
 }
 
 impl LocalizedLabel {
     #[must_use]
-    pub fn new(canonical: impl Into<String>, chinese: Option<String>) -> Self {
-        let en = canonical.into();
+    pub fn new(default: impl Into<String>, translations: BTreeMap<String, String>) -> Self {
         Self {
-            zh_cn: chinese.unwrap_or_else(|| en.clone()),
-            en,
+            default: default.into(),
+            translations,
         }
     }
 
     #[must_use]
     pub fn for_locale(&self, locale: &str) -> &str {
-        if locale.eq_ignore_ascii_case("zh-cn") || locale.eq_ignore_ascii_case("zh") {
-            &self.zh_cn
-        } else {
-            &self.en
+        let Ok(tag) = LanguageTag::parse_and_normalize(locale) else {
+            return &self.default;
+        };
+        let mut candidate = tag.to_string();
+        loop {
+            if let Some(value) = self.translations.get(&candidate) {
+                return value;
+            }
+            let Some((parent, _)) = candidate.rsplit_once('-') else {
+                break;
+            };
+            candidate.truncate(parent.len());
         }
+        &self.default
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct LocalizedNameEntry {
+    pub preferred: String,
+    pub aliases: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct SemanticNames {
+    pub canonical: String,
+    pub localized: BTreeMap<String, LocalizedNameEntry>,
+}
+
+impl SemanticNames {
+    /// Select a display name with RFC 4647 lookup, retaining whether a tagged
+    /// locale matched instead of assigning a language to the canonical name.
+    #[must_use]
+    pub fn for_locale(&self, locale: Option<&str>) -> (&str, Option<&str>) {
+        lookup_localized(&self.localized, locale)
+            .map_or((&self.canonical, None), |(resolved, entry)| {
+                (&entry.preferred, Some(resolved))
+            })
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct SemanticDocumentation {
+    pub default: Option<String>,
+    pub translations: BTreeMap<String, String>,
+}
+
+impl SemanticDocumentation {
+    /// Select documentation with RFC 4647 lookup. A `None` resolved locale
+    /// means the authored `:default` slot was selected.
+    #[must_use]
+    pub fn for_locale(&self, locale: Option<&str>) -> (&str, Option<&str>) {
+        lookup_localized(&self.translations, locale).map_or_else(
+            || (self.default.as_deref().unwrap_or_default(), None),
+            |(resolved, text)| (text, Some(resolved)),
+        )
+    }
+}
+
+fn lookup_localized<'a, Value>(
+    values: &'a BTreeMap<String, Value>,
+    locale: Option<&str>,
+) -> Option<(&'a str, &'a Value)> {
+    let tag = LanguageTag::parse_and_normalize(locale?).ok()?;
+    let mut candidate = tag.to_string();
+    loop {
+        if let Some((resolved, value)) = values.get_key_value(&candidate) {
+            return Some((resolved, value));
+        }
+        let (parent, _) = candidate.rsplit_once('-')?;
+        candidate.truncate(parent.len());
     }
 }
 
@@ -152,6 +217,8 @@ pub struct SemanticSymbol {
     pub metadata: SemanticLayers,
     pub summary: SemanticSummary,
     pub labels: LocalizedLabel,
+    pub names: SemanticNames,
+    pub documentation: SemanticDocumentation,
     pub span: Span,
     pub definition: Span,
     pub references: Vec<Span>,
@@ -166,6 +233,8 @@ pub struct MacroTraceView {
     pub expansion_span: Span,
     pub depth: usize,
     pub origin: Vec<Span>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub definition: Option<crate::artifact::MacroDefinitionOrigin>,
 }
 
 impl From<&ExpansionTrace> for MacroTraceView {
@@ -177,8 +246,23 @@ impl From<&ExpansionTrace> for MacroTraceView {
             expansion_span: trace.expansion_span,
             depth: trace.depth,
             origin: trace.origin.clone(),
+            definition: standard_macro_definition(&trace.macro_binding_id),
         }
     }
+}
+
+fn standard_macro_definition(binding_id: &str) -> Option<crate::artifact::MacroDefinitionOrigin> {
+    let binding = crate::stdlib::NAMESPACES
+        .iter()
+        .flat_map(|namespace| crate::stdlib::exports(namespace))
+        .find(|binding| binding.id().as_str() == binding_id)?;
+    let source = crate::stdlib::api_record(binding).source;
+    Some(crate::artifact::MacroDefinitionOrigin {
+        binding_id: binding_id.to_owned(),
+        source: source.uri,
+        line: source.line,
+        column: source.column,
+    })
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -229,7 +313,7 @@ impl From<&Diagnostic> for SemanticDiagnostic {
     }
 }
 
-/// Versioned semantic document consumed by LSP, Agent tools, and inspect.
+/// Versioned semantic document consumed by LSP and finite LSC queries.
 #[derive(Clone, Debug, Serialize)]
 pub struct SemanticDocument {
     pub version: u32,
@@ -260,6 +344,7 @@ mod projection;
 
 use analysis::*;
 use metadata::*;
+pub use metadata::{documentation, localized_name_for, localized_names};
 use operations::*;
 pub use projection::project;
 

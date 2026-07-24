@@ -60,6 +60,7 @@ pub struct LspState {
     pub(super) documents: BTreeMap<String, OpenDocument>,
     target_python: PythonVersion,
     display_locale: String,
+    session_locale: Option<String>,
     site_roots: Vec<PathBuf>,
     analysis_runs: u64,
     shutdown_requested: bool,
@@ -70,7 +71,8 @@ impl Default for LspState {
         Self {
             documents: BTreeMap::new(),
             target_python: PythonVersion::DEFAULT_TARGET,
-            display_locale: "en".to_owned(),
+            display_locale: "zh-CN".to_owned(),
+            session_locale: None,
             site_roots: Vec::new(),
             analysis_runs: 0,
             shutdown_requested: false,

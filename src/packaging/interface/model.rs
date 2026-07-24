@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub const FORMAT_NAME: &str = "osiris-interface";
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 pub const COMPILER_ABI: &str = "osiris-compiler-v0";
 pub const LANGUAGE_ABI: &str = "osiris-language-v1";
 
@@ -42,7 +42,11 @@ pub type InterfaceResult<T> = Result<T, InterfaceError>;
 pub struct Interface {
     pub format_version: u32,
     pub compiler_abi: String,
+    pub language_version: String,
     pub language_abi: String,
+    pub standard_library_abi: u32,
+    pub linkable_helper_format: u32,
+    pub python_target: crate::types::PythonVersion,
     pub module: String,
     pub metadata: Vec<MetadataEntry>,
     pub bindings: Vec<PublicBinding>,

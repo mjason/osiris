@@ -1,27 +1,15 @@
-pub(super) fn completion_item(symbol: &SemanticSymbol, chinese: bool) -> CompletionItem {
-    let actual_alias = chinese
-        .then(|| {
-            symbol
-                .aliases
-                .iter()
-                .filter(|alias| contains_cjk(&alias.spelling))
-                .min_by_key(|alias| (!alias.public, !alias.preferred, &alias.spelling))
-        })
-        .flatten();
-    let insert_text = actual_alias.map_or_else(
+pub(super) fn completion_items(
+    symbol: &SemanticSymbol,
+    locale: Option<&str>,
+) -> Vec<CompletionItem> {
+    let localized_name = localized_name_for(&symbol.names.localized, locale);
+    let label = localized_name.map_or_else(
         || symbol.source_spelling.clone(),
-        |alias| alias.spelling.clone(),
+        |name| name.preferred.clone(),
     );
-    let label = if chinese {
-        actual_alias.map_or_else(
-            || symbol.labels.zh_cn.clone(),
-            |alias| alias.spelling.clone(),
-        )
-    } else {
-        symbol.labels.en.clone()
-    };
-    let localized = chinese && (contains_cjk(&label) || contains_cjk(&insert_text));
-    CompletionItem {
+    let insert_text = label.clone();
+    let localized = localized_name.is_some();
+    let primary = CompletionItem {
         label,
         kind: completion_kind(symbol.kind),
         detail: format!("{} : {}", symbol.canonical, symbol.ty),
@@ -41,9 +29,40 @@ pub(super) fn completion_item(symbol: &SemanticSymbol, chinese: bool) -> Complet
         data: json!({
             "bindingId": symbol.binding_id,
             "canonical": symbol.canonical,
-            "insertedAlias": actual_alias.map(|alias| alias.spelling.as_str()),
+            "insertedAlias": localized_name.map(|name| name.preferred.as_str()),
         }),
+    };
+    let mut items = vec![primary];
+    for alias in &symbol.aliases {
+        if items
+            .iter()
+            .any(|item| item.insert_text == alias.spelling)
+        {
+            continue;
+        }
+        items.push(CompletionItem {
+            label: alias.spelling.clone(),
+            kind: completion_kind(symbol.kind),
+            detail: format!("{} : {}", symbol.canonical, symbol.ty),
+            insert_text: alias.spelling.clone(),
+            sort_text: format!(
+                "{}:{}:{}",
+                if alias.preferred { 0 } else { 1 },
+                symbol.canonical,
+                alias.canonical
+            ),
+            filter_text: format!(
+                "{} {} {}",
+                symbol.canonical, symbol.source_spelling, alias.spelling
+            ),
+            data: json!({
+                "bindingId": symbol.binding_id,
+                "canonical": symbol.canonical,
+                "insertedAlias": alias.spelling,
+            }),
+        });
     }
+    items
 }
 
 pub(super) const fn completion_kind(kind: BindingKind) -> u8 {

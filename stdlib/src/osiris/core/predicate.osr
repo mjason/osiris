@@ -1,0 +1,118 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.predicate)
+
+(export
+  [nil? some? true? false? number? string? list? vector? map? set? sequence?])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "Test whether a value is exactly none."
+   "zh-CN" "测试一个值是否恰好为 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} nil? [^{:type A} value]
+  (kernel-leaf-nil? value))
+
+^{:doc
+  {:default "Test whether a value is not none, retaining false as present."
+   "zh-CN" "测试一个值是否不是 none；false 仍视为存在。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} some? [^{:type A} value]
+  (kernel-leaf-some? value))
+
+^{:doc
+  {:default "Test whether a value is exactly the Boolean true."
+   "zh-CN" "测试一个值是否恰好为布尔值 true。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} true? [^{:type A} value]
+  (kernel-leaf-true? value))
+
+^{:doc
+  {:default "Test whether a value is exactly the Boolean false."
+   "zh-CN" "测试一个值是否恰好为布尔值 false。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} false? [^{:type A} value]
+  (kernel-leaf-false? value))
+
+^{:doc
+  {:default "Test for logical Int or Float values while excluding Bool."
+   "zh-CN" "测试逻辑 Int 或 Float 值，并排除 Bool。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} number? [^{:type A} value]
+  (kernel-leaf-number? value))
+
+^{:doc
+  {:default "Test whether a value is a logical Str."
+   "zh-CN" "测试一个值是否为逻辑 Str。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} string? [^{:type A} value]
+  (kernel-leaf-string? value))
+
+^{:doc
+  {:default "Test whether a value is a logical List."
+   "zh-CN" "测试一个值是否为逻辑 List。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} list? [^{:type A} value]
+  (kernel-leaf-list? value))
+
+^{:doc
+  {:default "Test whether a value is a logical Vector."
+   "zh-CN" "测试一个值是否为逻辑 Vector。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} vector? [^{:type A} value]
+  (kernel-leaf-vector? value))
+
+^{:doc
+  {:default "Test whether a value is a logical Map."
+   "zh-CN" "测试一个值是否为逻辑 Map。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} map? [^{:type A} value]
+  (kernel-leaf-map? value))
+
+^{:doc
+  {:default "Test whether a value is a logical Set."
+   "zh-CN" "测试一个值是否为逻辑 Set。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} set? [^{:type A} value]
+  (kernel-leaf-set? value))
+
+^{:doc
+  {:default "Test whether a value can participate in logical sequence operations."
+   "zh-CN" "测试一个值是否可参与逻辑序列操作。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Bool} sequence? [^{:type C} value]
+  (kernel-leaf-sequence? value))

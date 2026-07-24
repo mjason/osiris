@@ -24,9 +24,12 @@ fn temporary_directory() -> std::path::PathBuf {
 fn distinct_lowers_to_a_lazy_sequence_and_composes_with_take() {
     let source = r#"
 (module distinct_compile)
-(defn unique [[values (Vector Int)]] -> (Vector Int)
+(import osiris.core :refer [cycle distinct mapv take])
+^{:doc "Return distinct values eagerly."}
+(defn ^{:type (Vector Int)} unique [^{:type (Vector Int)} values]
   (mapv (fn [value] value) (distinct values)))
-(defn prefix [] -> (Vector Int)
+^{:doc "Return a finite distinct prefix."}
+(defn ^{:type (Vector Int)} prefix []
   (mapv (fn [value] value)
     (take 3 (distinct (cycle [1 1 2 2 3])))))
 (export [unique prefix])
@@ -37,11 +40,29 @@ fn distinct_lowers_to_a_lazy_sequence_and_composes_with_take() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("distinct"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(
+        generated.source.contains("distinct"),
+        "{}",
+        generated.source
+    );
 
     let root = temporary_directory();
-    fs::write(root.join("distinct_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("distinct_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("sequence operations should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -53,13 +74,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -67,7 +84,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -77,7 +94,8 @@ print("ok")
 fn distinct_rejects_an_invalid_arity_before_codegen() {
     let source = r#"
 (module distinct_compile)
-(defn invalid [[values (Vector Int)]] -> Any
+(import osiris.core :refer [distinct])
+(defn ^Any invalid [^{:type (Vector Int)} values]
   (distinct values values))
 "#;
     let result = compile(source, &options());

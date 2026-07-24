@@ -6,6 +6,24 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
     if interface.module.is_empty() {
         return Err(InterfaceError::new("OSR-I0016", "empty module name"));
     }
+    validate_declaration_metadata(
+        &interface.metadata,
+        "module declaration",
+        &interface.module,
+        false,
+    )?;
+    let require_public_docs = !interface.metadata.iter().any(|entry| {
+        matches!(&entry.key.kind, FormKind::Keyword(name) if name.canonical.trim_start_matches(':') == "osiris/internal")
+            && matches!(entry.value.kind, FormKind::Bool(true))
+    });
+    for binding in &interface.bindings {
+        validate_declaration_metadata(
+            &binding.metadata,
+            &format!("exported declaration `{}`", binding.canonical),
+            &binding.canonical,
+            require_public_docs,
+        )?;
+    }
     unique(
         interface.bindings.iter().map(|binding| &binding.id),
         "binding id",
@@ -121,6 +139,12 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
         )?;
         let mut parameter_names = BTreeSet::new();
         for parameter in &function.parameters {
+            validate_declaration_metadata(
+                &parameter.metadata,
+                &format!("parameter `{}`", parameter.canonical),
+                &parameter.canonical,
+                false,
+            )?;
             for name in std::iter::once(&parameter.canonical).chain(&parameter.aliases) {
                 if !parameter_names.insert(name) {
                     return Err(InterfaceError::new(
@@ -151,8 +175,8 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
             return Err(InterfaceError::new(
                 "OSR-I0074",
                 format!(
-                    "function `{}` interface differs from its binding signature",
-                    function.binding
+                    "function `{}` interface differs from its binding signature: binding={signature:?}, parameters={parameters:?}, return={:?}, summaries={:?}",
+                    function.binding, function.return_type, function.summaries
                 ),
             ));
         }
@@ -171,6 +195,14 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
             ));
         }
         unique(structure.fields.iter().map(|field| &field.id), "field id")?;
+        for field in &structure.fields {
+            validate_declaration_metadata(
+                &field.metadata,
+                &format!("field `{}`", field.canonical),
+                &field.canonical,
+                false,
+            )?;
+        }
         unique(
             structure.fields.iter().map(|field| &field.canonical),
             "field name",
@@ -241,6 +273,12 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
     let helper_names = helper_forms.keys().cloned().collect::<BTreeSet<_>>();
     let mut required_helpers = BTreeSet::new();
     for macro_ in &interface.macros {
+        validate_declaration_metadata(
+            &macro_.phase_ir.metadata,
+            &format!("exported macro `{}`", macro_.canonical),
+            &macro_.canonical,
+            require_public_docs,
+        )?;
         let expected_id = BindingId::new(&interface.module, &macro_.canonical, BindingKind::Macro);
         if macro_.id != expected_id.as_str() {
             return Err(InterfaceError::new(

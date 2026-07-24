@@ -53,28 +53,15 @@ fn destructured_parameter_parts(form: &Form, phase: FunctionPhase) -> Option<(&F
         FormKind::Map(_) => Some((form, &[] as &[Form])),
         FormKind::Vector(parts) if phase != FunctionPhase::Runtime => Some((form, &parts[..0])),
         FormKind::Vector(parts) if !ordinary_runtime_parameter_declaration(parts) => {
-            // Runtime destructuring uses one explicit wrapper layer. This
-            // makes `[[left right] Type]` independent of whether `Type`
-            // starts with an uppercase, a lowercase, or a non-Latin
-            // character. Runtime vector patterns are required to provide the
-            // tail type; phase-1 patterns remain implicitly Syntax-typed.
-            if let Some(pattern) = parts
-                .first()
-                .filter(|part| matches!(part.kind, FormKind::Vector(_) | FormKind::Map(_)))
-            {
-                Some((pattern, &parts[1..]))
-            } else {
-                Some((form, &parts[..0]))
-            }
+            Some((form, &parts[..0]))
         }
         _ => None,
     }
 }
 
 fn ordinary_runtime_parameter_declaration(parts: &[Form]) -> bool {
-    parts
-        .first()
-        .is_some_and(|part| template_symbol_name(part).is_some())
+    matches!(parts, [name, equals, _]
+        if template_symbol_name(name).is_some() && is_equal_symbol(equals))
 }
 
 /// Returns a symbol used directly or supplied through a syntax-quote
@@ -161,36 +148,6 @@ fn error_name() -> Name {
     }
 }
 
-fn looks_like_type(form: &Form) -> bool {
-    match &form.kind {
-        FormKind::List(items) => {
-            let Some(head) = items.first() else {
-                return false;
-            };
-            looks_like_type_name(head) && items[1..].iter().all(looks_like_type_argument)
-        }
-        FormKind::Symbol(name) => name
-            .canonical
-            .chars()
-            .next()
-            .is_some_and(char::is_uppercase),
-        _ => false,
-    }
-}
-
-fn looks_like_type_name(form: &Form) -> bool {
-    matches!(&form.kind, FormKind::Symbol(name)
-        if name.canonical.chars().next().is_some_and(char::is_uppercase))
-}
-
-fn looks_like_type_argument(form: &Form) -> bool {
-    looks_like_type(form)
-        || matches!(
-            form.kind,
-            FormKind::Vector(_) | FormKind::Map(_) | FormKind::Set(_)
-        )
-}
-
 fn is_equal_symbol(form: &Form) -> bool {
     matches!(&form.kind, FormKind::Symbol(name) if name.canonical == "=")
 }
@@ -223,12 +180,6 @@ fn merge_declaration_metadata(
         }
     }
     declaration
-}
-
-fn has_type_marker(form: &Form) -> bool {
-    form.metadata.iter().any(|entry| {
-        metadata_key(&entry.key) == Some("type") && matches!(entry.value.kind, FormKind::Bool(true))
-    })
 }
 
 #[cfg(test)]

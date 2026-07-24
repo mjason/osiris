@@ -1,0 +1,204 @@
+;; Source-distributed Osiris standard module. Kernel leaves are linked privately.
+(module osiris.collection)
+
+(export
+  [merge merge-with group-by frequencies index-by select-keys rename-keys
+   update-keys update-vals zipmap invert get assoc dissoc update get-in
+   assoc-in update-in])
+
+(import osiris.collection.kernel :refer :all)
+
+^{:doc
+  {:default "Merge associative inputs left to right, with later values replacing earlier values."
+   "zh-CN" "从左到右合并关联输入，后面的值覆盖前面的值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [K V]}
+(defn ^{:type (Map K V)} merge [& ^{:type (Map K V)} collections]
+  (kernel-leaf-apply kernel-leaf-merge [] collections))
+
+^{:doc
+  {:default "Merge associative inputs and combine duplicate values left to right with a function."
+   "zh-CN" "合并关联输入，并用函数从左到右组合重复键的值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [K V]}
+(defn ^{:type (Map K V)} merge-with
+  [^{:type (Fn [V V] -> V)} function & ^{:type (Map K V)} collections]
+  (kernel-leaf-apply kernel-leaf-merge-with [function] collections))
+
+^{:doc
+  {:default "Group values by one computed key while preserving item and first-key encounter order."
+   "zh-CN" "按一个计算键分组，并保持元素顺序与键首次出现顺序。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B K]}
+(defn ^{:type (Map K (Vector A))} group-by
+  [^{:type (Fn [A] -> K)} function ^{:type B} collection]
+  (kernel-leaf-group-by function collection))
+
+^{:doc
+  {:default "Count values using logical Osiris equality and deterministic encounter order."
+   "zh-CN" "使用 Osiris 逻辑相等性与确定的出现顺序统计值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Map A Int)} frequencies [^{:type B} collection]
+  (kernel-leaf-frequencies collection))
+
+^{:doc
+  {:default "Index values by one computed key and reject duplicate derived keys."
+   "zh-CN" "按一个计算键索引值，并拒绝重复的派生键。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B K]}
+(defn ^{:type (Map K A)} index-by
+  [^{:type (Fn [A] -> K)} function ^{:type B} collection]
+  (kernel-leaf-index-by function collection))
+
+^{:doc
+  {:default "Return present requested keys in request order, omitting missing keys."
+   "zh-CN" "按请求顺序返回存在的指定键，并省略缺失键。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C K V]}
+(defn ^{:type (Map K V)} select-keys
+  [^{:type C} collection ^{:type (List A)} keys]
+  (kernel-leaf-select-keys collection keys))
+
+^{:doc
+  {:default "Rename existing associative keys without mutation and reject collisions."
+   "zh-CN" "不修改输入地重命名现有键，并拒绝冲突。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [K V]}
+(defn ^{:type (Map K V)} rename-keys
+  [^{:type (Map K V)} collection ^{:type (Map K K)} renames]
+  (kernel-leaf-rename-keys collection renames))
+
+^{:doc
+  {:default "Transform keys in deterministic order and reject output-key collisions."
+   "zh-CN" "按确定顺序转换键，并拒绝输出键冲突。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [B K V]}
+(defn ^{:type (Map B V)} update-keys
+  [^{:type (Fn [K] -> B)} function ^{:type (Map K V)} collection]
+  (kernel-leaf-update-keys function collection))
+
+^{:doc
+  {:default "Transform associative values in deterministic iteration order."
+   "zh-CN" "按确定的迭代顺序转换关联值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [B K V]}
+(defn ^{:type (Map K B)} update-vals
+  [^{:type (Fn [V] -> B)} function ^{:type (Map K V)} collection]
+  (kernel-leaf-update-vals function collection))
+
+^{:doc
+  {:default "Pair keys and values in order, stopping at the shorter input."
+   "zh-CN" "按顺序配对键和值，并在较短输入处停止。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B K V]}
+(defn ^{:type (Map K V)} zipmap [^{:type A} keys ^{:type B} values]
+  (kernel-leaf-zipmap keys values))
+
+^{:doc
+  {:default "Swap associative keys and values while rejecting duplicate output keys."
+   "zh-CN" "交换关联数据的键和值，并拒绝重复输出键。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [K V]}
+(defn ^{:type (Map V K)} invert [^{:type (Map K V)} collection]
+  (kernel-leaf-invert collection))
+
+^{:doc
+  {:default "Read an associative value without insertion, returning none or an explicit fallback when absent."
+   "zh-CN" "读取关联值但不插入；缺失时返回 none 或显式回退值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [B C K V]}
+(defn ^{:type (Union B V)} get
+  [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]]
+  (kernel-leaf-get collection key not-found))
+
+^{:doc
+  {:default "Return new associative data with key/value pairs applied left to right."
+   "zh-CN" "返回从左到右应用键值对后的新关联数据。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type C} assoc [^{:type C} collection & ^{:type A} entries]
+  (kernel-leaf-apply kernel-leaf-assoc [collection] entries))
+
+^{:doc
+  {:default "Return new associative data without the requested keys."
+   "zh-CN" "返回移除指定键后的新关联数据。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C K]}
+(defn ^{:type C} dissoc [^{:type C} collection & ^{:type K} keys]
+  (kernel-leaf-apply kernel-leaf-dissoc [collection] keys))
+
+^{:doc
+  {:default "Update one key by calling a function with its current value or none and extra arguments."
+   "zh-CN" "用当前值或 none 以及额外参数调用函数来更新一个键。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C K]}
+(defn ^{:type C} update
+  [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+   ^{:type A} arguments]
+  (kernel-leaf-apply kernel-leaf-update [collection key function] arguments))
+
+^{:doc
+  {:default "Traverse nested associative keys and return a fallback at the first missing path."
+   "zh-CN" "遍历嵌套关联键，并在首个缺失路径返回回退值。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C V]}
+(defn ^{:type (Union B V)} get-in
+  [^{:type C} collection ^{:type (List A)} keys
+   [^{:type (Option B)} not-found = none]]
+  (kernel-leaf-get-in collection keys not-found))
+
+^{:doc
+  {:default "Return nested associative data with missing map nodes created as needed."
+   "zh-CN" "返回按需创建缺失 Map 节点后的嵌套关联数据。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C V]}
+(defn ^{:type C} assoc-in
+  [^{:type C} collection ^{:type (List A)} keys ^{:type V} value]
+  (kernel-leaf-assoc-in collection keys value))
+
+^{:doc
+  {:default "Update one nested path with exactly one callback invocation."
+   "zh-CN" "通过恰好一次回调调用更新一个嵌套路径。"}
+  :category "collection"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C K]}
+(defn ^{:type C} update-in
+  [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+   ^{:type A} arguments]
+  (kernel-leaf-apply kernel-leaf-update-in [collection key function] arguments))

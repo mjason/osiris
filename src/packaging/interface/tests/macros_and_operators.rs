@@ -98,8 +98,8 @@ fn operator_instance_tampering_is_rejected_before_hash_acceptance() {
 fn operator_instance_requires_an_owned_nominal_operand() {
     let source = r#"
             (module sample.operators)
-            ^{:osiris/operator :add}
-            (defn add-scalars [[left Float] [right Float]] -> Float left)
+            ^{:doc "Add scalar fixtures." :osiris/operator :add}
+            (defn ^Float add-scalars [^Float left ^Float right] left)
             (export [add-scalars])
         "#;
     let (surface, typed) = operator_modules(source);
@@ -111,10 +111,8 @@ fn duplicate_operator_operand_tuple_is_rejected() {
     let source = OPERATOR_SOURCE.replace(
         "(export [Series multiply-series])",
         r#"
-            ^{:osiris/operator :multiply}
-            (defn multiply-series-again
-              [[series (Series Float)] [multiplier Float]]
-              -> (Series Float)
+            ^{:doc "Multiply a series fixture again." :osiris/operator :multiply}
+            (defn ^{:type (Series Float)} multiply-series-again [^{:type (Series Float)} series ^Float multiplier]
               series)
             (export [Series multiply-series multiply-series-again])
             "#,

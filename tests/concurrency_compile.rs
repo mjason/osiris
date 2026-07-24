@@ -24,18 +24,19 @@ fn temporary_directory() -> std::path::PathBuf {
 fn future_promise_and_locking_compile_and_run() {
     let source = r#"
 (module concurrency_compile)
-(defn future-add [[value Int]] -> Int
+(import osiris.concurrent :refer :all)
+(defn ^Int future-add [^Int value]
   (let [task (future (+ value 1))]
     (deref task)))
-(defn promise-value [[value Int]] -> Int
+(defn ^Int promise-value [^Int value]
   (let [result (promise)]
     (do
       (deliver result value)
       (deref result))))
-(defn promise-timeout [] -> Int
+(defn ^Int promise-timeout []
   (let [result (promise)]
     (deref result 0 42)))
-(defn locked-add [[value Int]] -> Int
+(defn ^Int locked-add [^Int value]
   (let [guard (lock)]
     (locking guard (+ value 1))))
 "#;
@@ -45,11 +46,31 @@ fn future_promise_and_locking_compile_and_run() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("future_call as"), "{generated}");
-    assert!(generated.contains("deref as"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(
+        generated.source.contains("future_call"),
+        "{}",
+        generated.source
+    );
+    assert!(generated.source.contains("deref"), "{}", generated.source);
+    assert!(!generated.source.contains("osiris.prelude"));
     let root = temporary_directory();
-    fs::write(root.join("concurrency_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("concurrency_compile.py"), &generated.source)
+        .expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("runtime support should be linked");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -63,13 +84,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -77,7 +94,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

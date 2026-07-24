@@ -1,5 +1,9 @@
 use super::*;
 
+pub(super) fn config_error(error: &ConfigError) -> CliOutcome {
+    CliOutcome::failure(1, String::new(), format!("osr: {error}\n"))
+}
+
 pub(super) struct CompileContext {
     pub(super) options: CompileOptions,
     pub(super) default_out_dir: PathBuf,
@@ -66,6 +70,7 @@ pub(super) fn load_workspace_sources(
         }
         units.push(WorkspaceSource {
             options: CompileOptions::new(&module_name, project.target_python)
+                .with_strict(project.strict)
                 .with_source_name(path.display().to_string())
                 .with_expected_module_name(module_name)
                 .with_provider(
@@ -184,6 +189,7 @@ pub(super) fn compile_context(source_path: &Path) -> Result<CompileContext, Conf
             let module_name = config.module_name_for_source(&source_identity)?;
             Ok(CompileContext {
                 options: CompileOptions::new(&module_name, config.target_python)
+                    .with_strict(config.strict)
                     .with_source_name(source_path.display().to_string())
                     .with_expected_module_name(module_name)
                     .with_provider(

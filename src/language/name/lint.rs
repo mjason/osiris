@@ -13,15 +13,6 @@ pub const INVISIBLE_IDENTIFIER: &str = "OSR-N0100";
 pub const CONFUSABLE_IDENTIFIER: &str = "OSR-N0101";
 pub const MIXED_SCRIPT_IDENTIFIER: &str = "OSR-N0102";
 
-pub(crate) fn contains_cjk(value: &str) -> bool {
-    value.chars().any(|character| {
-        matches!(
-            character as u32,
-            0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff
-        )
-    })
-}
-
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IdentifierLintKind {

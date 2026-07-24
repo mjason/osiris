@@ -17,6 +17,7 @@ static NEXT_STAGING_ID: AtomicU64 = AtomicU64::new(0);
 #[serde(rename_all = "kebab-case")]
 pub enum ArtifactKind {
     Python,
+    RuntimeSupport,
     Interface,
     SourceMap,
     Records,
@@ -43,7 +44,10 @@ impl Artifact {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SourceMap {
     pub version: u32,
+    pub language_version: String,
+    pub python_target: String,
     pub source: String,
+    pub source_hash: String,
     pub generated: String,
     pub trust_policy_hash: String,
     pub build_hash: String,
@@ -57,6 +61,17 @@ pub struct SourceMapping {
     pub source_span: Span,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub expansion_origin: Vec<Span>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub macro_definitions: Vec<MacroDefinitionOrigin>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MacroDefinitionOrigin {
+    pub binding_id: String,
+    pub source: String,
+    pub line: u32,
+    pub column: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]

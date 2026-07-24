@@ -13,6 +13,7 @@ pub(super) struct CallableSignatureParameter {
     pub(super) source_spelling: String,
     pub(super) python: String,
     pub(super) aliases: Vec<String>,
+    pub(super) localized: BTreeMap<String, LocalizedNameEntry>,
     pub(super) ty: Type,
     pub(super) has_default: bool,
     pub(super) default_text: Option<String>,
@@ -46,11 +47,8 @@ pub(super) fn macro_signature_help(
         .first()
         .and_then(form_name)
         .unwrap_or(signature.canonical);
-    let parameters = phase_parameter_labels(
-        signature.parameters,
-        is_chinese_locale(locale),
-        signature.variadic,
-    )?;
+    let parameters =
+        phase_parameter_labels(signature.parameters, Some(locale), signature.variadic)?;
     let arguments = source_macro_arguments(items);
     let active_argument = active_source_argument(items, &arguments, offset);
     let active_parameter =
@@ -122,27 +120,23 @@ pub(super) fn phase_parameter_form(declaration: &Form) -> Option<&Form> {
 
 pub(super) fn phase_parameter_labels(
     parameters: &Form,
-    chinese: bool,
+    locale: Option<&str>,
     declared_variadic: bool,
 ) -> Option<Vec<String>> {
     let FormKind::Vector(items) = &parameters.kind else {
         return None;
     };
-    let mut labels = Vec::new();
+    let mut labels = Vec::<String>::new();
     let mut variadic = false;
     for item in items {
         if form_name(item).is_some_and(|name| name == "&") {
             variadic = true;
             continue;
         }
-        let localized = chinese
-            .then(|| {
-                metadata_aliases(&item.metadata, "")
-                    .into_iter()
-                    .find(|alias| contains_cjk(alias))
-            })
-            .flatten();
-        let label = localized.unwrap_or_else(|| display_form(item));
+        let names = localized_names(&item.metadata);
+        let label = localized_name_for(&names, locale)
+            .map(|name| name.preferred.clone())
+            .unwrap_or_else(|| display_form(item));
         labels.push(if variadic {
             format!("& {label}")
         } else {
@@ -267,6 +261,10 @@ pub(super) fn local_callable_signature(
                 ),
                 canonical,
                 aliases,
+                localized: binding
+                    .map(|binding| localized_names(&binding.metadata))
+                    .or_else(|| published.map(|parameter| localized_names(&parameter.metadata)))
+                    .unwrap_or_default(),
                 ty: parameter.ty.clone(),
                 has_default: parameter.default.is_some(),
                 default_text: parameter.default.as_ref().and_then(|default| {
@@ -305,6 +303,7 @@ pub(super) fn interface_callable_signature(
                 source_spelling: parameter.canonical.clone(),
                 python: crate::name::python_identifier(&parameter.canonical),
                 aliases: parameter.aliases.clone(),
+                localized: localized_names(&parameter.metadata),
                 ty: parameter.ty.clone(),
                 has_default: parameter.has_default,
                 default_text: None,
@@ -317,17 +316,12 @@ pub(super) fn interface_callable_signature(
 
 pub(super) fn signature_parameter_label(
     parameter: &CallableSignatureParameter,
-    chinese: bool,
+    locale: Option<&str>,
 ) -> String {
-    let name = if chinese {
-        parameter
-            .aliases
-            .iter()
-            .find(|alias| contains_cjk(alias))
-            .unwrap_or(&parameter.source_spelling)
-    } else {
-        &parameter.source_spelling
-    };
+    let name = localized_name_for(&parameter.localized, locale)
+        .map_or(parameter.source_spelling.as_str(), |name| {
+            name.preferred.as_str()
+        });
     let variadic = if parameter.variadic { "& " } else { "" };
     let default = if let Some(value) = &parameter.default_text {
         format!(" = {value}")

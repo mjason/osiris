@@ -1,5 +1,23 @@
 use super::*;
 
+use sha2::{Digest, Sha256};
+
+#[derive(Default)]
+struct LinkedSupport {
+    helpers: BTreeSet<String>,
+    binding_ids: BTreeSet<String>,
+    source_maps: BTreeSet<SourceMapIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceMapIdentity {
+    source: String,
+    source_hash: String,
+    generated: String,
+    build_hash: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) enum EmitKind {
     Python,
@@ -138,6 +156,7 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
         .out_dir
         .map_or(context.default_out_dir, PathBuf::from);
     let mut artifacts = Vec::new();
+    let mut runtime_packages = BTreeMap::<String, LinkedSupport>::new();
     for (_, _, result) in units {
         let module_name = result.analysis.hir.name.clone();
         if arguments.emit.contains(&EmitKind::Python) {
@@ -148,6 +167,21 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                     format!("osr: compiler produced no Python output for `{module_name}`\n"),
                 );
             };
+            if let Some(runtime) = generated.runtime_support.as_ref() {
+                let support = runtime_packages.entry(runtime.package.clone()).or_default();
+                support.helpers.extend(runtime.helpers.iter().cloned());
+                support
+                    .binding_ids
+                    .extend(runtime.binding_ids.iter().cloned());
+                if let Some(source_map) = result.source_map.as_ref() {
+                    support.source_maps.insert(SourceMapIdentity {
+                        source: source_map.source.clone(),
+                        source_hash: source_map.source_hash.clone(),
+                        generated: source_map.generated.clone(),
+                        build_hash: source_map.build_hash.clone(),
+                    });
+                }
+            }
             artifacts.push(Artifact::text(
                 ArtifactKind::Python,
                 python_module_path(&module_name),
@@ -193,6 +227,71 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                 contents,
             ));
         }
+    }
+    for (package, support) in runtime_packages {
+        let linked_standard = match crate::stdlib::linked_standard_support(
+            &package,
+            &support.binding_ids,
+            context.options.target_python,
+        ) {
+            Ok(linked) => linked,
+            Err(message) => {
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    format!("osr: could not link standard source: {message}\n"),
+                );
+            }
+        };
+        let mut helpers = support.helpers;
+        helpers.extend(linked_standard.helpers);
+        let mut binding_ids = support.binding_ids;
+        binding_ids.extend(linked_standard.binding_ids);
+        let mut source_maps = support.source_maps;
+        source_maps.extend(linked_standard.source_maps.iter().map(|source_map| {
+            SourceMapIdentity {
+                source: source_map.source.clone(),
+                source_hash: source_map.source_hash.clone(),
+                generated: source_map.generated.clone(),
+                build_hash: source_map.build_hash.clone(),
+            }
+        }));
+        let mut support_files = crate::backend::runtime_support_files(&package, &helpers);
+        support_files.extend(linked_standard.files);
+        let file_hashes = support_files
+            .iter()
+            .filter(|(path, _)| path.extension().and_then(|value| value.to_str()) == Some("py"))
+            .map(|(path, source)| {
+                let digest = Sha256::digest(source.as_bytes());
+                (
+                    path.to_string_lossy().replace('\\', "/"),
+                    format!("sha256:{digest:x}"),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for (path, source) in support_files {
+            artifacts.push(Artifact::text(ArtifactKind::RuntimeSupport, path, source));
+        }
+        let manifest = serde_json::json!({
+            "schema": "osiris-linked-support/v1",
+            "languageVersion": crate::LANGUAGE_VERSION,
+            "pythonTarget": context.options.target_python.to_string(),
+            "standardLibraryAbi": crate::STANDARD_LIBRARY_ABI,
+            "standardLibrarySemanticHash": crate::stdlib::semantic_hash(),
+            "helperFormat": crate::LINKABLE_HELPER_FORMAT,
+            "reachableBindingIds": binding_ids,
+            "helperHashes": crate::backend::runtime_helper_hashes(&helpers),
+            "fileHashes": file_hashes,
+            "sourceMaps": source_maps,
+        });
+        let mut manifest = serde_json::to_string_pretty(&manifest)
+            .expect("linked support manifest is serializable");
+        manifest.push('\n');
+        artifacts.push(Artifact::text(
+            ArtifactKind::RuntimeSupport,
+            PathBuf::from(package.replace('.', "/")).join("manifest.json"),
+            manifest,
+        ));
     }
     let emit_records = arguments.emit.contains(&EmitKind::Records)
         || (!arguments.explicit_emit && !records.sidecar.records.is_empty());

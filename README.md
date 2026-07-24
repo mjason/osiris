@@ -12,8 +12,9 @@ Python code generation. It also emits deterministic `.osri` interfaces and
 source maps, compiles source modules as one dependency graph, and validates
 locked static extension interfaces without importing Python packages.
 
-The versioned prelude supplies Clojure-inspired control flow without making
-the reader or Rust core grow for every form. The implemented surface includes
+The compiler-embedded standard library supplies Clojure-inspired control flow
+without making the reader or Rust core grow for every form. The implemented
+surface includes
 threading (`->`, `->>`, `cond->`, `some->`, `as->`, `doto`), binding and
 branching (`when`, `if-let`, `if-some`, `case`, `condp`), comprehensions
 (`for`, `doseq`, `dotimes`), constant-stack `loop`/`recur`, `letfn`, `defn-` and
@@ -33,7 +34,7 @@ not claim Clojure compatibility.
 ## Requirements
 
 - Rust 1.85 or newer
-- Python 3.9 or newer for the optional Python package
+- Python 3.11 or newer for Python packaging and extension builds
 - `uv` for Python development
 
 ## Project Quick Start
@@ -87,16 +88,21 @@ compile destination; artifact selection remains an explicit
 Changing `targetPython` invalidates target-sensitive analysis, interfaces,
 extension resolution, and build artifacts.
 
-`displayLocale` is a closed enum used by hover, completion, and signature
-help when Rich Metadata provides localized labels or documentation:
+`displayLocale` accepts any well-formed BCP 47 language tag and is used by
+hover, completion, and signature help when Rich Metadata provides localized
+labels or documentation. For example:
 
-- `"zh-CN"` displays Simplified Chinese labels and documentation when present.
-- `"en"` displays English labels and documentation when present.
+- `"zh-CN"` requests Simplified Chinese labels and documentation.
+- `"en"` requests English labels and documentation.
+- `"ja"` requests Japanese labels and documentation.
 
 It changes tooling presentation, not binding identity or generated Python.
-An explicit locale sent by an LSP client takes precedence over the project
-value. `osr init` writes `"displayLocale": "zh-CN"` by default; change that
-single value to `"en"` for an English tooling view.
+RFC 4647 lookup selects the closest authored locale and then falls back to the
+authored `:default`; the configuration is not a closed locale enum. An explicit
+locale sent by an LSP client takes precedence over the project value. `osr
+init` writes `"displayLocale": "zh-CN"` by default. LSC intentionally does not
+inherit it: pass `--locale <bcp47>` when a finite CLI query needs a particular
+language.
 
 With that configuration and [`examples/hello.osr`](examples/hello.osr):
 
@@ -201,17 +207,23 @@ cargo run --bin osr -- build
 cargo run --bin osr -- watch
 cargo run --bin osr -- compile source.osr
 cargo run --bin osr -- expand source.osr
-cargo run --bin osr -- inspect --semantic source.osr --format json
+cargo run --bin osr -- fmt --check source.osr
+cargo run --bin osr -- lsc semantic source.osr --format json
+cargo run --bin osr -- lsc hover osiris.core/map --locale en
+cargo run --bin osr -- syntax
+cargo run --bin osr -- doc '{ documentationCapabilities { snapshotId } }'
 cargo run --bin osr -- lsp
 cargo test --all-targets --all-features
 ```
 
 `check` runs the frontend and semantic gates. `build` emits readable Python,
 an `.osri` compilation interface, and a `.py.map` source map into `dist/` by
-default. `expand` shows macro output. `inspect` exposes either the
-lossless syntax tree or the versioned semantic model used by the LSP and Agent
-APIs. Compilation errors return status 1; command-line misuse returns status
-2.
+default. `expand` shows macro output, `fmt` applies the canonical formatter,
+and `lsc` exposes the finite semantic and navigation operations used by the
+LSP without requiring an editor protocol. `syntax` prints the embedded English
+language manual, while `doc` queries the embedded read-only documentation
+snapshot with GraphQL. Compilation errors return status 1; command-line misuse
+returns status 2.
 
 The reader is implemented as composable `nom` grammar productions over a
 lossless token stream. All whitespace, commas, comments, original Unicode
@@ -222,13 +234,16 @@ collision-safe name resolution.
 ## Python package
 
 The PyPI wheel carries `osr` as a native Rust executable. Python and its
-packaging tools install the wheel, but they do not launch or host the CLI.
-The same wheel also contains the `osiris` runtime used by generated Python and
-the `osiris_build` PEP 517 backend used by Osiris source distributions. Python
-dependencies continue to be declared in `pyproject.toml` and locked by `uv`.
+packaging tools install the wheel, but they do not launch or host the CLI. The
+same wheel contains the `osiris_build` PEP 517 backend used by Osiris source
+distributions. It does not provide a shared runtime package: each build links
+only reachable standard support into the generated distribution's private
+`__osiris_runtime__` package, so deployed Python does not depend on
+`osiris-lang`. Python dependencies continue to be declared in
+`pyproject.toml` and locked by `uv`.
 
 The PyPI distribution is named `osiris-lang` because the `osiris` project name
-is already occupied. The installed Python package remains `osiris`:
+is already occupied. Its importable build-backend package is `osiris_build`:
 
 ```console
 uv tool install osiris-lang

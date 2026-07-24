@@ -10,20 +10,32 @@ impl<'a> Lowerer<'a> {
         let Some(name) = &function.name else {
             return;
         };
+        let generic_parameters = function
+            .type_params
+            .iter()
+            .map(|name| (name.canonical.clone(), self.types.fresh_var()))
+            .collect::<BTreeMap<_, _>>();
+        let generic_variables = generic_parameters
+            .values()
+            .filter_map(|ty| match ty {
+                Type::TypeVar(variable) => Some(*variable),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
         let parameter_types = function
             .params
             .iter()
             .map(|parameter| {
-                parameter
-                    .type_annotation
-                    .as_ref()
-                    .map_or_else(|| self.types.fresh_var(), type_from_ast)
+                parameter.type_annotation.as_ref().map_or_else(
+                    || self.types.fresh_var(),
+                    |annotation| type_from_ast_with_generics(annotation, &generic_parameters),
+                )
             })
             .collect::<Vec<_>>();
-        let return_type = function
-            .return_type
-            .as_ref()
-            .map_or_else(|| self.types.fresh_var(), type_from_ast);
+        let return_type = function.return_type.as_ref().map_or_else(
+            || self.types.fresh_var(),
+            |annotation| type_from_ast_with_generics(annotation, &generic_parameters),
+        );
         let mut signature = FunctionType::new(parameter_types, return_type);
         let contract_evidence = if external {
             signature.summaries = function
@@ -50,6 +62,22 @@ impl<'a> Lowerer<'a> {
                 span: parameter.span,
             })
             .collect::<Vec<_>>();
+        let runtime_name = if external {
+            function
+                .metadata
+                .iter()
+                .find_map(|entry| match (&entry.key.kind, &entry.value.kind) {
+                    (FormKind::Keyword(key), FormKind::String(value))
+                        if key.canonical.trim_start_matches(':') == "python/name" =>
+                    {
+                        Some(value.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| python_identifier(&name.canonical))
+        } else {
+            python_identifier(&name.canonical)
+        };
         if let Some(id) = self.declare(
             name,
             BindingKind::Function,
@@ -58,7 +86,7 @@ impl<'a> Lowerer<'a> {
             function.span,
             runtime_module.map(|module| RuntimeBinding {
                 module: module.to_owned(),
-                name: python_identifier(&name.canonical),
+                name: runtime_name,
                 python_module: true,
             }),
         ) {
@@ -66,7 +94,7 @@ impl<'a> Lowerer<'a> {
                 id,
                 signature,
                 callable_parameters,
-                Vec::new(),
+                generic_variables,
                 contract_evidence,
             );
         }

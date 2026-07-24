@@ -41,7 +41,7 @@ class ControlRuntimeTests(unittest.TestCase):
     def test_filter_uses_clojure_truthiness_at_dynamic_boundaries(self):
         predicate = lambda value: value
         values = (None, False, 0, "", (), [], 1)
-        self.assertEqual(prelude.filter(predicate, values), [0, "", (), [], 1])
+        self.assertEqual(list(prelude.filter(predicate, values)), [0, "", (), [], 1])
         self.assertEqual(prelude.filterv(predicate, values), (0, "", (), [], 1))
 
     def test_reduced_protocol_stops_reduce_and_fold(self):

@@ -26,14 +26,6 @@ impl Expander {
         self.collect_phase_one_declarations_scoped(forms, None, &module_name);
     }
 
-    pub(in crate::macro_expand) fn collect_phase_one_declarations_in_module(
-        &mut self,
-        forms: &[Form],
-        module_name: &str,
-    ) {
-        self.collect_phase_one_declarations_scoped(forms, None, module_name);
-    }
-
     pub(in crate::macro_expand) fn collect_imported_phase_modules(
         &mut self,
         modules: &[ImportedPhaseModule],

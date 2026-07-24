@@ -24,7 +24,8 @@ fn temporary_directory() -> std::path::PathBuf {
 fn time_evaluates_multiple_body_forms_and_returns_the_last_value() {
     let source = r#"
 (module time_compile)
-(defn timed [] -> Int
+(import osiris.core :refer [time])
+(defn ^Int timed []
   (time
     (let [ignored 1] ignored)
     (+ 40 2)))
@@ -35,24 +36,38 @@ fn time_evaluates_multiple_body_forms_and_returns_the_last_value() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("time_value"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(
+        generated.source.contains("time_value"),
+        "{}",
+        generated.source
+    );
 
     let root = temporary_directory();
-    fs::write(root.join("time_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("time_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("time should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from time_compile import timed\nassert timed() == 42\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -60,7 +75,7 @@ fn time_evaluates_multiple_body_forms_and_returns_the_last_value() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("Elapsed time:"),
@@ -72,7 +87,7 @@ fn time_evaluates_multiple_body_forms_and_returns_the_last_value() {
 
 #[test]
 fn time_requires_a_body() {
-    let source = "(module time_compile) (def value (time))";
+    let source = "(module time_compile) (import osiris.core :refer [time]) (def value (time))";
     let result = compile(source, &options());
     assert!(
         result

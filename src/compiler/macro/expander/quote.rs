@@ -14,9 +14,13 @@ impl Expander {
             FormKind::ReaderMacro {
                 macro_kind: ReaderMacroKind::Unquote,
                 form: expression,
-            } => self
-                .eval(expression, environment, budget, depth + 1)?
-                .into_data(form.span),
+            } => {
+                let mut expanded = self
+                    .eval(expression, environment, budget, depth + 1)?
+                    .into_data(form.span)?;
+                expanded.metadata = merge_call_metadata(&form.metadata, &expanded.metadata);
+                Ok(expanded)
+            }
             FormKind::ReaderMacro {
                 macro_kind: ReaderMacroKind::UnquoteSplicing,
                 ..

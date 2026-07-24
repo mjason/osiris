@@ -35,6 +35,7 @@ pub struct CompileOptions {
     pub distribution: String,
     pub distribution_version: String,
     pub target_python: PythonVersion,
+    pub strict: bool,
     pub trust_policy: hir::ContractTrustPolicy,
 }
 
@@ -49,6 +50,7 @@ impl CompileOptions {
             fallback_module_name,
             expected_module_name: None,
             target_python,
+            strict: true,
             trust_policy: dependency::contract_trust_policy(&[], &[])
                 .expect("empty trust policy is valid"),
         }
@@ -75,6 +77,12 @@ impl CompileOptions {
     ) -> Self {
         self.distribution = distribution.into();
         self.distribution_version = version.into();
+        self
+    }
+
+    #[must_use]
+    pub const fn with_strict(mut self, strict: bool) -> Self {
+        self.strict = strict;
         self
     }
 
@@ -184,24 +192,37 @@ fn analyze_document(
         options,
         &mut surface_result.diagnostics,
     );
+    if surface_result.module.name.as_ref().is_some_and(|name| {
+        name.canonical
+            .split('.')
+            .any(|component| component == "__osiris_runtime__")
+    }) {
+        surface_result.diagnostics.push(Diagnostic::error(
+            "OSR-C0004",
+            "`__osiris_runtime__` is reserved for compiler-linked support",
+            surface_result.module.span,
+        ));
+    }
     let static_data = interfaces.map_or_else(
         || records::analyze_module(&surface_result.module),
         |interfaces| records::analyze_module_with_interfaces(&surface_result.module, interfaces),
     );
     let hir_result = interfaces.map_or_else(
         || {
-            hir::lower_module_with_trust_policy(
+            hir::lower_module_with_compiler_policy(
                 &surface_result.module,
                 &options.fallback_module_name,
                 &options.trust_policy,
+                options.strict,
             )
         },
         |interfaces| {
-            hir::lower_module_with_interfaces_and_trust_policy(
+            hir::lower_module_with_interfaces_and_compiler_policy(
                 &surface_result.module,
                 &options.fallback_module_name,
                 interfaces,
                 &options.trust_policy,
+                options.strict,
             )
         },
     );
@@ -211,6 +232,20 @@ fn analyze_document(
     let mut diagnostics = surface_result.diagnostics;
     diagnostics.extend(static_data.diagnostics.iter().cloned());
     diagnostics.extend(hir_result.diagnostics);
+    if diagnostics.is_empty()
+        && let Err(error) = interface::build_with_static_data_for_target(
+            &hir_result.module,
+            &surface_result.module,
+            &static_data,
+            options.target_python,
+        )
+    {
+        diagnostics.push(Diagnostic::error(
+            error.code,
+            error.message,
+            hir_result.module.span,
+        ));
+    }
     sort_diagnostics(&mut diagnostics);
 
     Analysis {
@@ -237,16 +272,23 @@ fn finish_compile(
     mut analysis: Analysis,
     options: &CompileOptions,
 ) -> (CompileResult, Option<interface::Interface>) {
-    let interface_model = build_interface_model(&mut analysis);
+    let interface_model = build_interface_model(&mut analysis, options.target_python);
     finish_compile_with_model(analysis, options, interface_model)
 }
 
-fn build_interface_model(analysis: &mut Analysis) -> Option<interface::Interface> {
+fn build_interface_model(
+    analysis: &mut Analysis,
+    target_python: PythonVersion,
+) -> Option<interface::Interface> {
     if analysis.has_errors() {
         return None;
     }
-    match interface::build_with_static_data(&analysis.hir, &analysis.surface, &analysis.static_data)
-    {
+    match interface::build_with_static_data_for_target(
+        &analysis.hir,
+        &analysis.surface,
+        &analysis.static_data,
+        target_python,
+    ) {
         Ok(interface) => Some(interface),
         Err(error) => {
             analysis.diagnostics.push(Diagnostic::error(
@@ -319,14 +361,16 @@ fn finish_compile_with_model(
                     let generated_name = python_module_path(&analysis.hir.name)
                         .to_string_lossy()
                         .into_owned();
-                    let map = source_map::generate(
-                        options.source_name.clone(),
-                        generated_name,
-                        &generated.source,
-                        &analysis.hir,
-                        &analysis.expansion_traces,
-                        &build_hash,
-                    );
+                    let map = source_map::generate(source_map::GenerateInput {
+                        source_name: &options.source_name,
+                        generated_name: &generated_name,
+                        generated_source: &generated.source,
+                        module: &analysis.hir,
+                        traces: &analysis.expansion_traces,
+                        python_target: options.target_python,
+                        source_hash: &analysis.source_hash,
+                        build_hash: &build_hash,
+                    });
                     (Some(generated), Some(map))
                 }
                 Err(error) => {

@@ -17,7 +17,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0024",
-                "osiris.prelude/trampoline* expects a function and optional arguments",
+                "osiris.kernel/trampoline* expects a function and optional arguments",
                 span,
             );
             return Expr::error(span);

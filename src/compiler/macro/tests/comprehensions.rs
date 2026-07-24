@@ -3,7 +3,7 @@ fn for_expands_multiple_bindings_to_nested_flat_maps() {
     let output = expanded("(for [left lefts right (rights-for left)] (combine left right))");
     assert_eq!(
         output,
-        "(osiris.prelude/mapcatv (fn [left] (osiris.prelude/mapv (fn [right] (do (combine left right))) (rights-for left))) lefts)\n"
+        "(osiris.kernel/mapcat (fn [left] (osiris.kernel/map (fn [right] (do (combine left right))) (rights-for left))) lefts)\n"
     );
     assert_eq!(output.matches("lefts").count(), 1);
     assert_eq!(output.matches("(rights-for left)").count(), 1);
@@ -20,7 +20,7 @@ fn for_let_and_when_preserve_clause_order_and_single_evaluation() {
     assert_eq!(output.matches("(emit item detail score)").count(), 1);
     assert!(output.contains("(fn [item] (let [score (score item)]"));
     assert!(output.contains(
-            "(if (osiris.prelude/truthy* (eligible? score)) (osiris.prelude/mapv (fn [detail] (do (emit item detail score))) (details item)) [])"
+            "(if (osiris.kernel/truthy* (eligible? score)) (osiris.kernel/map (fn [detail] (do (emit item detail score))) (details item)) [])"
         ));
 }
 
@@ -45,14 +45,14 @@ fn and_and_or_preserve_short_circuit_single_evaluation() {
     assert_eq!(and_output.matches("(second?)").count(), 1);
     assert_eq!(and_output.matches("(third?)").count(), 1);
     assert!(and_output.contains("(let [and__osr_g0 (first?)]"));
-    assert!(and_output.contains("(if (osiris.prelude/truthy* and__osr_g0)"));
+    assert!(and_output.contains("(if (osiris.kernel/truthy* and__osr_g0)"));
 
     let or_output = expanded("(or (first?) (second?) (third?))");
     assert_eq!(or_output.matches("(first?)").count(), 1);
     assert_eq!(or_output.matches("(second?)").count(), 1);
     assert_eq!(or_output.matches("(third?)").count(), 1);
     assert!(or_output.contains("(let [or__osr_g0 (first?)]"));
-    assert!(or_output.contains("(if (osiris.prelude/truthy* or__osr_g0) or__osr_g0"));
+    assert!(or_output.contains("(if (osiris.kernel/truthy* or__osr_g0) or__osr_g0"));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn malformed_control_macros_report_macro_diagnostics() {
         "(letfn value body)",
         "(letfn [f (fn [])])",
     ] {
-        let result = expand(&read(source), ExpansionOptions::default());
+        let result = expand_core(source);
         assert!(
             result
                 .document
@@ -122,7 +122,7 @@ fn malformed_for_clauses_have_specific_diagnostics() {
             "unsupported for modifier :until; expected :let, :when, or :while",
         ),
     ] {
-        let result = expand(&read(source), ExpansionOptions::default());
+        let result = expand_core(source);
         assert!(
             result.document.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code == "OSR-M0007" && diagnostic.message == expected
@@ -153,7 +153,7 @@ fn malformed_doseq_clauses_have_specific_diagnostics() {
             "unsupported doseq modifier :until; expected :let, :when, or :while",
         ),
     ] {
-        let result = expand(&read(source), ExpansionOptions::default());
+        let result = expand_core(source);
         assert!(
             result.document.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code == "OSR-M0007" && diagnostic.message == expected
@@ -172,10 +172,7 @@ fn macro_declarations_keep_syntax_quote_templates_unexpanded() {
 
 #[test]
 fn malformed_threading_call_is_recoverable() {
-    let result = expand(
-        &read("(-> value ()) (def okay 1)"),
-        ExpansionOptions::default(),
-    );
+    let result = expand_core("(-> value ()) (def okay 1)");
     assert!(
         result
             .document
@@ -183,5 +180,5 @@ fn malformed_threading_call_is_recoverable() {
             .iter()
             .any(|diagnostic| diagnostic.code == "OSR-M0007")
     );
-    assert_eq!(result.document.forms.len(), 2);
+    assert_eq!(result.document.forms.len(), 3);
 }

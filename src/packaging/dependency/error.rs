@@ -45,11 +45,6 @@ pub enum DependencyError {
         marker: String,
         locked: String,
     },
-    MarkerSourceHashMismatch {
-        distribution: String,
-        marker: String,
-        locked: Option<String>,
-    },
     Extension(ExtensionError),
     Interface {
         path: PathBuf,
@@ -134,15 +129,6 @@ impl fmt::Display for DependencyError {
             } => write!(
                 formatter,
                 "extension marker `{distribution}` version `{marker}` does not match lock pin `{locked}`"
-            ),
-            Self::MarkerSourceHashMismatch {
-                distribution,
-                marker,
-                locked,
-            } => write!(
-                formatter,
-                "extension marker `{distribution}` source hash `{marker}` is not in lock pin `{}`",
-                locked.as_deref().unwrap_or("none")
             ),
             Self::Extension(error) => error.fmt(formatter),
             Self::Interface { path, message } => {

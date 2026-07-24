@@ -29,6 +29,7 @@ fn sample_module() -> ast::Module {
 fn dependency_interface_named(module_name: &str) -> interface::Interface {
     let source = format!(
         r#"(module {module_name})
+               ^{{:doc "Descriptor schema."}}
                (defstatic-schema Descriptor
                  :schema-id "dep/descriptor"
                  :version 1

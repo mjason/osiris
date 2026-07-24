@@ -30,6 +30,32 @@ fn main() -> ExitCode {
             }
         };
     }
+    if arguments.as_slice() == ["fmt", "-"] {
+        return match osiris::cli::run_fmt_stdio(&arguments[1..]) {
+            Ok(outcome) => {
+                let _ = io::stdout().lock().write_all(outcome.stdout.as_bytes());
+                let _ = io::stderr().lock().write_all(outcome.stderr.as_bytes());
+                ExitCode::from(outcome.exit_code)
+            }
+            Err(error) => {
+                let _ = writeln!(io::stderr().lock(), "osr: could not read stdin: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if arguments.as_slice() == ["doc", "-"] {
+        return match osiris::cli::run_doc_stdio() {
+            Ok(outcome) => {
+                let _ = io::stdout().lock().write_all(outcome.stdout.as_bytes());
+                let _ = io::stderr().lock().write_all(outcome.stderr.as_bytes());
+                ExitCode::from(outcome.exit_code)
+            }
+            Err(error) => {
+                let _ = writeln!(io::stderr().lock(), "osr: could not read stdin: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let outcome = osiris::cli::run_cli(&arguments);
 
     let _ = io::stdout().lock().write_all(outcome.stdout.as_bytes());

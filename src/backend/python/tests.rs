@@ -22,7 +22,7 @@ fn compile(source: &str) -> String {
 #[test]
 fn emits_readable_typed_function_and_value() {
     let source =
-        compile("(defn square [[x Float]] -> Float (* x x)) (def answer Float (square 3.0))");
+        compile("(defn ^Float square [^Float x] (* x x)) (def ^Float answer (square 3.0))");
     assert!(
         source.contains("def square(x: float) -> float:"),
         "{source}"
@@ -37,8 +37,7 @@ fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
         r#"(py/import host.runtime :as host)
            (py/decorate publish
              (host.register :extra-data {"columns" ["value" "year"]}))
-           (defn ^Any publish
-             [^Any context [^Str field = "value"]]
+           (defn ^Any publish [^Any context [^Str field = "value"]]
              (context.emit field))
            (py/decorate Point host.component)
            (defstruct Point [value Int])"#,
@@ -46,7 +45,7 @@ fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
     assert!(source.contains("import host.runtime as host"), "{source}");
     assert!(
         source.contains(
-            "@host.register(extra_data={\"columns\": (\"value\", \"year\")})\n\
+            "@host.register(extra_data=_osr_logical_map_0([(\"columns\", (\"value\", \"year\"))]))\n\
              def publish(context: Any, field: str = \"value\") -> Any:"
         ),
         "{source}"
@@ -59,7 +58,7 @@ fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
 
 #[test]
 fn lowers_control_flow_and_structured_collections() {
-    let source = compile("(defn choose [[x Int]] -> Int (let [y (+ x 1)] (if (> y 0) y 0)))");
+    let source = compile("(defn ^Int choose [^Int x] (let [y (+ x 1)] (if (> y 0) y 0)))");
     assert!(source.contains("y = x + 1"), "{source}");
     assert!(source.contains("if y > 0:"), "{source}");
     assert!(source.contains("return y"), "{source}");
@@ -68,7 +67,7 @@ fn lowers_control_flow_and_structured_collections() {
 #[test]
 fn lowers_nested_runtime_destructuring_to_readable_assignments() {
     let source = compile(
-        r#"(defn total [[entry (Map Str Int)]] -> Int
+        r#"(defn ^Int total [^{:type (Map Str Int)} entry]
                  (let [{:keys [left right] :or {right 5} :as whole} entry
                        [first second] [left right]]
                    (+ first second)))"#,
@@ -82,16 +81,16 @@ fn lowers_nested_runtime_destructuring_to_readable_assignments() {
 
     let structure = compile(
         r#"(defstruct Point [x Int] [y Int])
-               (defn point-total [[point Point]] -> Int
+               (defn ^Int point-total [^Point point]
                  (let [{:keys [x y]} point] (+ x y)))"#,
     );
     assert!(structure.contains(".x"), "{structure}");
     assert!(structure.contains(".y"), "{structure}");
 
     let parameters = compile(
-        r#"(defn entry-total [[{:keys [left right]} (Map Str Int)]] -> Int
+        r#"(defn ^Int entry-total [^{:type (Map Str Int)} {:keys [left right]}]
                  (+ left right))
-               (defn pair-total [[[left right] (Vector Int)]] -> Int
+               (defn ^Int pair-total [^{:type (Vector Int)} [left right]]
                  (+ left right))"#,
     );
     assert!(
@@ -109,7 +108,7 @@ fn lowers_nested_runtime_destructuring_to_readable_assignments() {
 #[test]
 fn emits_frozen_struct_with_invariant_and_factory_default() {
     let source = compile(
-        "(defstruct Point [x Int] [child Any = (+ 1 2)] (check (> x 0) \"x must be positive\"))\n             (def point Point (Point :x 1))",
+        "(defstruct Point [x Int] [child Any = (+ 1 2)] (check (> x 0) \"x must be positive\"))\n             (def ^Point point (Point :x 1))",
     );
     assert!(
         source.contains("from dataclasses import dataclass, field"),
@@ -154,17 +153,13 @@ fn emits_parseable_literal_annotations_for_axes_and_frame_schema() {
         r#"(defstruct (Array T Axes) [values Any])
                (defstruct (Frame Schema KeyMarker KeyValue OrderMarker OrderValue)
                  [values Any])
-               (defn array-id
-                  [[values (Array Float [:time :feature])]]
-                  -> (Array Float [:time :feature])
+               (defn ^{:type (Array Float [:time :feature])} array-id [^{:type (Array Float [:time :feature])} values]
                   values)
-               (defn frame-id
-                  [[frame (Frame {:value Float :time Datetime :category Str}
-                                 :key [:time :category]
-                                 :order [:time])]]
-                  -> (Frame {:category Str :value Float :time Datetime}
+               (defn ^{:type (Frame {:category Str :value Float :time Datetime}
                             :key [:time :category]
-                            :order [:time])
+                            :order [:time])} frame-id [^{:type (Frame {:value Float :time Datetime :category Str}
+                                 :key [:time :category]
+                                 :order [:time])} frame]
                   frame)"#,
     );
     assert!(
@@ -195,9 +190,9 @@ fn emits_parseable_literal_annotations_for_axes_and_frame_schema() {
 #[test]
 fn keeps_complex_lambda_helpers_in_their_closure_scope() {
     let source = compile(
-        "(defn make [[base Int]] -> Any\n \
-                 (fn [[x Int]] (let [y (+ base x)] y)))\n \
-             (def result Any ((make 2) 3))",
+        "(defn ^{:type Any\n} make [^Int base] \
+                 (fn [^Int x] (let [y (+ base x)] y)))\n \
+             (def ^Any result ((make 2) 3))",
     );
     // The helper must be nested under `make`; placing it after the module
     // definition would leave `base` unresolved when the callback runs.

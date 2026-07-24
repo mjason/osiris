@@ -1,0 +1,277 @@
+;; Internal Phase-1 implementation for comprehensions in osiris.core.
+^{:osiris/internal true}
+(module osiris.core.comprehension)
+
+(export
+  [for forv doseq when-first])
+
+(defn-for-syntax osiris.kernel/comprehension-control-binding? [bindings]
+  (= (count bindings) 2))
+
+(defn-for-syntax osiris.kernel/comprehension-control-binding-pattern? [pattern]
+  (if (symbol? pattern)
+    true
+    (if (vector? pattern)
+      true
+      (map? pattern))))
+
+(defn-for-syntax osiris.kernel/for-binding-pattern? [pattern]
+  (if (symbol? pattern)
+    true
+    (if (vector? pattern)
+      true
+      (map? pattern))))
+
+(defn-for-syntax osiris.kernel/for-even-bindings? [bindings]
+  (if (empty? bindings)
+    true
+    (if (empty? (rest bindings))
+      false
+      (osiris.kernel/for-even-bindings? (rest (rest bindings))))))
+
+(defn-for-syntax osiris.kernel/validate-for-let-bindings [bindings]
+  (if (empty? bindings)
+    true
+    (let [pattern (first bindings)]
+      (if (not (osiris.kernel/for-binding-pattern? pattern))
+        (syntax-error pattern
+                      "for :let binding pattern must be a symbol, vector, or map")
+        (osiris.kernel/validate-for-let-bindings (rest (rest bindings)))))))
+
+(defn-for-syntax osiris.kernel/for-flatten? [clauses]
+  (if (empty? clauses)
+    false
+    (let [clause (first clauses)
+          remaining (rest clauses)]
+      (if (keyword? clause)
+        (if (= clause :when)
+          true
+          (if (= clause :let)
+            (if (empty? remaining)
+              true
+              (osiris.kernel/for-flatten? (rest remaining)))
+            true))
+        true))))
+
+(defn-for-syntax osiris.kernel/for-terminal [call clauses body]
+  (if (empty? clauses)
+    `(do
+       ~@body)
+    (let [clause (first clauses)
+          remaining (rest clauses)]
+      (if (= clause :let)
+        (if (empty? remaining)
+          (syntax-error clause "for :let requires a binding vector")
+          (let [bindings (first remaining)]
+            (if (not (vector? bindings))
+              (syntax-error bindings "for :let requires a binding vector")
+              (if (not (osiris.kernel/for-even-bindings? bindings))
+                (syntax-error bindings "for :let requires an even number of binding forms")
+                (let [valid (osiris.kernel/validate-for-let-bindings bindings)]
+                  `(let ~bindings
+                     ~(osiris.kernel/for-terminal call (rest remaining) body)))))))
+        (syntax-error call "invalid terminal for clause")))))
+
+(defn-for-syntax osiris.kernel/for-tail [call clauses body eager?]
+  (if (empty? clauses)
+    `[(do
+        ~@body)]
+    (let [clause (first clauses)
+          remaining (rest clauses)]
+      (if (keyword? clause)
+        (if (= clause :let)
+          (if (empty? remaining)
+            (syntax-error clause "for :let requires a binding vector")
+            (let [bindings (first remaining)]
+              (if (not (vector? bindings))
+                (syntax-error bindings "for :let requires a binding vector")
+                (if (not (osiris.kernel/for-even-bindings? bindings))
+                  (syntax-error bindings "for :let requires an even number of binding forms")
+                  (let [valid (osiris.kernel/validate-for-let-bindings bindings)]
+                    `(let ~bindings
+                       ~(osiris.kernel/for-tail call (rest remaining) body eager?)))))))
+          (if (= clause :when)
+            (if (empty? remaining)
+              (syntax-error clause "for :when requires a predicate expression")
+              `(if (osiris.kernel/truthy* ~(first remaining))
+                 ~(osiris.kernel/for-tail call (rest remaining) body eager?)
+                 []))
+            (if (= clause :while)
+              (if (empty? remaining)
+                (syntax-error clause "for :while requires a predicate expression")
+                `(if (osiris.kernel/truthy* ~(first remaining))
+                   ~(osiris.kernel/for-tail call (rest remaining) body eager?)
+                   (osiris.kernel/for-stop*)))
+              (syntax-error clause
+                            (str "unsupported for modifier " clause "; expected :let, :when, or :while")))))
+        (osiris.kernel/for-bindings call clauses body eager?)))))
+
+(defn-for-syntax osiris.kernel/for-bindings [call clauses body eager?]
+  (if (empty? clauses)
+    (syntax-error call "for requires at least one pattern/collection pair")
+    (let [pattern (first clauses)
+          remaining (rest clauses)]
+      (if (keyword? pattern)
+        (syntax-error pattern
+                      "for binding vector must start with a pattern/collection pair")
+        (if (not (osiris.kernel/for-binding-pattern? pattern))
+          (syntax-error pattern "for binding pattern must be a symbol, vector, or map")
+          (if (empty? remaining)
+            (syntax-error pattern "for binding pattern requires a collection expression")
+            (let [collection (first remaining)
+                  tail (rest remaining)
+                  item
+                  (if (symbol? pattern)
+                    none
+                    (gensym "item"))
+                  flatten
+                  (osiris.kernel/for-flatten? tail)
+                  map-name
+                  (if eager?
+                    'osiris.kernel/mapv
+                    'osiris.kernel/map)
+                  mapcat-name
+                  (if eager?
+                    'osiris.kernel/mapcatv
+                    'osiris.kernel/mapcat)
+                  continuation
+                  (if flatten
+                    (osiris.kernel/for-tail call tail body eager?)
+                    (osiris.kernel/for-terminal call tail body))]
+              (if flatten
+                (if (symbol? pattern)
+                  `(~mapcat-name (fn [~pattern] ~continuation) ~collection)
+                  `(~mapcat-name (fn [~item] (let [~pattern ~item]
+                                               ~continuation)) ~collection))
+                (if (symbol? pattern)
+                  `(~map-name (fn [~pattern] ~continuation) ~collection)
+                  `(~map-name (fn [~item] (let [~pattern ~item]
+                                            ~continuation)) ~collection))))))))))
+
+^{:doc
+  {:default "Produce a lazy comprehension with multiple bindings and modifiers."
+   "zh-CN" "生成支持多重绑定和修饰子句的惰性推导。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro for [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "for requires a binding vector")
+    (if (empty? body)
+      (syntax-error &form "for requires a body")
+      (osiris.kernel/for-bindings &form bindings body false))))
+
+^{:doc
+  {:default "Produce an eager vector comprehension with multiple bindings and modifiers."
+   "zh-CN" "生成支持多重绑定和修饰子句的向量推导。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro forv [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "forv requires a binding vector")
+    (if (empty? body)
+      (syntax-error &form "forv requires a body")
+      (osiris.kernel/for-bindings &form bindings body true))))
+
+(defn-for-syntax osiris.kernel/validate-doseq-let-bindings [bindings]
+  (if (empty? bindings)
+    true
+    (let [pattern (first bindings)]
+      (if (not (osiris.kernel/for-binding-pattern? pattern))
+        (syntax-error pattern
+                      "doseq :let binding pattern must be a symbol, vector, or map")
+        (osiris.kernel/validate-doseq-let-bindings (rest (rest bindings)))))))
+
+(defn-for-syntax osiris.kernel/doseq-tail [call clauses body]
+  (if (empty? clauses)
+    `(do
+       ~@body
+       none)
+    (let [clause (first clauses)
+          remaining (rest clauses)]
+      (if (keyword? clause)
+        (if (= clause :let)
+          (if (empty? remaining)
+            (syntax-error clause "doseq :let requires a binding vector")
+            (let [bindings (first remaining)]
+              (if (not (vector? bindings))
+                (syntax-error bindings "doseq :let requires a binding vector")
+                (if (not (osiris.kernel/for-even-bindings? bindings))
+                  (syntax-error bindings "doseq :let requires an even number of binding forms")
+                  (let [valid (osiris.kernel/validate-doseq-let-bindings bindings)]
+                    `(let ~bindings
+                       ~(osiris.kernel/doseq-tail call (rest remaining) body)))))))
+          (if (= clause :when)
+            (if (empty? remaining)
+              (syntax-error clause "doseq :when requires a predicate expression")
+              `(if (osiris.kernel/truthy* ~(first remaining))
+                 ~(osiris.kernel/doseq-tail call (rest remaining) body)
+                 none))
+            (if (= clause :while)
+              (if (empty? remaining)
+                (syntax-error clause "doseq :while requires a predicate expression")
+                `(if (osiris.kernel/truthy* ~(first remaining))
+                   ~(osiris.kernel/doseq-tail call (rest remaining) body)
+                   (osiris.kernel/for-stop*)))
+              (syntax-error clause
+                            (str "unsupported doseq modifier " clause "; expected :let, :when, or :while")))))
+        (osiris.kernel/doseq-bindings call clauses body)))))
+
+(defn-for-syntax osiris.kernel/doseq-bindings [call clauses body]
+  (if (empty? clauses)
+    (syntax-error call "doseq requires at least one pattern/collection pair")
+    (let [pattern (first clauses)
+          remaining (rest clauses)]
+      (if (keyword? pattern)
+        (syntax-error pattern
+                      "doseq binding vector must start with a pattern/collection pair")
+        (if (not (osiris.kernel/for-binding-pattern? pattern))
+          (syntax-error pattern "doseq binding pattern must be a symbol, vector, or map")
+          (if (empty? remaining)
+            (syntax-error pattern "doseq binding pattern requires a collection expression")
+            (let [collection (first remaining)
+                  tail (rest remaining)
+                  item
+                  (if (symbol? pattern)
+                    none
+                    (gensym "doseq-item"))
+                  continuation
+                  (osiris.kernel/doseq-tail call tail body)]
+              (if (symbol? pattern)
+                `(osiris.kernel/doseq* (fn [~pattern] ~continuation) ~collection)
+                `(osiris.kernel/doseq* (fn [~item] (let [~pattern ~item]
+                                                     ~continuation))
+                                       ~collection)))))))))
+
+^{:doc
+  {:default "Run an effectful comprehension in nested source order and return none."
+   "zh-CN" "按源码嵌套顺序执行有副作用的推导并返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro doseq [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "doseq requires a binding vector")
+    (osiris.kernel/doseq-bindings &form bindings body)))
+
+^{:doc
+  {:default "Bind the first item of a non-empty collection without losing a lazy item."
+   "zh-CN" "绑定非空集合的首项且不丢失惰性元素。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro when-first [bindings & body]
+  (if (not (osiris.kernel/comprehension-control-binding? bindings))
+    (syntax-error bindings "when-first requires exactly one binding pair")
+    (let [pattern (first bindings)]
+      (if (not (osiris.kernel/comprehension-control-binding-pattern? pattern))
+        (syntax-error pattern
+                      "when-first binding pattern must be a symbol, vector, or map")
+        (let [sequence (gensym "when-first")]
+          `(let [~sequence (seq ~(nth bindings 1))]
+             (if (osiris.kernel/nil* ~sequence)
+               none
+               (let [~pattern (nth (osiris.kernel/present* ~sequence) 0)]
+                 (do
+                   ~@body)))))))))

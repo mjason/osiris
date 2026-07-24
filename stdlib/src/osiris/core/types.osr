@@ -1,0 +1,48 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.types)
+
+(export
+  [Reduced Future Promise Delay Lock])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "The typed marker used to terminate only the nearest compatible reduction."
+   "zh-CN" "用于仅终止最近兼容归约的有类型标记。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defstruct (Reduced T) [value T])
+
+^{:doc
+  {:default "A typed handle for an asynchronous computation whose result or exception can be dereferenced."
+   "zh-CN" "异步计算的有类型句柄，可解引用其结果或异常。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defstruct (Future T) [value T])
+
+^{:doc
+  {:default "A typed single-assignment value whose first delivery wins."
+   "zh-CN" "首次交付生效的有类型单赋值值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defstruct (Promise T) [value T])
+
+^{:doc
+  {:default "A typed one-time deferred computation that memoizes a value or exception."
+   "zh-CN" "只执行一次并记忆值或异常的有类型延迟计算。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defstruct (Delay T) [value T])
+
+^{:doc
+  {:default "A reentrant mutual-exclusion lock used by the locking macro."
+   "zh-CN" "供 locking 宏使用的可重入互斥锁。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defstruct Lock)

@@ -24,20 +24,21 @@ fn temporary_directory() -> std::path::PathBuf {
 fn parallel_forms_preserve_order_and_compile_through_future_abi() {
     let source = r#"
 (module parallel_compile)
-(defn increment [[value Int]] -> Int (+ value 1))
-(defn add [[left Int] [right Int]] -> Int (+ left right))
-(defn parallel-increment [[values (Vector Int)]] -> (Vector Int)
+(import osiris.core :refer [nth])
+(import osiris.concurrent :refer :all)
+(defn ^Int increment [^Int value] (+ value 1))
+(defn ^Int add [^Int left ^Int right] (+ left right))
+(defn ^{:type (Vector Int)} parallel-increment [^{:type (Vector Int)} values]
   (pmap increment values))
-(defn parallel-anonymous [[values (Vector Int)]] -> (Vector Int)
-  (pmap (fn [[value Int]] (+ value 1)) values))
-(defn parallel-add
-  [[left (Vector Int)] [right (Vector Int)]] -> (Vector Int)
+(defn ^{:type (Vector Int)} parallel-anonymous [^{:type (Vector Int)} values]
+  (pmap (fn [^Int value] (+ value 1)) values))
+(defn ^{:type (Vector Int)} parallel-add [^{:type (Vector Int)} left ^{:type (Vector Int)} right]
   (pmap add left right))
-(defn parallel-values [] -> (Vector Int)
+(defn ^{:type (Vector Int)} parallel-values []
   (pvalues (+ 1 2) (* 3 4) (- 20 5)))
-(defn parallel-calls [] -> (Vector Int)
+(defn ^{:type (Vector Int)} parallel-calls []
   (pcalls (fn [] 7) (fn [] 8) (fn [] 9)))
-(defn parallel-failing [[values (Vector Int)]] -> Any
+(defn ^Any parallel-failing [^{:type (Vector Int)} values]
   (pmap (fn [value] (nth [] value)) values))
 "#;
     let result = compile(source, &options());
@@ -46,12 +47,30 @@ fn parallel_forms_preserve_order_and_compile_through_future_abi() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("future_call"), "{generated}");
-    assert!(generated.contains("deref"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(
+        generated.source.contains("future_call"),
+        "{}",
+        generated.source
+    );
+    assert!(generated.source.contains("deref"), "{}", generated.source);
 
     let root = temporary_directory();
-    fs::write(root.join("parallel_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("parallel_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("parallel forms should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -72,13 +91,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -86,7 +101,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -95,14 +110,14 @@ print("ok")
 #[test]
 fn pmap_requires_a_collection() {
     let result = compile(
-        "(module parallel_compile) (defn bad [] -> Any (pmap identity))",
+        "(module parallel_compile) (import osiris.core :refer [identity]) (import osiris.concurrent :refer [pmap]) (defn ^Any bad [] (pmap identity))",
         &options(),
     );
     assert!(result.analysis.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "OSR-M0007"
+        diagnostic.code == "OSR-T0020"
             && diagnostic
                 .message
-                .contains("pmap requires at least one collection")
+                .contains("expects a function and at least one collection")
     }));
     assert!(result.python.is_none());
 }

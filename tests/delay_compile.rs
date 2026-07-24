@@ -27,7 +27,8 @@ fn temporary_directory() -> std::path::PathBuf {
 fn delay_force_and_realized_compile_to_readable_python() {
     let source = r#"
 (module delay_compile)
-(defn delayed [[value Int]] -> Int
+(import osiris.core :refer [delay force realized?])
+(defn ^Int delayed [^Int value]
   (let [value* (delay (+ value 1))]
     (if (realized? value*)
       0
@@ -39,24 +40,34 @@ fn delay_force_and_realized_compile_to_readable_python() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("delay should generate Python").source;
-    assert!(generated.contains("delay as"), "{generated}");
-    assert!(generated.contains("force as"), "{generated}");
+    let generated = result.python.expect("delay should generate Python");
+    assert!(generated.source.contains("delay"), "{}", generated.source);
+    assert!(generated.source.contains("force"), "{}", generated.source);
     let root = temporary_directory();
-    fs::write(root.join("delay_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("delay_compile.py"), &generated.source).expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("delay should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from delay_compile import delayed\nassert delayed(41) == 42\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -64,7 +75,7 @@ fn delay_force_and_realized_compile_to_readable_python() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

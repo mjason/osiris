@@ -70,7 +70,8 @@ fn lsp_resolves_workspace_module_identity_and_source_interfaces() {
         "src/demo/math.osr",
         r#"(module demo.math)
             (export [add-one])
-            (defn add-one [[value Int]] -> Int (+ value 1))
+            ^{:doc "Increment an integer."}
+            (defn ^Int add-one [^Int value] (+ value 1))
         "#,
     );
     fs::write(

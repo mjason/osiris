@@ -38,56 +38,8 @@ impl Lowerer {
                 }
                 continue;
             }
-            let (param, consumed) = if has_type_marker(part) {
-                let annotation = match parse_type(part, &BTreeMap::new()) {
-                    Ok(_) => {
-                        let mut annotation = self.lower_metadata_type_form(part);
-                        annotation.metadata = part.metadata.clone();
-                        Some(annotation)
-                    }
-                    Err(error) => {
-                        self.error(
-                            AST_INVALID_TYPE_METADATA,
-                            format!("invalid parameter type after `^:type`: {error}"),
-                            error.span,
-                        );
-                        None
-                    }
-                };
-                match parts.get(index + 1) {
-                    Some(name_form) if symbol_name(name_form).is_some() => {
-                        let mut param = self.lower_param(name_form, next_is_variadic, phase);
-                        if param.type_annotation.is_some() {
-                            self.error(
-                                AST_CONFLICTING_TYPE_ANNOTATION,
-                                "parameter has both an adjacent `^:type Type` prefix and directly attached type metadata; directly attached metadata takes precedence",
-                                name_form.span,
-                            );
-                        } else {
-                            param.type_annotation = annotation;
-                        }
-                        (param, 2)
-                    }
-                    Some(unexpected) => {
-                        self.error(
-                            AST_INVALID_TYPE_METADATA,
-                            "a `^:type Type` parameter prefix must be followed by a parameter name",
-                            unexpected.span,
-                        );
-                        (self.lower_param(unexpected, next_is_variadic, phase), 2)
-                    }
-                    None => {
-                        self.error(
-                            AST_INVALID_TYPE_METADATA,
-                            "a `^:type Type` parameter prefix must be followed by a parameter name",
-                            part.span,
-                        );
-                        break;
-                    }
-                }
-            } else {
-                (self.lower_param(part, next_is_variadic, phase), 1)
-            };
+            let param = self.lower_param(part, next_is_variadic, phase);
+            let consumed = 1;
             params.push(param);
             if next_is_variadic && index + consumed < parts.len() {
                 self.error(
@@ -121,12 +73,15 @@ impl Lowerer {
             } = &form.kind
             && let Some(name) = symbol_name(inner)
         {
+            let type_annotation = self
+                .lower_metadata_type(&info.metadata, "parameter")
+                .annotation;
             return Param {
                 span: info.span,
                 metadata: info.metadata,
                 name,
                 pattern: None,
-                type_annotation: None,
+                type_annotation,
                 default: None,
                 variadic,
             };
@@ -145,10 +100,10 @@ impl Lowerer {
             FormKind::Vector(parts) => parts.as_slice(),
             _ => std::slice::from_ref(form),
         };
-        if parts.is_empty() || parts.len() > 4 {
+        if parts.is_empty() || (parts.len() != 1 && parts.len() != 3) {
             self.error(
                 AST_WRONG_SHAPE,
-                "parameter expects a name, type, and optional default",
+                "a parameter is a name or `[name = default]`; attach types with Rich Metadata",
                 form.span,
             );
         }
@@ -170,18 +125,9 @@ impl Lowerer {
                 metadata_type = wrapper_type;
             }
         }
-        let mut type_annotation = metadata_type.annotation;
+        let type_annotation = metadata_type.annotation;
         let mut default = None;
         let mut index = 1;
-        if let Some(part) = parts.get(index) {
-            if !is_equal_symbol(part) {
-                if metadata_type.present {
-                    self.report_type_annotation_conflict("parameter", part.span);
-                }
-                type_annotation = Some(self.lower_type(part));
-                index += 1;
-            }
-        }
         if parts.get(index).is_some_and(is_equal_symbol) {
             index += 1;
             if let Some(value) = parts.get(index) {
@@ -198,13 +144,13 @@ impl Lowerer {
         if index < parts.len() {
             self.error(
                 AST_WRONG_SHAPE,
-                "unexpected forms after parameter declaration; wrap a runtime destructuring pattern in an extra vector layer",
+                "unexpected forms after parameter declaration; attach types with `^Type` or `^{:type Type}`",
                 form.span,
             );
         }
         Param {
             span: info.span,
-            metadata: info.metadata,
+            metadata: merge_declaration_metadata(info.metadata, &target_form.metadata),
             name,
             pattern: None,
             type_annotation,
@@ -235,18 +181,9 @@ impl Lowerer {
                 metadata_type = wrapper_type;
             }
         }
-        let mut type_annotation = metadata_type.annotation;
+        let type_annotation = metadata_type.annotation;
         let mut default = None;
         let mut index = 0;
-        if let Some(part) = parts.get(index)
-            && !is_equal_symbol(part)
-        {
-            if metadata_type.present {
-                self.report_type_annotation_conflict("parameter", part.span);
-            }
-            type_annotation = Some(self.lower_type(part));
-            index += 1;
-        }
         if parts.get(index).is_some_and(is_equal_symbol) {
             index += 1;
             if let Some(value) = parts.get(index) {
@@ -273,7 +210,7 @@ impl Lowerer {
         {
             self.error(
                 AST_WRONG_SHAPE,
-                "runtime vector destructuring requires an explicit type; use `[[...] (Vector T)]` or `[[...] Any]`",
+                "runtime vector destructuring requires an explicit Rich Metadata type; use `^{:type (Vector T)} [...]` or `^Any [...]`",
                 form.span,
             );
         }

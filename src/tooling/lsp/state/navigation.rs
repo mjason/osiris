@@ -9,6 +9,25 @@ impl LspState {
             .definitions
             .get(&symbol.binding_id)
             .cloned()
+            .or_else(|| {
+                let record = crate::stdlib::query_api(&symbol.binding_id, None)
+                    .into_iter()
+                    .next()?;
+                Some(Location {
+                    uri: record.api.source.uri,
+                    range: Range {
+                        start: Position {
+                            line: record.api.source.line.saturating_sub(1),
+                            character: record.api.source.column.saturating_sub(1),
+                        },
+                        end: Position {
+                            line: record.api.source.line.saturating_sub(1),
+                            character: record.api.source.column.saturating_sub(1)
+                                + record.api.canonical.chars().count() as u32,
+                        },
+                    },
+                })
+            })
     }
 
     #[must_use]
@@ -171,16 +190,16 @@ impl LspState {
     }
 
     #[must_use]
-    pub fn inspect(&self, uri: &str, query: Option<&str>) -> Option<JsonValue> {
+    pub fn symbols(&self, uri: &str, query: Option<&str>) -> Option<Vec<JsonValue>> {
         let document = self.document(uri)?;
-        let Some(query) = query.filter(|query| !query.is_empty()) else {
-            return serde_json::to_value(&document.semantic).ok();
-        };
-        document
+        let mut symbols = document
             .semantic
             .symbols
             .iter()
-            .find(|symbol| {
+            .filter(|symbol| {
+                let Some(query) = query.filter(|query| !query.is_empty()) else {
+                    return true;
+                };
                 symbol.binding_id == query
                     || symbol.canonical == query
                     || symbol.source_spelling == query
@@ -189,6 +208,13 @@ impl LspState {
                         .iter()
                         .any(|alias| alias.spelling == query || alias.canonical == query)
             })
-            .and_then(|symbol| serde_json::to_value(symbol).ok())
+            .collect::<Vec<_>>();
+        symbols.sort_by_key(|symbol| &symbol.binding_id);
+        Some(
+            symbols
+                .into_iter()
+                .filter_map(|symbol| serde_json::to_value(symbol).ok())
+                .collect(),
+        )
     }
 }

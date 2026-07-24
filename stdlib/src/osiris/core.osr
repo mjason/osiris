@@ -1,0 +1,26 @@
+;; Source-distributed Osiris standard module. Kernel leaves are linked privately.
+^{:osiris/facade-modules [osiris.core.function osiris.core.transform osiris.core.sequence
+                          osiris.core.collection osiris.core.predicate osiris.core.types
+                          osiris.core.control osiris.core.comprehension osiris.core.recursion
+                          osiris.core.concurrent]
+  :osiris/facade-macros [and or when when-not if-not cond case condp if-let when-let if-some
+                         when-some when-first -> ->> some-> some->> cond-> cond->> as-> doto
+                         defn- letfn loop recur for forv doseq dotimes while trampoline lazy-seq
+                         lazy-cat delay force deref realized? binding with-open assert throw
+                         comment time]}
+(module osiris.core)
+
+(export
+  [identity constantly comp partial juxt complement map mapv mapcat
+   mapcatv filter filterv remove removev reduce fold reductions reduced
+   reduced? unreduced first rest next nth count empty empty? seq seq?
+   coll? sequential? cons concat range repeat repeatedly iterate cycle
+   sequence take drop take-while drop-while take-last drop-last partition
+   partition-all partition-by interleave interpose distinct dedupe flatten
+   keep keep-indexed map-indexed run! doall dorun some every? not-every?
+   not-any? get assoc dissoc update get-in assoc-in update-in select-keys
+   nil? some? true? false? number? string? list? vector? map? set?
+   sequence? Reduced Future Promise Delay Lock])
+
+;; Implementation contracts may move without changing any osiris.core binding ID.
+(import osiris.core.kernel :refer :all)

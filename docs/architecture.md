@@ -53,8 +53,10 @@ distribution container: uv installs its executable into the environment's
 scripts directory, but Python does not host the CLI, watcher, or LSP process.
 Rust may scan the target project's installed-package roots for static
 `osiris.toml` and `.osri` resources; it never starts Python or imports an
-extension while doing so. The wheel's Python code is limited to the generated
-program runtime and the PEP 517 extension build backend.
+extension while doing so. The wheel's importable Python code is limited to the
+PEP 517 extension build backend. Generated distributions receive their own
+reachable support under `__osiris_runtime__` and do not depend on this wheel at
+runtime.
 
 ## Source Ownership
 
@@ -62,13 +64,12 @@ program runtime and the PEP 517 extension build backend.
 | --- | --- |
 | `src/language/` | Lossless source model, lexer/reader, forms, AST, names, types, diagnostics, and the closed kernel form table. |
 | `src/compiler/` | Macro expansion, module graph construction, semantic lowering, and typed HIR. |
-| `src/backend/python/` | HIR-to-Python lowering, Python AST printing, and generated source maps. It does not decide surface syntax. |
+| `src/backend/python/` | HIR-to-Python lowering, Python AST printing, generated source maps, and compiler-owned linkable Python support templates. It does not decide surface syntax. |
 | `src/stdlib/macros/` | Surface language implemented as hygienic Osiris macros. |
 | `src/extensions/` | Generic static extension mechanisms implemented by this distribution, never domain-specific packages. |
 | `src/packaging/` | Projects, dependency locks, extension discovery, artifacts, `.osri`, and interface graphs. |
 | `src/tooling/` | CLI, LSP, semantic inspection, and user-facing printers. |
 | `src/support/` | Small domain-neutral utilities shared across ownership boundaries. |
-| `src/osiris/` | Python runtime package used by generated programs. |
 | `src/osiris_build/` | PEP 517 integration used by Python builds. |
 
 Public crate module names currently remain stable through explicit `#[path]`

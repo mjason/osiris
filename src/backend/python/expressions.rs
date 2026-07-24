@@ -40,19 +40,38 @@ impl<'hir> Backend<'hir> {
                             Some(value_expression.span),
                         )
                     })?;
-                    pairs.push(py::DictItem::Pair {
-                        key: value_key,
-                        value: value_value,
-                    });
+                    pairs.push(py::Expr::Tuple(vec![value_key, value_value]));
                 }
                 return Ok(Lowered {
                     prefix,
-                    value: Some(py::Expr::Dict(pairs)),
+                    value: Some(py::Expr::call(
+                        self.linked_runtime_helper("logical_map"),
+                        vec![py::CallArgument::Positional(py::Expr::List(pairs))],
+                    )),
                 });
             }
-            ExprKind::Set(items) => return self.lower_sequence(items, false)?.with_set(),
+            ExprKind::Set(items) => {
+                let lowered = self.lower_sequence(items, false)?;
+                let Some(items) = lowered.value else {
+                    return Ok(lowered);
+                };
+                return Ok(Lowered {
+                    prefix: lowered.prefix,
+                    value: Some(py::Expr::call(
+                        self.linked_runtime_helper("logical_set"),
+                        vec![py::CallArgument::Positional(items)],
+                    )),
+                });
+            }
             ExprKind::Call { callee, arguments } => {
                 let callee_expression = callee;
+                let standard_keywords = self.standard_positional_keywords(
+                    callee_expression,
+                    arguments
+                        .iter()
+                        .filter(|argument| matches!(argument, hir::CallArgument::Positional(_)))
+                        .count(),
+                );
                 let callee = self.lower_value(callee_expression)?;
                 let mut prefix = callee.prefix;
                 let function = callee.value.ok_or_else(|| {
@@ -62,19 +81,27 @@ impl<'hir> Backend<'hir> {
                     )
                 })?;
                 let mut args = Vec::new();
+                let mut positional_index = 0_usize;
                 for argument in arguments {
                     match argument {
                         hir::CallArgument::Positional(value_expression) => {
                             let value = self.lower_value(value_expression)?;
                             prefix.extend(value.prefix);
-                            args.push(py::CallArgument::Positional(value.value.ok_or_else(
-                                || {
-                                    self.error(
-                                        "call argument does not produce a value",
-                                        Some(value_expression.span),
-                                    )
-                                },
-                            )?));
+                            let value = value.value.ok_or_else(|| {
+                                self.error(
+                                    "call argument does not produce a value",
+                                    Some(value_expression.span),
+                                )
+                            })?;
+                            if let Some(name) = standard_keywords.get(&positional_index) {
+                                args.push(py::CallArgument::Keyword(py::KeywordArgument::Named {
+                                    name: python_identifier(name),
+                                    value,
+                                }));
+                            } else {
+                                args.push(py::CallArgument::Positional(value));
+                            }
+                            positional_index += 1;
                         }
                         hir::CallArgument::Keyword {
                             name,

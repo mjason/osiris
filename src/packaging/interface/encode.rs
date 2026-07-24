@@ -32,9 +32,7 @@ pub(in crate::interface) fn calculate_hashes(interface: &Interface) -> Interface
     }
 }
 
-pub(in crate::interface) fn refresh_standalone_hashes(
-    interface: &mut Interface,
-) -> InterfaceResult<()> {
+pub(crate) fn refresh_standalone_hashes(interface: &mut Interface) -> InterfaceResult<()> {
     interface.hashes = calculate_hashes(interface);
     let local = BTreeMap::from([(
         interface.module.clone(),
@@ -87,7 +85,20 @@ fn header_form(interface: &Interface) -> Form {
             ("format", string(FORMAT_NAME)),
             ("format-version", integer(interface.format_version)),
             ("compiler-abi", string(&interface.compiler_abi)),
+            ("language-version", string(&interface.language_version)),
             ("language-abi", string(&interface.language_abi)),
+            (
+                "standard-library-abi",
+                integer(interface.standard_library_abi),
+            ),
+            (
+                "linkable-helper-format",
+                integer(interface.linkable_helper_format),
+            ),
+            (
+                "python-target",
+                string(&interface.python_target.to_string()),
+            ),
         ]),
     )
 }

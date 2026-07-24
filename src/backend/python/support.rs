@@ -15,24 +15,6 @@ impl Lowered {
     }
 }
 
-impl Lowered {
-    pub(super) fn with_set(self) -> Result<Self, BackendError> {
-        let Some(value) = self.value else {
-            return Ok(self);
-        };
-        let py::Expr::List(items) = value else {
-            return Ok(Self {
-                prefix: self.prefix,
-                value: Some(value),
-            });
-        };
-        Ok(Self {
-            prefix: self.prefix,
-            value: Some(py::Expr::Set(items)),
-        })
-    }
-}
-
 pub(super) fn unary(
     mut values: Vec<py::Expr>,
     op: py::UnaryOp,

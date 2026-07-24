@@ -24,10 +24,12 @@ fn temporary_directory() -> std::path::PathBuf {
 fn sequence_predicates_lower_to_typed_runtime_calls() {
     let source = r#"
 (module predicates_compile)
-(defn seq-value [[value Any]] -> Bool (seq? value))
-(defn coll-value [[value Any]] -> Bool (coll? value))
-(defn sequential-value [[value Any]] -> Bool (sequential? value))
-(defn qualified-seq-value [[value Any]] -> Bool (osiris.prelude/seq? value))
+(import osiris.core :as core :refer [coll? seq? sequence sequential?])
+(defn ^Bool seq-value [^Any value] (seq? value))
+(defn ^Bool coll-value [^Any value] (coll? value))
+(defn ^Bool sequential-value [^Any value] (sequential? value))
+(defn ^Bool qualified-seq-value [^Any value] (core/seq? value))
+(defn ^Any lazy-values [] (sequence [1 2]))
 "#;
     let result = compile(source, &options());
     assert!(
@@ -35,20 +37,38 @@ fn sequence_predicates_lower_to_typed_runtime_calls() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("seq_q"), "{generated}");
-    assert!(generated.contains("coll_q"), "{generated}");
-    assert!(generated.contains("sequential_q"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(generated.source.contains("seq_p"), "{}", generated.source);
+    assert!(generated.source.contains("coll_p"), "{}", generated.source);
+    assert!(
+        generated.source.contains("sequential_p"),
+        "{}",
+        generated.source
+    );
 
     let root = temporary_directory();
-    fs::write(root.join("predicates_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("predicates_compile.py"), &generated.source)
+        .expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("sequence predicates should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
-        r#"from osiris.prelude import sequence
-from predicates_compile import coll_value, qualified_seq_value, seq_value, sequential_value
+        r#"from predicates_compile import coll_value, lazy_values, qualified_seq_value, seq_value, sequential_value
 
-lazy = sequence(iter((1, 2)))
+lazy = lazy_values()
 assert seq_value([]) is True
 assert seq_value(()) is False
 assert seq_value(lazy) is True
@@ -72,13 +92,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -86,7 +102,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -96,7 +112,8 @@ print("ok")
 fn sequence_predicates_reject_invalid_arity() {
     let source = r#"
 (module predicates_compile)
-(defn invalid [[value Any]] -> Bool (seq? value value))
+(import osiris.core :refer [seq?])
+(defn ^Bool invalid [^Any value] (seq? value value))
 "#;
     let result = compile(source, &options());
     assert!(

@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0043",
-                "osiris.prelude/time* expects one zero-argument function",
+                "osiris.kernel/time* expects one zero-argument function",
                 span,
             );
             return Expr::error(span);
@@ -98,7 +98,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0030",
-                "osiris.prelude/realized* expects exactly one positional argument",
+                "osiris.kernel/realized* expects exactly one positional argument",
                 span,
             );
             return Expr::error(span);
@@ -140,7 +140,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0042",
-                "osiris.prelude/binding* expects a binding vector and zero-argument body",
+                "osiris.kernel/binding* expects a binding vector and zero-argument body",
                 span,
             );
             return Expr::error(span);
@@ -151,7 +151,7 @@ impl<'a> Lowerer<'a> {
             let _ = self.lower_expr(&call.positional[1], scope);
             self.error(
                 "OSR-T0042",
-                "osiris.prelude/binding* expects a binding vector",
+                "osiris.kernel/binding* expects a binding vector",
                 call.positional[0].span,
             );
             return Expr::error(span);

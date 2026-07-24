@@ -17,8 +17,8 @@ fn lowers_module_header_and_declarations() {
              (py/import numpy :as np)
              (export [normalize])
              (alias 窗口均值 series/moving-average)
-             (def scale Float 0.5)
-             (defn normalize [[values Frame] [window PositiveInt = 8]] -> Float
+             (def ^Float scale 0.5)
+             (defn ^Float normalize [^Frame values [^PositiveInt window = 8]]
                (let [x 1 y (+ x 2)] y))",
     );
     assert!(
@@ -61,10 +61,7 @@ fn lowers_module_header_and_declarations() {
 #[test]
 fn lowers_clojure_parameter_patterns_without_confusing_type_annotations() {
     let lowered = lower_document(&read(
-        r#"(fn [{:keys [value]}
-                    [[left right] Any]
-                    [[first second] (Vector Int)]
-                    [plain Int]]
+        r#"(fn [{:keys [value]} ^Any [left right] ^{:type (Vector Int)} [first second] ^Int plain]
                  value)"#,
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
@@ -105,7 +102,7 @@ fn lowers_clojure_parameter_patterns_without_confusing_type_annotations() {
 #[test]
 fn runtime_parameter_types_do_not_depend_on_case_or_script() {
     let lowered = lower_document(&read(
-        "(fn [[left right] [参数 中文类型] [qualified pkg/lower]] left)",
+        "(fn [^right left ^{:type 中文类型} 参数 ^pkg/lower qualified] left)",
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let ItemKind::Expr(expression) = &lowered.module.items[0].kind else {
@@ -128,8 +125,7 @@ fn runtime_parameter_types_do_not_depend_on_case_or_script() {
 #[test]
 fn lowers_type_and_tag_metadata_for_parameters_returns_and_locals() {
     let lowered = lower_document(&read(
-        "(defn ^{:type (Vector Int)} increment-all
-               [^{:type (Vector Int)} values]
+        "(defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} values]
                (let [^{:type Int} offset 1] values))
              (defn ^Vector tagged [^Int value] value)",
     ));
@@ -191,7 +187,7 @@ fn lowers_type_and_tag_metadata_for_parameters_returns_and_locals() {
 fn raw_core_container_metadata_defaults_parameters_to_any() {
     let lowered = lower_document(&read(
         "(defn raw [^Vector vector ^List list ^Set set ^Option option ^Map mapping] vector)
-             (fn [[strict Vector]] strict)",
+             (fn [^Vector strict] strict)",
     ));
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let ItemKind::Defn(function) = &lowered.module.items[0].kind else {
@@ -233,26 +229,6 @@ fn raw_core_container_metadata_defaults_parameters_to_any() {
             .type_annotation
             .as_ref()
             .map(|ty| &ty.kind),
-        Some(TypeExprKind::Name(name)) if name.canonical == "Vector"
-    ));
-}
-
-#[test]
-fn lowers_type_marker_parameter_prefix() {
-    let lowered = lower_document(&read(
-        "(defn increment-all [^:type (Vector Int) values] values)",
-    ));
-    assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
-    let ItemKind::Defn(function) = &lowered.module.items[0].kind else {
-        panic!("expected defn");
-    };
-    assert_eq!(function.params.len(), 1);
-    assert_eq!(function.params[0].name.canonical, "values");
-    assert!(matches!(
-        function.params[0]
-            .type_annotation
-            .as_ref()
-            .map(|ty| &ty.kind),
         Some(TypeExprKind::Apply { constructor, args })
             if matches!(&constructor.kind, TypeExprKind::Name(name) if name.canonical == "Vector")
                 && args.len() == 1
@@ -260,33 +236,27 @@ fn lowers_type_marker_parameter_prefix() {
 }
 
 #[test]
-fn explicit_types_win_over_metadata_with_stable_diagnostics() {
+fn detached_type_marker_is_not_a_parameter_annotation() {
     let lowered = lower_document(&read(
-        "(defn ^{:type Int} choose [[^{:type Int} value Float]] -> Float value)",
+        "(defn increment-all [^:type (Vector Int) values] values)",
     ));
-    assert_eq!(
-        lowered
-            .diagnostics
-            .iter()
-            .filter(|diagnostic| { diagnostic.code == super::AST_CONFLICTING_TYPE_ANNOTATION })
-            .count(),
-        2,
-        "{:?}",
-        lowered.diagnostics
-    );
+    assert!(lowered.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == AST_WRONG_SHAPE || diagnostic.code == super::AST_INVALID_NAME
+    }));
+}
+
+#[test]
+fn old_adjacent_parameter_and_arrow_types_are_rejected() {
+    let lowered = lower_document(&read(
+        "(defn ^Int choose [[value Float]] -> Float value)",
+    ));
+    assert!(!lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let ItemKind::Defn(function) = &lowered.module.items[0].kind else {
         panic!("expected defn");
     };
     assert!(matches!(
-        function.params[0]
-            .type_annotation
-            .as_ref()
-            .map(|ty| &ty.kind),
-        Some(TypeExprKind::Name(name)) if name.canonical == "Float"
-    ));
-    assert!(matches!(
         function.return_type.as_ref().map(|ty| &ty.kind),
-        Some(TypeExprKind::Name(name)) if name.canonical == "Float"
+        Some(TypeExprKind::Name(name)) if name.canonical == "Int"
     ));
 }
 
@@ -364,10 +334,10 @@ fn phase_one_vector_parameters_are_patterns_regardless_of_spelling() {
 }
 
 #[test]
-fn ambiguous_runtime_vector_pattern_reports_the_explicit_wrapper_rule() {
-    let lowered = lower_document(&read("(fn [[left right extra]] left)"));
+fn runtime_vector_pattern_type_must_annotate_the_pattern() {
+    let lowered = lower_document(&read("(fn [[^right left extra]] left)"));
     assert!(lowered.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == AST_WRONG_SHAPE && diagnostic.message.contains("extra vector layer")
+        diagnostic.code == AST_WRONG_SHAPE && diagnostic.message.contains("Rich Metadata type")
     }));
 }
 
@@ -378,6 +348,6 @@ fn runtime_vector_pattern_requires_an_explicit_type() {
         diagnostic.code == AST_WRONG_SHAPE
             && diagnostic
                 .message
-                .contains("runtime vector destructuring requires an explicit type")
+                .contains("runtime vector destructuring requires an explicit Rich Metadata type")
     }));
 }

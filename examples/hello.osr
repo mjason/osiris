@@ -1,58 +1,61 @@
 (module hello)
 
+;; 标准库不会隐式污染模块名称空间。这里显式引入 osiris.core 的全部公开
+;; binding；也可以用 :exclude 和 :rename 处理冲突。
+(import osiris.core :refer :all)
+
 ;; hello.osr 位于 osiris.jsonc source = ["examples"] 的根目录，所以模块名是
 ;; hello。子目录会用点号连接，例如 tutorial/app.osr 对应 tutorial.app。
-
 ;; 顶层定义默认只在当前模块可见。只有 export 中的名称才能被其他 .osr
 ;; 模块导入，也只有这些公开声明会进入生成的 hello.osri 接口。
-(export [increment-all positive-pair-sums sum-after-increment publish])
+(export
+  [increment-all positive-pair-sums sum-after-increment publish])
 
 ;; extern 描述一个由普通 Python 包提供的有类型边界。它只声明签名，编译器不会
 ;; 在编译阶段 import 或执行 example_runtime；实际包仍由 PyPI/uv 管理。
 (extern python "example_runtime"
-  (defn ^Any register
-    [^{:type (Map Str (Vector Str))} extra-data]))
+  (defn ^Any register [^{:type (Map Str (Vector Str))} extra-data]))
 
 ;; 装饰器会在 Python 模块加载时执行，因此使用显式 py/decorate，而不放进
 ;; Rich Metadata。下面会生成 @register(extra_data={...})。
-(py/decorate publish
-  (register
-    :extra-data {"columns" ["value" "year"]}))
+(py/decorate publish (register :extra-data {"columns" ["value" "year"]}))
 
-^{:doc {"zh-CN" "将字段发布到宿主上下文。"
-        "en" "Publish a field through the host context."}}
-(defn ^Any publish
-  [^Any context [^Str field = "value"]]
+^{:doc
+  {:default "Publish a field through the host context."
+   "zh-CN" "将字段发布到宿主上下文。"}}
+(defn ^Any publish [^Any context [^Str field = "value"]]
   (context.emit field))
 
-;; Rich Metadata 同时服务于编译器、LSP 和 Agent。:osiris/names 发布的是同一
-;; binding 的其他拼写，不会生成 wrapper 或第二份 Python 函数。
-^{:doc {"zh-CN" "将每个整数加一。"
-        "en" "Increment every integer."}
-  :osiris/names
-  {"zh-CN" {:preferred 全部加一
-             :aliases [逐项加一]}}}
-(defn ^{:type (Vector Int)} increment-all
-  [^{:type (Vector Int)} values]
-  (for [value values] (+ value 1)))
+;; Rich Metadata 同时服务于编译器、LSP 和 Agent。:doc 的 :default 是无语言标签的
+;; authored fallback（可复用包推荐英文），其他 BCP 47 key 是内嵌翻译。
+;; :osiris/names 发布的是同一 binding 的其他拼写，
+;; 不会生成 wrapper 或第二份 Python 函数。
+^{:doc
+  {:default "Increment every integer." "zh-CN" "将每个整数加一。"}
+  :osiris/names {"zh-CN" {:preferred 全部加一 :aliases [逐项加一]}}}
+(defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} values]
+  (forv [value values]
+    (+ value 1)))
 
-;; for 是标准 prelude 宏，不是 Rust 编译器里的专用语法。这里展示多重 binding、
-;; :let 中间绑定和 :when 过滤；结果顺序与 Clojure 的嵌套遍历一致。
-^{:doc {"zh-CN" "计算两组整数的正数笛卡尔和。"}}
+;; for/forv 是标准 core 宏，不是 Rust 编译器里的专用语法。for 返回 lazy sequence，
+;; forv eager 返回 Vector。这里展示多重 binding、:let 中间绑定和 :when 过滤。
+^{:doc
+  {:default "Compute the positive Cartesian sums of two integer vectors."
+   "zh-CN" "计算两组整数的正数笛卡尔和。"}}
 (defn ^{:type (Vector Int)} positive-pair-sums
-  [^{:type (Vector Int)} left-values
-   ^{:type (Vector Int)} right-values]
-  (for [left left-values
-        right right-values
-        :let [pair-sum (+ left right)]
-        :when (> pair-sum 0)]
+  [^{:type (Vector Int)} left-values ^{:type (Vector Int)} right-values]
+  (forv [left left-values
+         right right-values
+         :let [pair-sum (+ left right)]
+         :when (> pair-sum 0)]
     pair-sum))
 
 ;; ->> 把上一步结果放到下一步调用的最后一个参数位置。这里先逐项加一，再通过
 ;; reduce 求和；生成的 Python 仍保留普通函数和清晰的数据流。
-^{:doc {"zh-CN" "将所有整数加一后求和。"}}
-(defn ^Int sum-after-increment
-  [^{:type (Vector Int)} values]
+^{:doc
+  {:default "Increment all integers, then sum them."
+   "zh-CN" "将所有整数加一后求和。"}}
+(defn ^Int sum-after-increment [^{:type (Vector Int)} values]
   (->> values
        (mapv (fn [^Int value] (+ value 1)))
        (reduce (fn [total value] (+ total value)) 0)))

@@ -17,7 +17,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0031",
-                "osiris.prelude/close* expects exactly one positional argument",
+                "osiris.kernel/close* expects exactly one positional argument",
                 span,
             );
             return Expr::error(span);
@@ -66,7 +66,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0032",
-                "osiris.prelude/letfn* expects a binding vector and body",
+                "osiris.kernel/letfn* expects a binding vector and body",
                 span,
             );
             return Expr::error(span);
@@ -77,7 +77,7 @@ impl<'a> Lowerer<'a> {
             _ => {
                 self.error(
                     "OSR-T0032",
-                    "osiris.prelude/letfn* expects a binding vector",
+                    "osiris.kernel/letfn* expects a binding vector",
                     call.positional[0].span,
                 );
                 return Expr::error(span);

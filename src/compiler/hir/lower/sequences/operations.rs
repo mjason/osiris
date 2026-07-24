@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a> {
             self.error(
                 "OSR-T0041",
                 format!(
-                    "osiris.prelude/{} received an invalid argument list",
+                    "osiris.kernel/{} received an invalid argument list",
                     operation.runtime_name()
                 ),
                 span,

@@ -7,10 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
-try:  # Python 3.11+
-    import tomllib  # type: ignore[import-not-found]
-except ModuleNotFoundError:  # pragma: no cover - Python 3.9/3.10
-    import tomli as tomllib  # type: ignore[no-redef]
+import tomllib
 
 from ._common import _error, _normalise_name
 from ._model import BackendError, _Project, _Requirement
@@ -124,10 +121,20 @@ def _strip_jsonc(source: str) -> str:
 
 
 def _read_jsonc(path: Path) -> Tuple[bytes, Dict[str, Any]]:
+    def reject_duplicates(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise _error("duplicate JSONC field `%s`" % key)
+            result[key] = value
+        return result
+
     try:
         raw = path.read_bytes()
         source = raw.decode("utf-8")
-        value = json.loads(_strip_jsonc(source))
+        value = json.loads(_strip_jsonc(source), object_pairs_hook=reject_duplicates)
+    except BackendError:
+        raise
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise _error("invalid JSONC in %s: %s" % (path, exc)) from exc
     if not isinstance(value, dict):
@@ -150,9 +157,31 @@ def _parse_target(value: Any) -> Tuple[int, int]:
         raise _error("osiris.jsonc targetPython must use MAJOR.MINOR form")
     major_text, minor_text = value.strip().split(".", 1)
     target = (int(major_text), int(minor_text))
-    if target < (3, 9):
-        raise _error("target-python %s.%s is below the supported minimum 3.9" % target)
+    if target < (3, 11):
+        raise _error("target-python %s.%s is below the supported minimum 3.11" % target)
     return target
+
+
+_BCP47_RE = re.compile(
+    r"(?:"
+    r"(?:[A-Za-z]{2,3}(?:-[A-Za-z]{3}){0,3}|[A-Za-z]{4}|[A-Za-z]{5,8})"
+    r"(?:-[A-Za-z]{4})?(?:-(?:[A-Za-z]{2}|[0-9]{3}))?"
+    r"(?:-(?:[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*"
+    r"(?:-[0-9A-WY-Za-wy-z](?:-[A-Za-z0-9]{2,8})+)*"
+    r"(?:-x(?:-[A-Za-z0-9]{1,8})+)?"
+    r"|x(?:-[A-Za-z0-9]{1,8})+"
+    r"|(?:en-GB-oed|i-ami|i-bnn|i-default|i-enochian|i-hak|i-klingon|i-lux|i-mingo|"
+    r"i-navajo|i-pwn|i-tao|i-tay|i-tsu|sgn-BE-FR|sgn-BE-NL|sgn-CH-DE)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _validate_locale(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or not _BCP47_RE.fullmatch(value):
+        raise _error("osiris.jsonc displayLocale must be a well-formed BCP 47 tag")
 
 
 def _validate_relative_path(value: Any, label: str) -> Path:
@@ -179,12 +208,14 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         "strict",
         "displayLocale",
     }
-    unknown_config = sorted(set(osiris) - allowed_config)
-    if unknown_config:
-        raise _error("unknown osiris.jsonc field `%s`" % unknown_config[0])
     display_locale = osiris.get("displayLocale")
-    if display_locale is not None and display_locale not in ("en", "zh-CN"):
-        raise _error("osiris.jsonc displayLocale must be `en` or `zh-CN`")
+    _validate_locale(display_locale)
+    strict = osiris.get("strict", True)
+    if not isinstance(strict, bool):
+        raise _error("osiris.jsonc strict must be a boolean")
+    unknown_config = sorted(set(osiris) - allowed_config)
+    if strict and unknown_config:
+        raise _error("unknown osiris.jsonc field `%s`" % unknown_config[0])
     project = _as_table(document.get("project"), "[project]")
     name = project.get("name")
     if not isinstance(name, str) or not name.strip():
@@ -213,9 +244,24 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
     source_values = osiris.get("source", ["src"])
     if not isinstance(source_values, list) or not source_values:
         raise _error("osiris.jsonc source must be a non-empty array")
+    output_relative = _validate_relative_path(osiris.get("outDir", "dist"), "output directory")
+    output_dir = (root / output_relative).resolve()
     source_roots: List[Path] = []
+    seen_source_roots: Set[Path] = set()
     for index, value in enumerate(source_values):
         relative = _validate_relative_path(value, "source root %d" % index)
+        if relative in seen_source_roots:
+            raise _error("duplicate normalized source root `%s`" % relative)
+        seen_source_roots.add(relative)
+        try:
+            relative.relative_to(output_relative)
+        except ValueError:
+            pass
+        else:
+            raise _error(
+                "source root `%s` must not be inside output directory `%s`"
+                % (relative, output_relative)
+            )
         absolute = (root / relative).resolve()
         try:
             absolute.relative_to(root)
@@ -330,6 +376,7 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         project=project,
         osiris=osiris,
         source_roots=source_roots,
+        output_dir=output_dir,
         exclude_patterns=exclude_patterns,
         target_python=target,
         requirements=[item.raw for item in requirements],

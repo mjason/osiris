@@ -104,6 +104,7 @@ fn initialize_result() -> JsonValue {
             "renameProvider": {
                 "prepareProvider": true,
             },
+            "documentFormattingProvider": true,
             "diagnosticProvider": {
                 "interFileDependencies": true,
                 "workspaceDiagnostics": false,
@@ -111,8 +112,9 @@ fn initialize_result() -> JsonValue {
             "experimental": {
                 "osirisSemanticView": true,
                 "osirisSyntaxSnapshot": true,
-                "osirisInspect": true,
+                "osirisSymbol": true,
                 "osirisExpandPreview": true,
+                "osirisStandardSource": true,
             },
         },
         "serverInfo": {

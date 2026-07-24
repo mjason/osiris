@@ -3,8 +3,9 @@ use super::*;
 #[test]
 fn run_executes_fully_expanded_threading_pipeline() {
     let fixture = SourceFixture::new(
-        "(py/import builtins :as py)\n\
-         (defn calculate [[x Int]] -> Int (-> x (+ 1) (* 2)))\n\
+        "(import osiris.core :refer [->])\n\
+         (py/import builtins :as py)\n\
+         (defn ^Int calculate [^Int x] (-> x (+ 1) (* 2)))\n\
          (py.print (calculate 20))\n",
     );
     let output = osr(&["run", path_argument(&fixture.path)]);
@@ -32,7 +33,8 @@ fn run_compiles_the_project_workspace_before_executing_the_entry() {
         "src/demo/math.osr",
         r#"(module demo.math)
             (export [add-one])
-            (defn add-one [[value Int]] -> Int (+ value 1))
+            ^{:doc "Increment an integer."}
+            (defn ^Int add-one [^Int value] (+ value 1))
         "#,
     );
     fs::write(
@@ -89,11 +91,13 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
         &extension_source,
         r#"(module sample.core)
             (export [owner S])
+            ^{:doc "Schema S."}
             (defstatic-schema S
               :schema-id "sample/schema"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "Record owner."}
+            (def ^Any owner none)
             (static-record S owner {:id "alpha"})
         "#,
     )
@@ -102,7 +106,8 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
         extension_root.join("src/sample/extra.osr"),
         r#"(module sample.extra)
             (export [value])
-            (defn value [] -> Int 1)
+            ^{:doc "Return one."}
+            (defn ^Int value [] 1)
         "#,
     )
     .expect("second extension interface source should be written");
@@ -123,7 +128,6 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
     );
     let records_path = extension_output.join("sample-ext.records.json");
     let records_bytes = fs::read(&records_path).expect("extension records sidecar should exist");
-    let records_hash = format!("sha256:{:x}", sha2::Sha256::digest(&records_bytes));
     let dist_info = site_root.join("sample_ext-1.0.dist-info");
     fs::create_dir_all(&dist_info).expect("dist-info should be created");
     fs::write(
@@ -131,14 +135,37 @@ fn records_resolver_fixture() -> RecordsResolverFixture {
         "Metadata-Version: 2.4\nName: sample-ext\nVersion: 1.0\n\n",
     )
     .expect("extension metadata should be written");
-    let marker_path = dist_info.join("osiris.toml");
-    fs::write(
-        &marker_path,
-        format!(
-            "schema = 1\ncompiler_abi = 1\nlanguage_abi = 2\nsource_hash = \"{SOURCE_HASH}\"\nrecords = \"sample_ext/sample-ext.records.json\"\nrecords_hash = \"{records_hash}\"\n\n[[extension]]\nid = \"sample\"\ninterface = \"sample_ext/sample/core.osri\"\n\n[[extension]]\nid = \"sample-extra\"\ninterface = \"sample_ext/sample/extra.osri\"\n"
-        ),
+    fs::copy(
+        &extension_source,
+        site_root.join("sample_ext/sample/core.osr"),
     )
-    .expect("extension marker should be written");
+    .expect("extension source should be packaged");
+    fs::copy(
+        extension_root.join("src/sample/extra.osr"),
+        site_root.join("sample_ext/sample/extra.osr"),
+    )
+    .expect("second extension source should be packaged");
+    let marker_path = dist_info.join("osiris.toml");
+    write_extension_marker(
+        &site_root,
+        &dist_info,
+        "sample-ext",
+        "1.0",
+        &[],
+        &[
+            ExtensionMarkerMember {
+                id: "sample",
+                interface: "sample_ext/sample/core.osri",
+                source: "sample_ext/sample/core.osr",
+            },
+            ExtensionMarkerMember {
+                id: "sample-extra",
+                interface: "sample_ext/sample/extra.osri",
+                source: "sample_ext/sample/extra.osr",
+            },
+        ],
+        Some(("sample_ext/sample-ext.records.json", &records_bytes)),
+    );
     fs::write(
         fixture.directory.join("pyproject.toml"),
         "[project]\nname = \"demo\"\nversion = \"1.0\"\ndependencies = [\"sample-ext==1.0\"]\n",
@@ -279,12 +306,13 @@ fn run_rejects_external_records_semantic_hash_mismatch() {
 
 #[test]
 fn expand_prints_threading_macro_result() {
-    let fixture = SourceFixture::new("(-> value (normalize 1) finish)\n");
+    let fixture =
+        SourceFixture::new("(import osiris.core :refer [->])\n(-> value (normalize 1) finish)\n");
     let output = osr(&["expand", path_argument(&fixture.path)]);
 
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "(finish (normalize value 1))\n"
+        "(import osiris.core :refer [->])\n(finish (normalize value 1))\n"
     );
 }

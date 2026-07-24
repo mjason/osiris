@@ -137,11 +137,20 @@ pub(super) fn collect_provisional_function(
     function: &ast::Function,
     runtime_module: Option<&str>,
     declarations: &mut BTreeMap<String, ProvisionalDeclaration>,
-    _next_type_variable: &mut u32,
+    next_type_variable: &mut u32,
 ) -> InterfaceResult<()> {
     let Some(name) = &function.name else {
         return Ok(());
     };
+    let generic_parameters = function
+        .type_params
+        .iter()
+        .map(|parameter| {
+            let variable = Type::TypeVar(TypeVarId(*next_type_variable));
+            *next_type_variable = (*next_type_variable).saturating_add(1);
+            (parameter.canonical.clone(), variable)
+        })
+        .collect::<BTreeMap<_, _>>();
     let parameters = function
         .params
         .iter()
@@ -157,7 +166,9 @@ pub(super) fn collect_provisional_function(
                 ty: parameter
                     .type_annotation
                     .as_ref()
-                    .map_or(Type::Unknown, hir::type_from_ast),
+                    .map_or(Type::Unknown, |annotation| {
+                        hir::type_from_ast_with_generics(annotation, &generic_parameters)
+                    }),
                 has_default: parameter.default.is_some(),
                 variadic: parameter.variadic,
                 aliases: metadata_aliases(&metadata, &parameter.name.canonical),
@@ -168,7 +179,9 @@ pub(super) fn collect_provisional_function(
     let return_type = function
         .return_type
         .as_ref()
-        .map_or(Type::Unknown, hir::type_from_ast);
+        .map_or(Type::Unknown, |annotation| {
+            hir::type_from_ast_with_generics(annotation, &generic_parameters)
+        });
     let summaries = function
         .contract
         .as_ref()

@@ -1,42 +1,112 @@
 use super::*;
 
 #[test]
+fn authored_map_and_set_literals_keep_boolean_and_integer_values_distinct() {
+    let source = r#"
+(module logical_literals)
+(defn ^Any values-by-key []
+  {false "false" 0 "zero" true "true" 1 "one"})
+(defn ^Any distinct-values []
+  #{false 0 true 1})
+"#;
+    let result = compile(
+        source,
+        &CompileOptions::new("logical_literals", PythonVersion::default()),
+    );
+    assert!(
+        result.analysis.diagnostics.is_empty(),
+        "{:#?}",
+        result.analysis.diagnostics
+    );
+    let generated = result.python.expect("generated logical collection Python");
+    assert!(
+        generated
+            .source
+            .contains("logical_map as _osr_logical_map_")
+    );
+    assert!(
+        generated
+            .source
+            .contains("logical_set as _osr_logical_set_")
+    );
+
+    let root = temporary_directory();
+    write_generated_module(&root, "logical_literals.py", &generated);
+    let smoke = root.join("smoke.py");
+    fs::write(
+        &smoke,
+        r#"from logical_literals import distinct_values, values_by_key
+
+mapping = values_by_key()
+assert list(mapping.items()) == [
+    (False, "false"),
+    (0, "zero"),
+    (True, "true"),
+    (1, "one"),
+]
+assert mapping[False] == "false"
+assert mapping[0] == "zero"
+assert mapping[True] == "true"
+assert mapping[1] == "one"
+assert list(distinct_values()) == [False, 0, True, 1]
+print("ok")
+"#,
+    )
+    .expect("write logical collection smoke script");
+    let output = Command::new("python3")
+        .arg(&smoke)
+        .env("PYTHONPATH", &root)
+        .output()
+        .expect("run generated logical collections");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}\npython:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+        generated.source
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
+    fs::remove_dir_all(root).expect("remove temporary directory");
+}
+
+#[test]
 fn collection_control_compiles_and_executes_in_python() {
     let source = r#"
 (module control_compile)
-(defn cartesian [[lefts (Vector Int)] [rights (Vector Int)]] -> (Vector Int)
-  (for [left lefts right rights] (+ left right)))
-(defn selected [[values (Vector Int)]] -> (Vector Int)
-  (for [value values :when (> value 1)] value))
-(defn pairwise [[left (Vector Int)] [right (Vector Int)]] -> (Vector Int)
+(import osiris.core :refer :all)
+(defn ^{:type (Vector Int)} cartesian [^{:type (Vector Int)} lefts ^{:type (Vector Int)} rights]
+  (forv [left lefts right rights] (+ left right)))
+(defn ^{:type (Vector Int)} selected [^{:type (Vector Int)} values]
+  (forv [value values :when (> value 1)] value))
+(defn ^{:type (Vector Int)} pairwise [^{:type (Vector Int)} left ^{:type (Vector Int)} right]
   (mapv (fn [a b] (+ a b)) left right))
-(defn flattened [[values (Vector Int)]] -> (Vector Int)
+(defn ^{:type (Vector Int)} flattened [^{:type (Vector Int)} values]
   (mapcatv (fn [value] [value (- value 1)]) values))
-(defn selected-values [[values (Vector Int)]] -> (Vector Int)
+(defn ^{:type (Vector Int)} selected-values [^{:type (Vector Int)} values]
   (filterv (fn [value] (> value 1)) values))
-(defn total [[values (Vector Int)]] -> Int
+(defn ^Int total [^{:type (Vector Int)} values]
   (reduce (fn [acc value] (+ acc value)) 0 values))
-(defn folded [[values (Vector Int)]] -> Int
+(defn ^Int folded [^{:type (Vector Int)} values]
   (fold (fn [acc value] (+ acc value)) 10 values))
-(defn total-before-four [[values (Vector Int)]] -> Int
+(defn ^Int total-before-four [^{:type (Vector Int)} values]
   (reduce
     (fn [acc value]
       (if (= value 4) (reduced acc) (+ acc value)))
     0
     values))
-(defn folded-before-four [[values (Vector Int)]] -> Int
+(defn ^Int folded-before-four [^{:type (Vector Int)} values]
   (fold
     (fn [acc value]
       (if (= value 4) (reduced acc) (+ acc value)))
     10
     values))
-(defn reduced-roundtrip [[value Int]] -> Int
+(defn ^Int reduced-roundtrip [^Int value]
   (unreduced (reduced value)))
-(defn reduced-marker? [[value Int]] -> Bool
+(defn ^Bool reduced-marker? [^Int value]
   (reduced? (reduced value)))
-(defn stop-at-four [[acc Int] [value Int]] -> (Union Int (Reduced Int))
+(defn ^{:type (Union Int (Reduced Int))} stop-at-four [^Int acc ^Int value]
   (if (= value 4) (reduced acc) (+ acc value)))
-(defn named-total-before-four [[values (Vector Int)]] -> Int
+(defn ^Int named-total-before-four [^{:type (Vector Int)} values]
   (reduce stop-at-four 0 values))
 "#;
     let result = compile(source, &options());
@@ -45,9 +115,9 @@ fn collection_control_compiles_and_executes_in_python() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
+    let generated = result.python.expect("generated Python");
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -69,13 +139,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR").to_owned();
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -83,7 +149,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -93,7 +159,8 @@ print("ok")
 fn mapcat_supports_multiple_collections_and_stops_at_the_shortest() {
     let source = r#"
 (module control_compile)
-(defn pair-flatten [[left (Vector Int)] [right (Vector Int)]] -> (Vector Int)
+(import osiris.core :refer :all)
+(defn ^{:type (Vector Int)} pair-flatten [^{:type (Vector Int)} left ^{:type (Vector Int)} right]
   (mapcatv (fn [a b] [a b (+ a b)]) left right))
 "#;
     let result = compile(source, &options());
@@ -102,22 +169,18 @@ fn mapcat_supports_multiple_collections_and_stops_at_the_shortest() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
+    let generated = result.python.expect("generated Python");
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
         "from control_compile import pair_flatten\nassert pair_flatten((1, 2), (10,)) == (1, 10, 11)\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -125,7 +188,7 @@ fn mapcat_supports_multiple_collections_and_stops_at_the_shortest() {
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     fs::remove_dir_all(root).expect("remove temporary directory");
 }
@@ -134,7 +197,8 @@ fn mapcat_supports_multiple_collections_and_stops_at_the_shortest() {
 fn reduce_rejects_a_reduced_value_with_the_wrong_accumulator_type() {
     let source = r#"
 (module bad_reduced)
-(defn bad [[values (Vector Int)]] -> Int
+(import osiris.core :refer :all)
+(defn ^Int bad [^{:type (Vector Int)} values]
   (reduce
     (fn [acc value]
       (if (= value 0) (reduced "wrong") acc))
@@ -158,7 +222,9 @@ fn reduce_rejects_a_reduced_value_with_the_wrong_accumulator_type() {
 fn public_reducer_can_expose_the_reduced_protocol_type() {
     let source = r#"
 (module reduced_interface)
-(defn step [[acc Int] [value Int]] -> (Union Int (Reduced Int))
+(import osiris.core :refer :all)
+^{:doc "Reduce one integer value."}
+(defn ^{:type (Union Int (Reduced Int))} step [^Int acc ^Int value]
   (if (= value 0) (reduced acc) (+ acc value)))
 (export [step])
 "#;
@@ -171,7 +237,7 @@ fn public_reducer_can_expose_the_reduced_protocol_type() {
     assert!(result.interface.is_some());
     let python = result.python.expect("generated Python").source;
     assert!(
-        python.contains("from osiris.prelude import Reduced as _u0_osiris_Reduced"),
+        python.contains("from __osiris_runtime__ import Reduced as _u0_osiris_Reduced"),
         "{python}"
     );
     assert!(
@@ -184,7 +250,8 @@ fn public_reducer_can_expose_the_reduced_protocol_type() {
 fn when_first_accepts_general_iterables_without_losing_the_first_value() {
     let source = r#"
 (module control_compile)
-(defn first-value [[values Any]] -> Any
+(import osiris.core :refer :all)
+(defn ^Any first-value [^Any values]
   (when-first [value values] value))
 "#;
     let result = compile(source, &options());
@@ -193,9 +260,9 @@ fn when_first_accepts_general_iterables_without_losing_the_first_value() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated when-first Python").source;
+    let generated = result.python.expect("generated when-first Python");
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -209,13 +276,9 @@ print("ok")
 "#,
     )
     .expect("write when-first smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated when-first Python");
     assert!(
@@ -223,7 +286,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

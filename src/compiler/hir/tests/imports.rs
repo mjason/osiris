@@ -2,14 +2,14 @@
 fn symbolic_temporal_contracts_specialize_and_compose_across_calls() {
     let result = lower(
         r#"(extern python "host.ops"
-                  (defn rolling [[value Int] [window Int]] -> Int
+                  (defn ^Int rolling [^Int value ^Int window]
                     :contract
                     {:id "host.ops/rolling-v1"
                      :effects :pure
                      :temporal {:past "window-1"
                                 :future 0
                                 :availability :published}}))
-               (defn twice [[value Int] [n Int]] -> Int
+               (defn ^Int twice [^Int value ^Int n]
                  (let [mean (rolling value n)
                        deviation (- value mean)
                        second-mean (rolling deviation n)]
@@ -141,7 +141,7 @@ fn imported_function_signature_and_keyword_alias_are_typed() {
     let result = lower_with_dependency(
         "(module app)
              (import dep.core :as dep :refer [add])
-             (defn call [] -> Int (dep/add 1 :值 2))",
+             (defn ^Int call [] (dep/add 1 :值 2))",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let function = result
@@ -164,13 +164,53 @@ fn imported_function_signature_and_keyword_alias_are_typed() {
 }
 
 #[test]
+fn ordinary_import_refer_all_applies_exclusion_and_rename() {
+    let result = lower_with_dependency(
+        "(module app)\n\
+         (import dep.core :as dep :refer :all :exclude [sum] :rename {add plus})\n\
+         (defn ^Int local-call [] (plus 1 2))\n\
+         (defn ^Int qualified-call [] (dep/add 3 4))",
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(result.module.aliases.iter().any(|alias| {
+        alias.canonical == "plus" && alias.target.as_str() == "dep.core::function::add"
+    }));
+    assert!(result.module.items.iter().filter_map(|item| match &item.kind {
+        ItemKind::Function(function) => Some(&function.body),
+        _ => None,
+    }).all(|body| matches!(
+        &body.kind,
+        ExprKind::Call { callee, .. }
+            if matches!(&callee.kind, ExprKind::Binding(binding) if binding.as_str() == "dep.core::function::add")
+    )));
+}
+
+#[test]
+fn ordinary_import_refer_all_validates_exclusions_and_renames() {
+    let result = lower_with_dependency(
+        "(module app)\n\
+         (import dep.core :refer :all :exclude [add missing] :rename {add plus nope absent})",
+    );
+    for code in ["OSR-H0011", "OSR-H0014"] {
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code),
+            "missing {code}: {:?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
 fn qualified_imported_targets_can_be_local_aliases_without_new_binding() {
     let result = lower_with_dependency(
         "(module app)
              (import dep.core :as dep)
              (alias 加法 dep/add)
              (alias 求和 dep/sum)
-             (defn call [] -> Int (加法 1 2))",
+             (defn ^Int call [] (加法 1 2))",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let canonical_alias = result
@@ -209,7 +249,7 @@ fn qualified_imported_targets_can_be_local_aliases_without_new_binding() {
 fn python_decorators_resolve_aliases_to_local_generated_bindings() {
     let result = lower(
         "(py/import host.runtime :as host)\n\
-         (defn publish [] -> Int 1)\n\
+         (defn ^Int publish [] 1)\n\
          (alias 发布 publish)\n\
          (py/decorate 发布 host.register)",
     );
@@ -234,8 +274,8 @@ fn python_decorators_resolve_aliases_to_local_generated_bindings() {
 fn python_decorators_reject_unknown_non_generated_and_duplicate_targets() {
     let result = lower(
         "(py/import host.runtime :as host)\n\
-         (def value Int 1)\n\
-         (defn publish [] -> Int 1)\n\
+         (def ^Int value 1)\n\
+         (defn ^Int publish [] 1)\n\
          (py/decorate missing host.register)\n\
          (py/decorate value host.register)\n\
          (py/decorate publish host.first)\n\
@@ -251,4 +291,76 @@ fn python_decorators_reject_unknown_non_generated_and_duplicate_targets() {
             result.diagnostics
         );
     }
+}
+
+#[test]
+fn core_functions_require_an_explicit_import_and_keep_facade_identity() {
+    let missing = lower("(def result (mapv (fn [value] (+ value 1)) [1 2]))");
+    assert!(missing.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "OSR-N0012" && diagnostic.message.contains("mapv")
+    }));
+
+    let imported = lower(
+        "(import osiris.core :refer [mapv])\n\
+         (def result (mapv (fn [value] (+ value 1)) [1 2]))",
+    );
+    assert!(imported.diagnostics.is_empty(), "{:?}", imported.diagnostics);
+    let call = imported
+        .module
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            ItemKind::Value(value) => value.value.as_ref(),
+            _ => None,
+        })
+        .expect("lowered value");
+    let ExprKind::Call { callee, .. } = &call.kind else {
+        panic!("mapv should remain a call");
+    };
+    let ExprKind::Binding(binding) = &callee.kind else {
+        panic!("mapv should resolve to a stable binding");
+    };
+    assert_eq!(binding.as_str(), "osiris.core::function::mapv");
+}
+
+#[test]
+fn core_import_applies_exclusion_before_rename_and_supports_qualified_calls() {
+    let renamed = lower(
+        "(import osiris.core :as core :refer :all :exclude [map] :rename {reduce fold-left})\n\
+         (def result (fold-left (fn [left right] (+ left right)) 0 [1 2]))\n\
+         (def first-value (core/first [1 2]))",
+    );
+    assert!(renamed.diagnostics.is_empty(), "{:?}", renamed.diagnostics);
+    assert!(renamed.module.bindings.iter().any(|binding| {
+        binding.name.id.as_str() == "osiris.core::function::reduce"
+    }));
+    assert!(!renamed.module.bindings.iter().any(|binding| {
+        binding.name.id.as_str() == "osiris.core::function::map"
+    }));
+
+    let invalid = lower(
+        "(import osiris.core :refer :all :exclude [map] :rename {map mapped nope missing})",
+    );
+    for code in ["OSR-H0023", "OSR-H0025"] {
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == code),
+            "missing {code}: {:?}",
+            invalid.diagnostics
+        );
+    }
+}
+
+#[test]
+fn local_names_are_not_selected_as_standard_intrinsics_by_spelling() {
+    let result = lower(
+        "(def result (let [mapv (fn [value] value)] (mapv 1)))",
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let standard_id = "osiris.core::function::mapv";
+    assert!(!result.module.bindings.iter().any(|binding| {
+        binding.name.id.as_str() == standard_id
+    }));
 }

@@ -1,0 +1,67 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.function)
+
+(export
+  [identity constantly comp partial juxt complement])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "Return the supplied value unchanged." "zh-CN" "原样返回给定值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type A} identity [^{:type A} value]
+  (kernel-leaf-identity value))
+
+^{:doc
+  {:default "Return a function that ignores all arguments and returns one captured value."
+   "zh-CN" "返回忽略全部参数并返回所捕获值的函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Fn [B] -> A)} constantly [^{:type A} value]
+  (kernel-leaf-constantly value))
+
+^{:doc
+  {:default "Compose functions from right to left; no functions produces identity."
+   "zh-CN" "从右向左组合函数；无函数时得到 identity。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Fn [A] -> B)} comp [& ^{:type (Fn [A] -> B)} functions]
+  (kernel-leaf-apply kernel-leaf-comp [] functions))
+
+^{:doc
+  {:default "Capture leading arguments once and return a function that appends later arguments."
+   "zh-CN" "一次性捕获前置参数，并返回追加后续参数的函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Fn [A] -> B)} partial [& ^{:type (Fn [A] -> B)} functions]
+  (kernel-leaf-apply kernel-leaf-partial [] functions))
+
+^{:doc
+  {:default "Call functions left to right with the same arguments and collect results in a Vector."
+   "zh-CN" "用相同参数从左到右调用所有函数，并将结果收集为 Vector。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Fn [A] -> (Vector B))} juxt [& ^{:type (Fn [A] -> B)} functions]
+  (kernel-leaf-apply kernel-leaf-juxt [] functions))
+
+^{:doc
+  {:default "Return a predicate that negates Clojure truthiness of another predicate result."
+   "zh-CN" "返回一个谓词，对另一个谓词结果的 Clojure 真值取反。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B]}
+(defn ^{:type (Fn [A] -> Bool)} complement [^{:type (Fn [A] -> B)} predicate]
+  (kernel-leaf-complement predicate))

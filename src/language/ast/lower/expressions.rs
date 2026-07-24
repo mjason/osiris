@@ -22,7 +22,80 @@ impl Lowerer {
                 macro_kind,
                 form: inner,
             } => {
-                let expression = Box::new(self.lower_expr(inner));
+                let expression = Box::new(match macro_kind {
+                    crate::syntax::ReaderMacroKind::Quote
+                    | crate::syntax::ReaderMacroKind::SyntaxQuote => {
+                        self.lower_quoted_template(inner)
+                    }
+                    crate::syntax::ReaderMacroKind::Unquote
+                    | crate::syntax::ReaderMacroKind::UnquoteSplicing => self.lower_expr(inner),
+                });
+                match macro_kind {
+                    crate::syntax::ReaderMacroKind::Quote => ExprKind::Quote(expression),
+                    crate::syntax::ReaderMacroKind::SyntaxQuote => {
+                        ExprKind::SyntaxQuote(expression)
+                    }
+                    crate::syntax::ReaderMacroKind::Unquote => ExprKind::Unquote(expression),
+                    crate::syntax::ReaderMacroKind::UnquoteSplicing => {
+                        ExprKind::UnquoteSplicing(expression)
+                    }
+                }
+            }
+            FormKind::Error(message) => ExprKind::Error(message.clone()),
+        };
+        Expr::from_form(form, kind)
+    }
+
+    pub(super) fn lower_quoted_template(&mut self, form: &Form) -> Expr {
+        let kind = match &form.kind {
+            FormKind::None => ExprKind::None,
+            FormKind::Bool(value) => ExprKind::Bool(*value),
+            FormKind::Integer(value) => ExprKind::Integer(value.clone()),
+            FormKind::Float(value) => ExprKind::Float(value.clone()),
+            FormKind::String(value) => ExprKind::String(value.clone()),
+            FormKind::Keyword(name) => ExprKind::Keyword(name.clone()),
+            FormKind::Symbol(name) => ExprKind::Name(name.clone()),
+            FormKind::List(parts) => ExprKind::List(
+                parts
+                    .iter()
+                    .map(|part| self.lower_quoted_template(part))
+                    .collect(),
+            ),
+            FormKind::Vector(parts) => ExprKind::Vector(
+                parts
+                    .iter()
+                    .map(|part| self.lower_quoted_template(part))
+                    .collect(),
+            ),
+            FormKind::Map(parts) => ExprKind::Map(
+                parts
+                    .chunks_exact(2)
+                    .map(|pair| {
+                        (
+                            self.lower_quoted_template(&pair[0]),
+                            self.lower_quoted_template(&pair[1]),
+                        )
+                    })
+                    .collect(),
+            ),
+            FormKind::Set(parts) => ExprKind::Set(
+                parts
+                    .iter()
+                    .map(|part| self.lower_quoted_template(part))
+                    .collect(),
+            ),
+            FormKind::ReaderMacro {
+                macro_kind,
+                form: inner,
+            } => {
+                let expression = Box::new(match macro_kind {
+                    crate::syntax::ReaderMacroKind::Unquote
+                    | crate::syntax::ReaderMacroKind::UnquoteSplicing => self.lower_expr(inner),
+                    crate::syntax::ReaderMacroKind::Quote
+                    | crate::syntax::ReaderMacroKind::SyntaxQuote => {
+                        self.lower_quoted_template(inner)
+                    }
+                });
                 match macro_kind {
                     crate::syntax::ReaderMacroKind::Quote => ExprKind::Quote(expression),
                     crate::syntax::ReaderMacroKind::SyntaxQuote => {
@@ -130,18 +203,11 @@ impl Lowerer {
                 );
                 Vec::new()
             });
-        let mut index = if params_form.is_some() { 2 } else { 1 };
-        let metadata_return_type = params_form
+        let index = if params_form.is_some() { 2 } else { 1 };
+        let return_type = params_form
             .map(|params| self.lower_metadata_type(&params.metadata, "function return"))
-            .unwrap_or_default();
-        let explicit_return_type = self.take_return_type(parts, &mut index);
-        if explicit_return_type.is_some() && metadata_return_type.present {
-            self.report_type_annotation_conflict(
-                "function return",
-                params_form.map_or(form.span, |params| params.span),
-            );
-        }
-        let return_type = explicit_return_type.or(metadata_return_type.annotation);
+            .unwrap_or_default()
+            .annotation;
         let body = parts[index..]
             .iter()
             .map(|part| self.lower_expr(part))
@@ -159,36 +225,6 @@ impl Lowerer {
                 body,
             }),
         )
-    }
-
-    pub(super) fn take_return_type(
-        &mut self,
-        parts: &[Form],
-        index: &mut usize,
-    ) -> Option<TypeExpr> {
-        if parts
-            .get(*index)
-            .and_then(symbol_name)
-            .is_some_and(|name| name.canonical == "->")
-        {
-            *index += 1;
-            match parts.get(*index) {
-                Some(form) => {
-                    *index += 1;
-                    Some(self.lower_type(form))
-                }
-                None => {
-                    self.error(
-                        AST_WRONG_SHAPE,
-                        "`->` requires a return type",
-                        Span::default(),
-                    );
-                    None
-                }
-            }
-        } else {
-            None
-        }
     }
 
     pub(super) fn lower_let_expr(&mut self, form: &Form, parts: &[Form]) -> Expr {

@@ -155,6 +155,11 @@ impl ModuleGraph {
                     ItemKind::ImportForSyntax(import) => (import, EdgeKind::Phase1),
                     _ => continue,
                 };
+                if crate::stdlib::is_standard_namespace(&import.module.canonical)
+                    && !known.contains(&import.module.canonical)
+                {
+                    continue;
+                }
                 let edge = ModuleEdge {
                     from: from.clone(),
                     to: import.module.canonical.clone(),

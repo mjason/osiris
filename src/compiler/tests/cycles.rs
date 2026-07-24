@@ -4,13 +4,15 @@ fn workspace_compiles_a_two_module_runtime_cycle_with_provisional_interfaces() {
             (module cycle.left)
             (import cycle.right :as right)
             (export [left])
-            (defn left [[value Int]] -> Int (right/right value))
+            ^{:doc "Call the right side."}
+            (defn ^Int left [^Int value] (right/right value))
         "#;
     let right = r#"
             (module cycle.right)
             (import cycle.left :as left)
             (export [right])
-            (defn right [[value Int]] -> Int (left/left value))
+            ^{:doc "Call the left side."}
+            (defn ^Int right [^Int value] (left/left value))
         "#;
     let left_options = CompileOptions::new("cycle.left", PythonVersion::MINIMUM);
     let right_options = CompileOptions::new("cycle.right", PythonVersion::MINIMUM);
@@ -32,22 +34,22 @@ fn runtime_scc_provisional_interfaces_preserve_struct_and_operator_shape() {
     let left = r#"
             (module capability.left)
             (import capability.right :as right)
+            ^{:doc "A scalar series fixture."}
             (defstruct Series [value Float])
             ^{:osiris/operator :multiply}
-            (defn multiply-series
-              [[series Series] [multiplier Float]]
-              -> Series series)
+            ^{:doc "Multiply a series fixture."}
+            (defn ^Series multiply-series [^Series series ^Float multiplier] series)
             (export [Series multiply-series])
-            (defn dispatch [[series Series] [multiplier Float]]
-              -> Series (right/scale series multiplier))
+            ^{:doc "Dispatch scaling."}
+            (defn ^Series dispatch [^Series series ^Float multiplier] (right/scale series multiplier))
             (export [dispatch])
         "#;
     let right = r#"
             (module capability.right)
             (import capability.left :refer [Series])
             (export [scale])
-            (defn scale [[series Series] [multiplier Float]]
-              -> Series series)
+            ^{:doc "Scale a series fixture."}
+            (defn ^Series scale [^Series series ^Float multiplier] series)
         "#;
     let left_options = CompileOptions::new("capability.left", PythonVersion::MINIMUM);
     let right_options = CompileOptions::new("capability.right", PythonVersion::MINIMUM);
@@ -66,16 +68,18 @@ fn runtime_scc_rebuilds_provisional_shape_after_declaration_macro_expansion() {
     let provider = r#"
             (module macro.cycle-provider)
             (import macro.cycle-consumer :as consumer)
-            (defmacro emit-generated [] '(def generated 1))
+            (defmacro emit-generated [] '(def ^{:type Int :doc "Generated value."} generated 1))
             (emit-generated)
             (export [generated run])
-            (defn run [[value Int]] -> Int (consumer/identity value))
+            ^{:doc "Run the generated provider."}
+            (defn ^Int run [^Int value] (consumer/identity value))
         "#;
     let consumer = r#"
             (module macro.cycle-consumer)
             (import macro.cycle-provider :as provider)
             (export [identity])
-            (defn identity [[value Int]] -> Int value)
+            ^{:doc "Return a value unchanged."}
+            (defn ^Int identity [^Int value] value)
         "#;
     let provider_options = CompileOptions::new("macro.cycle-provider", PythonVersion::MINIMUM);
     let consumer_options = CompileOptions::new("macro.cycle-consumer", PythonVersion::MINIMUM);
@@ -125,13 +129,15 @@ fn workspace_breaks_a_mixed_runtime_and_phase1_cycle_with_a_provisional_batch() 
             (module mixed.runtime)
             (import mixed.syntax :as syntax)
             (export [run])
-            (defn run [[value Int]] -> Int (syntax/emit value))
+            ^{:doc "Run the syntax dependency."}
+            (defn ^Int run [^Int value] (syntax/emit value))
         "#;
     let syntax_importer = r#"
             (module mixed.syntax)
             (import-for-syntax mixed.runtime)
             (export [emit])
-            (defn emit [[value Int]] -> Int value)
+            ^{:doc "Emit a value."}
+            (defn ^Int emit [^Int value] value)
         "#;
     let runtime_options = CompileOptions::new("mixed.runtime", PythonVersion::MINIMUM);
     let syntax_options = CompileOptions::new("mixed.syntax", PythonVersion::MINIMUM);
@@ -152,13 +158,15 @@ fn runtime_cycle_interface_hashes_are_stable_when_input_order_changes() {
             (module stable.left)
             (import stable.right :as right)
             (export [left])
-            (defn left [[value Int]] -> Int (right/right value))
+            ^{:doc "Call the right side."}
+            (defn ^Int left [^Int value] (right/right value))
         "#;
     let right = r#"
             (module stable.right)
             (import stable.left :as left)
             (export [right])
-            (defn right [[value Int]] -> Int (left/left value))
+            ^{:doc "Call the left side."}
+            (defn ^Int right [^Int value] (left/left value))
         "#;
     let left_options = CompileOptions::new("stable.left", PythonVersion::MINIMUM);
     let right_options = CompileOptions::new("stable.right", PythonVersion::MINIMUM);
@@ -200,19 +208,22 @@ fn runtime_sccs_are_scheduled_before_their_cross_scc_importers() {
             (module ordered.app)
             (import ordered.left :as left)
             (export [run])
-            (defn run [[value Int]] -> Int (left/left value))
+            ^{:doc "Run the ordered application."}
+            (defn ^Int run [^Int value] (left/left value))
         "#;
     let left = r#"
             (module ordered.left)
             (import ordered.right :as right)
             (export [left])
-            (defn left [[value Int]] -> Int (right/right value))
+            ^{:doc "Call the right side."}
+            (defn ^Int left [^Int value] (right/right value))
         "#;
     let right = r#"
             (module ordered.right)
             (import ordered.left :as left)
             (export [right])
-            (defn right [[value Int]] -> Int (left/left value))
+            ^{:doc "Call the left side."}
+            (defn ^Int right [^Int value] (left/left value))
         "#;
     let app_options = CompileOptions::new("ordered.app", PythonVersion::MINIMUM);
     let left_options = CompileOptions::new("ordered.left", PythonVersion::MINIMUM);

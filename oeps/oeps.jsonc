@@ -1,0 +1,75 @@
+{
+  // This file locates authored documents and selects English sources for the
+  // libSQL snapshot embedded in osr. OEP status and revision remain in each OEP.
+  "schema": "osiris.documentation-manifest/v2",
+  "normativeLocale": "en",
+  "locales": {
+    "en": ".",
+    "zh-CN": "local/zh"
+  },
+  "documents": [
+    {
+      "number": 0,
+      "source": "0000-oep-process.md",
+      "translations": { "zh-CN": "local/zh/0000-oep-process.md" }
+    },
+    {
+      "number": 1,
+      "source": "0001-language-and-cli.md",
+      "translations": { "zh-CN": "local/zh/0001-language-and-cli.md" }
+    },
+    {
+      "number": 2,
+      "source": "0002-package-system.md",
+      "translations": { "zh-CN": "local/zh/0002-package-system.md" }
+    },
+    {
+      "number": 3,
+      "source": "0003-standard-library.md",
+      "translations": { "zh-CN": "local/zh/0003-standard-library.md" }
+    },
+  ],
+  "manuals": [
+    {
+      "id": "language/syntax",
+      "source": "../docs/syntax.md",
+      // Translations are repository review aids and are never embedded.
+      "translations": { "zh-CN": "../docs/local/zh/syntax.md" }
+    },
+    {
+      "id": "tooling/cli",
+      "source": "../docs/cli.md"
+    },
+    {
+      "id": "tooling/diagnostics",
+      "source": "../docs/diagnostics.md"
+    },
+  ],
+  "documentationPublication": {
+    // Repository translations are review artifacts, not binary content.
+    "locale": "en",
+    "artifact": {
+      "engine": "libsql",
+      "format": "sqlite3",
+      "fullTextSearch": "fts5",
+      "embedded": true,
+      "readOnly": true
+    },
+    "channels": {
+      // Stable releases contain only approved normative source documents.
+      "stable": {
+        "versionKinds": ["final"],
+        "referenceStatuses": ["Accepted", "Active", "Final"],
+        "discussionStatuses": [],
+        "exclude": [0]
+      },
+      // Preview/testing releases may expose English proposals as discussions.
+      "preview": {
+        "versionKinds": ["prerelease", "development"],
+        "referenceStatuses": ["Accepted", "Active", "Final"],
+        "discussionStatuses": ["Draft", "Review"],
+        "exclude": [0]
+      },
+    }
+  }
+}

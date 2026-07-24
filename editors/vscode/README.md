@@ -20,7 +20,8 @@ definition, references, and rename are provided by `osr lsp`.
 
 The extension starts `osr lsp` from `PATH`. If it is installed elsewhere,
 set `osiris.server.path` to the executable's absolute path and run
-**Osiris: Restart Language Server**.
+**Osiris: Restart Language Server**. This extension requires `osr` 0.3.0 or
+newer and stops an older server before it can publish incompatible diagnostics.
 
 ## Settings
 

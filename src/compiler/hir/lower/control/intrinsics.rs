@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a> {
             self.error(
                 "OSR-T0026",
                 format!(
-                    "osiris.prelude/{}* expects exactly one positional argument",
+                    "osiris.kernel/{}* expects exactly one positional argument",
                     match intrinsic {
                         ControlIntrinsic::Truthy => "truthy",
                         ControlIntrinsic::Nil => "nil",
@@ -103,7 +103,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0026",
-                "osiris.prelude/assert* expects a condition and optional message",
+                "osiris.kernel/assert* expects a condition and optional message",
                 span,
             );
             return Expr::error(span);

@@ -1,0 +1,97 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.collection)
+
+(export
+  [get assoc dissoc update get-in assoc-in update-in select-keys])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "Read an associative value without insertion, returning none or an explicit fallback when absent."
+   "zh-CN" "读取关联值但不插入；缺失时返回 none 或显式回退值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [B C K V]}
+(defn ^{:type (Union B V)} get
+  [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]]
+  (kernel-leaf-get collection key not-found))
+
+^{:doc
+  {:default "Return new associative data with key/value pairs applied left to right."
+   "zh-CN" "返回从左到右应用键值对后的新关联数据。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type C} assoc [^{:type C} collection & ^{:type A} entries]
+  (kernel-leaf-apply kernel-leaf-assoc [collection] entries))
+
+^{:doc
+  {:default "Return new associative data without the requested keys."
+   "zh-CN" "返回移除指定键后的新关联数据。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C K]}
+(defn ^{:type C} dissoc [^{:type C} collection & ^{:type K} keys]
+  (kernel-leaf-apply kernel-leaf-dissoc [collection] keys))
+
+^{:doc
+  {:default "Update one key by calling a function with its current value or none and extra arguments."
+   "zh-CN" "用当前值或 none 以及额外参数调用函数来更新一个键。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C K]}
+(defn ^{:type C} update
+  [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+   ^{:type A} arguments]
+  (kernel-leaf-apply kernel-leaf-update [collection key function] arguments))
+
+^{:doc
+  {:default "Traverse nested associative keys and return a fallback at the first missing path."
+   "zh-CN" "遍历嵌套关联键，并在首个缺失路径返回回退值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C V]}
+(defn ^{:type (Union B V)} get-in
+  [^{:type C} collection ^{:type (List A)} keys
+   [^{:type (Option B)} not-found = none]]
+  (kernel-leaf-get-in collection keys not-found))
+
+^{:doc
+  {:default "Return nested associative data with missing map nodes created as needed."
+   "zh-CN" "返回按需创建缺失 Map 节点后的嵌套关联数据。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C V]}
+(defn ^{:type C} assoc-in
+  [^{:type C} collection ^{:type (List A)} keys ^{:type V} value]
+  (kernel-leaf-assoc-in collection keys value))
+
+^{:doc
+  {:default "Update one nested path with exactly one callback invocation."
+   "zh-CN" "通过恰好一次回调调用更新一个嵌套路径。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C K]}
+(defn ^{:type C} update-in
+  [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+   ^{:type A} arguments]
+  (kernel-leaf-apply kernel-leaf-update-in [collection key function] arguments))
+
+^{:doc
+  {:default "Return present requested keys in request order, omitting missing keys."
+   "zh-CN" "按请求顺序返回存在的指定键，并省略缺失键。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C K V]}
+(defn ^{:type (Map K V)} select-keys
+  [^{:type C} collection ^{:type (List A)} keys]
+  (kernel-leaf-select-keys collection keys))

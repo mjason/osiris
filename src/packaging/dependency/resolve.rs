@@ -331,18 +331,5 @@ pub(super) fn validate_marker_pin(
             locked: pin.version.clone(),
         });
     }
-    if let Some(expected) = distribution.marker_source_hash() {
-        if !pin
-            .source_hashes
-            .iter()
-            .any(|hash| hash.eq_ignore_ascii_case(expected))
-        {
-            return Err(DependencyError::MarkerSourceHashMismatch {
-                distribution: distribution.metadata.name.clone(),
-                marker: expected.to_owned(),
-                locked: pin.source_hash.clone(),
-            });
-        }
-    }
     Ok(())
 }

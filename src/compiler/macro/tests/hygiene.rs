@@ -191,7 +191,7 @@ fn nested_macro_trace_preserves_the_origin_chain() {
 
 #[test]
 fn hygienic_macro_output_reaches_readable_python_codegen() {
-    let source = "(module macro-demo)\n(defmacro twice [expr]\n  `(let [value# ~expr] (+ value# value#)))\n(defn twice-value [[value Int]] -> Int\n  (twice value))";
+    let source = "(module macro-demo)\n(defmacro twice [expr]\n  `(let [value# ~expr] (+ value# value#)))\n(defn ^{:type Int\n} twice-value [^Int value]  (twice value))";
     let result = compile(
         source,
         &CompileOptions::new("macro-demo", PythonVersion::default()),
@@ -210,9 +210,10 @@ fn hygienic_macro_output_reaches_readable_python_codegen() {
 #[test]
 fn control_prelude_reaches_typed_readable_python() {
     let source = r#"(module control-demo)
-            (defn choose [[first Bool] [second Bool]] -> Bool
+            (import osiris.core :refer :all)
+            (defn ^Bool choose [^Bool first ^Bool second]
               (cond first true second false :else (and first second)))
-            (defn maybe [[ready Bool]] -> (Option Bool)
+            (defn ^{:type (Option Bool)} maybe [^Bool ready]
               (when ready true))"#;
     let result = compile(
         source,
@@ -236,8 +237,9 @@ fn control_prelude_reaches_typed_readable_python() {
 #[test]
 fn for_macro_reaches_typed_runtime_mapv() {
     let source = r#"(module control-map)
-            (defn increment-all [[items (Vector Int)]] -> (Vector Int)
-              (for [item items] (+ item 1)))"#;
+            (import osiris.core :refer :all)
+            (defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} items]
+              (forv [item items] (+ item 1)))"#;
     let result = compile(
         source,
         &CompileOptions::new("control-map", PythonVersion::default()),
@@ -251,14 +253,15 @@ fn for_macro_reaches_typed_runtime_mapv() {
         .python
         .expect("for should compile through mapv")
         .source;
-    assert!(python.contains("from osiris.prelude import mapv as _u0_osiris_mapv"));
+    assert!(python.contains("from __osiris_runtime__ import mapv"));
     assert!(python.contains("def increment_all(items: tuple[int, ...]) -> tuple[int, ...]:"));
-    assert!(python.contains("_u0_osiris_mapv(lambda item: item + 1, items)"));
+    assert!(python.contains("mapv(lambda item: item + 1, items)"));
 
     let destructured = compile(
         r#"(module control-map-pattern)
-               (defn values [[items (Vector (Map Str Int))]] -> (Vector Int)
-                 (for [{:keys [value]} items] value))"#,
+               (import osiris.core :refer :all)
+               (defn ^{:type (Vector Int)} values [^{:type (Vector (Map Str Int))} items]
+                 (forv [{:keys [value]} items] value))"#,
         &CompileOptions::new("control-map-pattern", PythonVersion::default()),
     );
     assert!(
@@ -271,17 +274,18 @@ fn for_macro_reaches_typed_runtime_mapv() {
         .expect("destructured for should compile")
         .source;
     assert!(python.contains("[\"value\"]"));
-    assert!(python.contains("_u0_osiris_mapv"));
+    assert!(python.contains("mapv"));
 }
 
 #[test]
 fn multi_clause_for_reaches_typed_runtime_collections() {
     let source = r#"(module control-comprehension)
-            (defn cartesian-sums [[lefts (Vector Int)] [rights (Vector Int)]] -> (Vector Int)
-              (for [left lefts right rights]
+            (import osiris.core :refer :all)
+            (defn ^{:type (Vector Int)} cartesian-sums [^{:type (Vector Int)} lefts ^{:type (Vector Int)} rights]
+              (forv [left lefts right rights]
                 (+ left right)))
-            (defn selected-sums [[lefts (Vector Int)] [rights (Vector Int)]] -> (Vector Int)
-              (for [left lefts
+            (defn ^{:type (Vector Int)} selected-sums [^{:type (Vector Int)} lefts ^{:type (Vector Int)} rights]
+              (forv [left lefts
                     right rights
                     :let [sum (+ left right)]
                     :when (> sum 2)]
@@ -299,10 +303,10 @@ fn multi_clause_for_reaches_typed_runtime_collections() {
         .python
         .expect("multi-clause for should compile")
         .source;
-    assert!(python.contains("mapcatv as _u0_osiris_mapcatv"), "{python}");
-    assert!(python.contains("mapv as _u0_osiris_mapv"), "{python}");
-    assert!(python.matches("_u0_osiris_mapcatv(").count() >= 3);
-    assert!(python.contains("_u0_osiris_mapv("));
+    assert!(python.contains("mapcatv"), "{python}");
+    assert!(python.contains("mapv"), "{python}");
+    assert!(python.matches("mapcatv(").count() >= 3);
+    assert!(python.contains("mapv("));
 }
 
 fn gensym_occurrences(form: &Form) -> Vec<String> {

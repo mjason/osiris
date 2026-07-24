@@ -21,6 +21,15 @@ use crate::{
 pub struct GeneratedPython {
     pub module: py::Module,
     pub source: String,
+    pub runtime_support: Option<RuntimeSupport>,
+}
+
+/// Distribution-private support requested by one generated module.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSupport {
+    pub package: String,
+    pub helpers: BTreeSet<String>,
+    pub binding_ids: BTreeSet<String>,
 }
 
 /// An error raised while lowering a semantically valid HIR to Python.
@@ -68,7 +77,7 @@ pub fn compile_module(
     imports.extend(backend.typing_imports());
 
     // Future annotations keeps nominal/generic references readable and makes
-    // forward references between generated declarations legal on Python 3.9.
+    // forward references between generated declarations legal on Python 3.11.
     let mut final_body = Vec::with_capacity(imports.len() + body.len());
     final_body.push(py::Stmt::Import(py::Import::From {
         module: Some("__future__".to_owned()),
@@ -85,6 +94,37 @@ pub fn compile_module(
     Ok(GeneratedPython {
         module: python_module,
         source,
+        runtime_support: backend.runtime_support(),
+    })
+}
+
+/// Lower a module for a distribution-private standard-library location.
+pub(crate) fn compile_module_with_runtime(
+    module: &hir::Module,
+    target: impl Into<PythonVersion>,
+    runtime_module: impl Into<String>,
+) -> Result<GeneratedPython, BackendError> {
+    let mut backend = Backend::with_runtime_module(module, target.into(), runtime_module.into());
+    let body = backend.lower_items(module)?;
+    let mut imports = backend.imports();
+    imports.extend(backend.typing_imports());
+    let mut final_body = Vec::with_capacity(imports.len() + body.len());
+    final_body.push(py::Stmt::Import(py::Import::From {
+        module: Some("__future__".to_owned()),
+        names: vec![py::ImportAlias::new("annotations")],
+        level: 0,
+    }));
+    final_body.extend(imports);
+    final_body.extend(backend.typevar_declarations());
+    final_body.extend(body);
+    let python_module = py::Module::new(final_body);
+    let source = python_module
+        .to_source()
+        .map_err(|error| BackendError::new(error.to_string(), None))?;
+    Ok(GeneratedPython {
+        module: python_module,
+        source,
+        runtime_support: backend.runtime_support(),
     })
 }
 
@@ -113,15 +153,22 @@ struct Backend<'hir> {
     typevar_names: BTreeMap<crate::types::TypeVarId, String>,
     active_type_parameters: BTreeMap<String, String>,
     binding_overrides: Vec<BTreeMap<crate::name::BindingId, py::Expr>>,
+    runtime_module: String,
+    runtime_helpers: BTreeSet<String>,
+    linked_runtime_helpers: BTreeMap<String, String>,
+    reachable_standard_bindings: BTreeSet<String>,
 }
 
 mod bindings;
 mod control;
 mod declarations;
 mod expressions;
+mod runtime;
 mod setup;
 mod support;
 
+pub(crate) use runtime::linkable_helper_ir_bytes;
+pub use runtime::{runtime_distribution_files, runtime_helper_hashes, runtime_support_files};
 use support::*;
 
 #[cfg(test)]

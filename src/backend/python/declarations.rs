@@ -8,6 +8,18 @@ impl<'hir> Backend<'hir> {
         let binding_name = self.python_name(&function.binding).to_owned();
         let decorators = self.lower_decorators(&function.decorators)?;
         let mut parameters = py::Parameters::default();
+        let keyword_only_from =
+            function
+                .parameters
+                .iter()
+                .enumerate()
+                .find_map(|(index, parameter)| {
+                    (parameter.default.is_some()
+                        && function.parameters[index + 1..]
+                            .iter()
+                            .any(|later| later.default.is_none() && !later.variadic))
+                    .then_some(index)
+                });
         for (parameter_index, parameter) in function.parameters.iter().enumerate() {
             let name = self.python_name(&parameter.binding).to_owned();
             let annotation = Some(self.annotation(&parameter.ty, Some(function.body.span))?);
@@ -40,6 +52,8 @@ impl<'hir> Backend<'hir> {
                     annotation: parameter.annotation,
                     default: None,
                 });
+            } else if keyword_only_from.is_some_and(|start| parameter_index >= start) {
+                parameters.keyword_only.push(parameter);
             } else {
                 parameters.positional.push(parameter);
             }
@@ -219,7 +233,7 @@ impl<'hir> Backend<'hir> {
         }
         let mut bases = Vec::new();
         if !structure.type_parameters.is_empty() {
-            // Generic and TypeVar are runtime names on Python 3.9-3.11.  A
+            // Generic and TypeVar are runtime names on Python 3.11. A
             // type parameter need not occur in a field annotation (for
             // example an extension marker struct can intentionally leave its
             // payload as Any), so register both imports from the declaration

@@ -4,7 +4,8 @@ use super::*;
 fn assert_uses_a_runtime_exception_and_keeps_message_lazy() {
     let source = r#"
 (module control_compile)
-(defn check [[value Any]] -> None
+(import osiris.core :refer :all)
+(defn ^None check [^Any value]
   (assert value "assertion failed"))
 "#;
     let result = compile(source, &options());
@@ -13,13 +14,16 @@ fn assert_uses_a_runtime_exception_and_keeps_message_lazy() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated assert Python").source;
+    let generated = result.python.expect("generated assert Python");
     assert!(
-        generated.contains("assert_value as _u0_osiris_assert_value"),
-        "{generated}"
+        generated
+            .source
+            .contains("assert_value as _u0_osiris_assert_value"),
+        "{}",
+        generated.source
     );
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -36,13 +40,9 @@ print("ok")
 "#,
     )
     .expect("write assert smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated assert Python");
     assert!(
@@ -50,7 +50,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -60,16 +60,17 @@ print("ok")
 fn clojure_truthiness_applies_to_control_macros_over_any_values() {
     let source = r#"
 (module control_compile)
-(defn when-any [[value Any]] -> (Option Str)
+(import osiris.core :refer :all)
+(defn ^{:type (Option Str)} when-any [^Any value]
   (when value "yes"))
-(defn and-any [[value Any]] -> Any
+(defn ^Any and-any [^Any value]
   (and value 42))
-(defn or-any [[value Any]] -> Any
+(defn ^Any or-any [^Any value]
   (or value 42))
-(defn cond-any [[value Any]] -> Str
+(defn ^Str cond-any [^Any value]
   (cond value "yes" :else "no"))
-(defn for-any [[values (Vector Any)]] -> (Vector Any)
-  (for [value values :when value] value))
+(defn ^{:type (Vector Any)} for-any [^{:type (Vector Any)} values]
+  (forv [value values :when value] value))
 "#;
     let result = compile(source, &options());
     assert!(
@@ -77,9 +78,9 @@ fn clojure_truthiness_applies_to_control_macros_over_any_values() {
         "{:?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated truthiness Python").source;
+    let generated = result.python.expect("generated truthiness Python");
     let root = temporary_directory();
-    fs::write(root.join("control_compile.py"), &generated).expect("write generated module");
+    write_generated_module(&root, "control_compile.py", &generated);
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -95,13 +96,9 @@ print("ok")
 "#,
     )
     .expect("write truthiness smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated truthiness Python");
     assert!(
@@ -109,7 +106,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

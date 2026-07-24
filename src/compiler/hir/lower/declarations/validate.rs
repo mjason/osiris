@@ -77,19 +77,130 @@ impl<'a> Lowerer<'a> {
                     let is_exported = self
                         .resolve_global_name(&name.canonical)
                         .is_some_and(|binding| self.exports.contains(&binding));
-                    if is_exported {
+                    if is_exported && self.strict {
                         self.validate_explicit_function_signature(function, "exported");
+                    }
+                }
+                AstItemKind::Def(definition) => {
+                    let is_exported = self
+                        .resolve_global_name(&definition.name.canonical)
+                        .is_some_and(|binding| self.exports.contains(&binding));
+                    if is_exported && self.strict && definition.type_annotation.is_none() {
+                        self.error(
+                            "OSR-T0017",
+                            format!(
+                                "exported value `{}` requires an explicit type",
+                                definition.name.spelling
+                            ),
+                            definition.span,
+                        );
                     }
                 }
                 AstItemKind::Extern(external) => {
                     for declaration in &external.items {
-                        if let AstItemKind::Defn(function) = &declaration.kind {
-                            self.validate_explicit_function_signature(function, "extern");
+                        match &declaration.kind {
+                            AstItemKind::Defn(function) => {
+                                self.validate_explicit_function_signature(function, "extern");
+                            }
+                            AstItemKind::Def(definition)
+                                if definition.type_annotation.is_none() =>
+                            {
+                                self.error(
+                                    "OSR-T0017",
+                                    format!(
+                                        "extern value `{}` requires an explicit type",
+                                        definition.name.spelling
+                                    ),
+                                    definition.span,
+                                );
+                            }
+                            _ => {}
                         }
                     }
                 }
                 _ => {}
             }
+        }
+    }
+
+    pub(in crate::hir) fn validate_published_contracts(&mut self, module: &ast::Module) {
+        for item in &module.items {
+            match &item.kind {
+                AstItemKind::Def(definition) => {
+                    let Some(binding) = self.resolve_global_name(&definition.name.canonical) else {
+                        continue;
+                    };
+                    if !self.exports.contains(&binding) {
+                        continue;
+                    }
+                    let ty = self.binding_type(&binding);
+                    self.validate_published_type(
+                        &definition.name.spelling,
+                        "value",
+                        &ty,
+                        definition.type_annotation.is_some(),
+                        definition.span,
+                    );
+                }
+                AstItemKind::Defn(function) => {
+                    let Some(name) = function.name.as_ref() else {
+                        continue;
+                    };
+                    let Some(binding) = self.resolve_global_name(&name.canonical) else {
+                        continue;
+                    };
+                    if !self.exports.contains(&binding) {
+                        continue;
+                    }
+                    let Type::Fn(signature) = self.binding_type(&binding) else {
+                        continue;
+                    };
+                    for (parameter, ty) in function.params.iter().zip(&signature.parameters) {
+                        self.validate_published_type(
+                            &name.spelling,
+                            &format!("parameter `{}`", parameter.name.spelling),
+                            ty,
+                            parameter.type_annotation.is_some(),
+                            parameter.span,
+                        );
+                    }
+                    self.validate_published_type(
+                        &name.spelling,
+                        "return",
+                        &signature.return_type,
+                        function.return_type.is_some(),
+                        function.span,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn validate_published_type(
+        &mut self,
+        name: &str,
+        position: &str,
+        ty: &Type,
+        explicit: bool,
+        span: Span,
+    ) {
+        if contains_unresolved_boundary_type(ty) {
+            self.error(
+                "OSR-T0050",
+                format!(
+                    "exported `{name}` {position} type is unresolved; published interfaces cannot contain `Unknown`"
+                ),
+                span,
+            );
+        } else if !explicit && contains_dynamic_boundary_type(ty) {
+            self.error(
+                "OSR-T0051",
+                format!(
+                    "exported `{name}` {position} inferred a dynamic `Any` boundary; annotate it explicitly"
+                ),
+                span,
+            );
         }
     }
 
@@ -137,6 +248,14 @@ impl<'a> Lowerer<'a> {
         let mut decorators = self.lower_python_decorators(module, &mut scope);
         for item in &module.items {
             let kind = match &item.kind {
+                AstItemKind::Import(import)
+                    if crate::stdlib::is_standard_namespace(&import.module.canonical)
+                        && self.interfaces.is_none_or(|interfaces| {
+                            interfaces.interface(&import.module.canonical).is_none()
+                        }) =>
+                {
+                    None
+                }
                 AstItemKind::Import(import) => self
                     .global_id(import.alias.as_ref().unwrap_or(&import.module))
                     .map(|binding| {
@@ -296,4 +415,40 @@ impl<'a> Lowerer<'a> {
         }
         result
     }
+}
+
+fn contains_unresolved_boundary_type(ty: &Type) -> bool {
+    type_contains(ty, |candidate| {
+        matches!(candidate, Type::Unknown | Type::Error)
+    })
+}
+
+fn contains_dynamic_boundary_type(ty: &Type) -> bool {
+    type_contains(ty, |candidate| matches!(candidate, Type::Any))
+}
+
+fn type_contains(ty: &Type, predicate: impl Copy + Fn(&Type) -> bool) -> bool {
+    predicate(ty)
+        || match ty {
+            Type::Option(inner) | Type::List(inner) | Type::Vector(inner) | Type::Set(inner) => {
+                type_contains(inner, predicate)
+            }
+            Type::Union(items) | Type::Tuple(items) => {
+                items.iter().any(|item| type_contains(item, predicate))
+            }
+            Type::Map(key, value) => {
+                type_contains(key, predicate) || type_contains(value, predicate)
+            }
+            Type::Fn(function) => {
+                function
+                    .parameters
+                    .iter()
+                    .any(|parameter| type_contains(parameter, predicate))
+                    || type_contains(&function.return_type, predicate)
+            }
+            Type::Nominal { args, .. } => args
+                .iter()
+                .any(|argument| type_contains(argument, predicate)),
+            _ => false,
+        }
 }

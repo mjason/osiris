@@ -1,6 +1,9 @@
 import hashlib
 import io
+import json
 import os
+import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -14,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import osiris_build  # noqa: E402
+from osiris_build._interface import _is_supported_python_target  # noqa: E402
+from osiris_build._wheel import _compiler_command  # noqa: E402
 
 
 class OsirisBuildTests(unittest.TestCase):
@@ -28,6 +33,13 @@ class OsirisBuildTests(unittest.TestCase):
         os.chdir(self.previous_cwd)
         self.temp.cleanup()
 
+    def test_compiler_command_accepts_environment_override(self):
+        with mock.patch.dict(os.environ, {"OSR_COMMAND": "custom-osr --flag"}, clear=True):
+            self.assertEqual(
+                _compiler_command(None, mock.sentinel.project),
+                ["custom-osr", "--flag"],
+            )
+
     def _write_project(self, target=None):
         if target is None:
             target = "%d.%d" % (sys.version_info.major, sys.version_info.minor)
@@ -39,7 +51,7 @@ class OsirisBuildTests(unittest.TestCase):
 name = "demo-osiris"
 version = "1.2.3"
 description = "fixture"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = ["NumPy>=2"]
 """,
             encoding="utf-8",
@@ -56,7 +68,7 @@ dependencies = ["NumPy>=2"]
         (self.root / "uv.lock").write_text(
             """version = 1
 revision = 3
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 [[package]]
 name = "demo-osiris"
@@ -138,8 +150,9 @@ for source in sources:
         quote(module + '/value'), quote(module), quote(stable_record_id),
         quote(record_body_hash), quote(stem), quote(module),
     )
-    interface = '''(osiris-interface/header {:format "osiris-interface" :format-version 2
-  :compiler-abi "osiris-compiler-v0" :language-abi "osiris-language-v1"})
+    interface = '''(osiris-interface/header {:format "osiris-interface" :format-version 3
+  :compiler-abi "osiris-compiler-v0" :language-version "0.1" :language-abi "osiris-language-v1"
+  :standard-library-abi 1 :linkable-helper-format 1 :python-target %s})
 (osiris-interface/body {:module %s :metadata [] :bindings [] :aliases [] :functions []
   :structs [] :operator-instances [] :macros [] :phase-helpers [] :static-schemas []
   :owned-records [%s]})
@@ -150,6 +163,7 @@ for source in sources:
 (osiris-interface/hashes {:interface-body %s :semantic-body %s :tooling-body %s
   :content-integrity %s})
 ''' % (
+        quote('%d.%d' % (sys.version_info.major, sys.version_info.minor)),
         quote(module), record_form, quote(module), quote(module), quote(semantic_body),
         quote(tooling_body), quote(semantic_interface), quote(tooling_interface),
         quote(interface_body), quote(semantic_body), quote(tooling_body),
@@ -157,7 +171,21 @@ for source in sources:
     )
     (package / (stem + '.py')).write_text('value = 42\\n', encoding='utf-8')
     (package / (stem + '.osri')).write_text(interface, encoding='utf-8')
-    (package / (stem + '.py.map')).write_text('{\\"version\\":1}\\n', encoding='utf-8')
+    source_data = source.read_bytes()
+    source_map = {
+        'version': 3,
+        'language_version': '0.1',
+        'python_target': '%d.%d' % (sys.version_info.major, sys.version_info.minor),
+        'source': str(source),
+        'source_hash': 'sha256:' + hashlib.sha256(source_data).hexdigest(),
+        'generated': 'demo/' + stem + '.py',
+        'trust_policy_hash': digest('trust'),
+        'build_hash': digest(module + ':build'),
+        'mappings': [],
+    }
+    (package / (stem + '.py.map')).write_text(
+        json.dumps(source_map, ensure_ascii=False), encoding='utf-8'
+    )
 records.sort(key=lambda item: tuple(
     item['occurrence'][key] for key in (
         'distribution', 'version', 'interface-member-id',
@@ -266,21 +294,66 @@ sidecar = {
                 osiris_build.get_requires_for_build_wheel()
             self.assertIn("unknown osiris.jsonc field `%s`" % field, str(context.exception))
 
-    def test_display_locale_is_a_closed_enum(self):
+    def test_non_strict_configuration_ignores_future_fields(self):
+        self._replace(
+            self.root / "osiris.jsonc",
+            '"source": ["src"],',
+            '"source": ["src"],\n  "strict": false,\n  "futureOption": {"enabled": true},',
+        )
+        self.assertEqual(osiris_build.get_requires_for_build_wheel(), ["NumPy==2.1.0"])
+
+    def test_source_roots_reject_duplicates_and_output_owned_paths(self):
+        for replacement, expected in (
+            (
+                '"source": ["src", "src"],',
+                "duplicate normalized source root",
+            ),
+            (
+                '"source": ["dist/source"],\n  "outDir": "dist",',
+                "must not be inside output directory",
+            ),
+        ):
+            self._write_project()
+            self._replace(
+                self.root / "osiris.jsonc",
+                '"source": ["src"],',
+                replacement,
+            )
+            with self.subTest(replacement=replacement):
+                with self.assertRaises(osiris_build.BackendError) as context:
+                    osiris_build.get_requires_for_build_wheel()
+                self.assertIn(expected, str(context.exception))
+
+    def test_duplicate_future_configuration_fields_are_rejected(self):
+        self._replace(
+            self.root / "osiris.jsonc",
+            '"source": ["src"],',
+            '"source": ["src"],\n  "strict": false,\n  "futureOption": 1,\n  "futureOption": 2,',
+        )
+        with self.assertRaises(osiris_build.BackendError) as context:
+            osiris_build.get_requires_for_build_wheel()
+        self.assertIn("duplicate JSONC field `futureOption`", str(context.exception))
+
+    def test_display_locale_accepts_bcp47(self):
         self._replace(
             self.root / "osiris.jsonc",
             '"targetPython": "',
             '"displayLocale": "zh",\n  "targetPython": "',
         )
-        with self.assertRaises(osiris_build.BackendError) as context:
-            osiris_build.get_requires_for_build_wheel()
-        self.assertIn("displayLocale must be `en` or `zh-CN`", str(context.exception))
+        self.assertEqual(osiris_build.get_requires_for_build_wheel(), ["NumPy==2.1.0"])
 
     def test_target_python_mismatch_fails_closed(self):
-        self._write_project(target="3.9")
+        current = "%d.%d" % (sys.version_info.major, sys.version_info.minor)
+        self._write_project(target="3.11" if current != "3.11" else "3.12")
         with self.assertRaises(osiris_build.BackendError) as context:
             osiris_build.prepare_metadata_for_build_wheel(str(self.root / "meta"))
         self.assertIn("does not match target-python", str(context.exception))
+
+    def test_interface_target_floor_keeps_future_major_versions_open(self):
+        self.assertFalse(_is_supported_python_target("3.10"))
+        self.assertTrue(_is_supported_python_target("3.11"))
+        self.assertTrue(_is_supported_python_target("4.0"))
+        self.assertFalse(_is_supported_python_target("3.11.1"))
 
     def test_wheel_contains_compiler_outputs_marker_and_record(self):
         wheel_dir = self.root / "wheel"
@@ -292,12 +365,16 @@ sidecar = {
             self.assertIn("demo/hello.py", names)
             self.assertIn("demo/hello.osri", names)
             self.assertIn("demo/hello.py.map", names)
+            self.assertIn("demo/hello.osr", names)
             self.assertIn("demo/py.typed", names)
             marker = archive.read("demo_osiris-1.2.3.dist-info/osiris.toml").decode("utf-8")
             self.assertIn("records = \"demo-osiris.records.json\"", marker)
+            self.assertIn('language_version = "0.1"', marker)
             self.assertIn("[[extension]]", marker)
             self.assertIn('id = "demo.hello"', marker)
             self.assertIn('interface = "demo/hello.osri"', marker)
+            self.assertIn('source = "demo/hello.osr"', marker)
+            self.assertIn('source_map = "demo/hello.py.map"', marker)
             records = archive.read("demo_osiris-1.2.3.dist-info/RECORD").decode("utf-8")
             self.assertIn("demo/hello.py,sha256=", records)
             self.assertTrue(records.endswith("demo_osiris-1.2.3.dist-info/RECORD,,\n"))
@@ -362,6 +439,88 @@ sidecar = {
         with zipfile.ZipFile(wheel_dir / filename) as archive:
             self.assertIn("demo/hello.py", archive.namelist())
             self.assertIn("demo/world.py", archive.namelist())
+
+    def test_real_compiler_wheel_runs_without_osiris_tooling_or_authored_source(self):
+        compiler = ROOT / "target" / "debug" / "osr"
+        if not compiler.is_file():
+            self.skipTest("build target/debug/osr before running the real compiler wheel test")
+        (self.root / "src" / "demo" / "hello.osr").write_text(
+            """(module demo.hello)
+(import osiris.core :refer [mapv])
+(export [double-all])
+
+^{:doc "Double every integer in a vector."}
+(defn ^{:type (Vector Int)} double-all
+  [^{:type (Vector Int)} values]
+  (mapv (fn [^Int value] (* value 2)) values))
+""",
+            encoding="utf-8",
+        )
+        self._replace(
+            self.root / "pyproject.toml",
+            'dependencies = ["NumPy>=2"]',
+            "dependencies = []",
+        )
+        (self.root / "uv.lock").write_text(
+            """version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "demo-osiris"
+source = { editable = "." }
+""",
+            encoding="utf-8",
+        )
+        wheel_dir = self.root / "real-wheel"
+        filename = osiris_build.build_wheel(
+            str(wheel_dir), {"osr-command": [str(compiler)]}
+        )
+        installed = self.root / "isolated-wheel"
+        with zipfile.ZipFile(wheel_dir / filename) as archive:
+            archive.extractall(installed)
+            generated = archive.read("demo/hello.py").decode("utf-8")
+            self.assertNotIn("import osiris", generated)
+            self.assertNotIn("osiris.prelude", generated)
+            names = archive.namelist()
+            self.assertTrue(
+                any(name.startswith("demo/__osiris_runtime__/") for name in names),
+                names,
+            )
+            manifest_name = next(
+                name
+                for name in names
+                if name.endswith("/__osiris_runtime__/manifest.json")
+            )
+            manifest = json.loads(archive.read(manifest_name))
+            identity = manifest["sourceMaps"][0]
+            source_map = json.loads(archive.read("demo/hello.py.map"))
+            self.assertEqual(identity["source"], "demo/hello.osr")
+            self.assertEqual(identity["sourceHash"], source_map["source_hash"])
+            self.assertEqual(identity["generated"], source_map["generated"])
+            self.assertEqual(identity["buildHash"], source_map["build_hash"])
+            self.assertNotIn(str(self.root), archive.read(manifest_name).decode("utf-8"))
+        shutil.move(str(self.root / "src"), str(self.root / "authored-source-removed"))
+        script = """
+import sys
+sys.path[:] = [sys.argv[1]] + [path for path in sys.path if 'osiris' not in path]
+from demo.hello import double_all
+assert double_all((1, 2, 3)) == (2, 4, 6)
+assert not any(name == 'osiris' or name.startswith('osiris.') for name in sys.modules)
+print('standalone-ok')
+"""
+        environment = {"PATH": "/usr/bin:/bin", "PYTHONPATH": ""}
+        completed = subprocess.run(
+            [sys.executable, "-I", "-c", script, str(installed)],
+            cwd=installed,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout, "standalone-ok\n")
 
     def test_exclude_globs_filter_files_inside_source_roots(self):
         generated = self.root / "src" / "demo" / "generated"

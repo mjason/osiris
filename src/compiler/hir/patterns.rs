@@ -79,19 +79,19 @@ pub(in crate::hir) fn join_summaries<'a>(
 }
 
 pub(in crate::hir) fn core_reduced_type_binding() -> BindingId {
-    BindingId::new("osiris.prelude", "Reduced", BindingKind::Type)
+    BindingId::new("osiris.core", "Reduced", BindingKind::Type)
 }
 
 pub(in crate::hir) fn core_delay_type_binding() -> BindingId {
-    BindingId::new("osiris.prelude", "Delay", BindingKind::Type)
+    BindingId::new("osiris.core", "Delay", BindingKind::Type)
 }
 
 pub(in crate::hir) fn core_future_type_binding() -> BindingId {
-    BindingId::new("osiris.prelude", "Future", BindingKind::Type)
+    BindingId::new("osiris.core", "Future", BindingKind::Type)
 }
 
 pub(in crate::hir) fn core_promise_type_binding() -> BindingId {
-    BindingId::new("osiris.prelude", "Promise", BindingKind::Type)
+    BindingId::new("osiris.core", "Promise", BindingKind::Type)
 }
 
 pub(in crate::hir) fn future_type(value: Type) -> Type {

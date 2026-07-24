@@ -24,8 +24,10 @@ fn temporary_directory() -> std::path::PathBuf {
 fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
     let source = r#"
 (module private_function_compile)
-(defn- increment [[value Int]] -> Int (+ value 1))
-(defn public [[value Int]] -> Int (increment value))
+(import osiris.core :refer [defn-])
+(defn- ^Int increment [^Int value] (+ value 1))
+^{:doc "Increment an integer through a private helper."}
+(defn ^Int public [^Int value] (increment value))
 (export [public])
 "#;
     let result = compile(source, &options());
@@ -47,13 +49,9 @@ fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
         "from private_function_compile import public\nassert public(41) == 42\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -70,7 +68,7 @@ fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
 #[test]
 fn malformed_defn_dash_reports_a_macro_diagnostic() {
     let result = compile(
-        "(module private_function_compile) (defn- 1 [] 1)",
+        "(module private_function_compile) (import osiris.core :refer [defn-]) (defn- 1 [] 1)",
         &options(),
     );
     assert!(result.analysis.diagnostics.iter().any(|diagnostic| {

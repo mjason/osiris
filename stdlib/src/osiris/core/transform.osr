@@ -1,0 +1,160 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.transform)
+
+(export
+  [map mapv mapcat mapcatv filter filterv remove removev reduce fold
+   reductions reduced reduced? unreduced])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "Lazily map a function left to right, stopping at the shortest input and memoizing results."
+   "zh-CN" "从左到右惰性映射函数，在最短输入处停止并记忆结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List B)} map
+  [^{:type (Fn [A] -> B)} function & ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-map [function] collections))
+
+^{:doc
+  {:default "Eagerly map a function left to right into a Vector, stopping at the shortest input."
+   "zh-CN" "从左到右立即映射函数到 Vector，并在最短输入处停止。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Vector B)} mapv
+  [^{:type (Fn [A] -> B)} function & ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-mapv [function] collections))
+
+^{:doc
+  {:default "Lazily map over the shortest input and flatten one returned sequence level."
+   "zh-CN" "对最短输入惰性映射，并展平一层返回序列。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List B)} mapcat
+  [^{:type (Fn [A] -> (List B))} function & ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-mapcat [function] collections))
+
+^{:doc
+  {:default "Eagerly map over the shortest input and flatten one level into a Vector."
+   "zh-CN" "对最短输入立即映射，并展平一层到 Vector。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Vector B)} mapcatv
+  [^{:type (Fn [A] -> (List B))} function & ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-mapcatv [function] collections))
+
+^{:doc
+  {:default "Lazily retain values whose predicate result is truthy and memoize realization."
+   "zh-CN" "惰性保留谓词结果为真的值，并记忆实现结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List A)} filter
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-filter predicate collection))
+
+^{:doc
+  {:default "Eagerly retain values whose predicate result is truthy in a Vector."
+   "zh-CN" "立即将谓词结果为真的值保留到 Vector。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Vector A)} filterv
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-filterv predicate collection))
+
+^{:doc
+  {:default "Lazily retain values whose predicate result is falsey and memoize realization."
+   "zh-CN" "惰性保留谓词结果为假的值，并记忆实现结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List A)} remove
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-remove predicate collection))
+
+^{:doc
+  {:default "Eagerly retain values whose predicate result is falsey in a Vector."
+   "zh-CN" "立即将谓词结果为假的值保留到 Vector。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Vector A)} removev
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-removev predicate collection))
+
+^{:doc
+  {:default "Eagerly reduce in order, supporting zero-arity empty reduction and Reduced termination."
+   "zh-CN" "按顺序立即归约，支持空输入的零参数 reducer 与 Reduced 提前终止。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type A} reduce
+  [^{:type (Fn [A B] -> A)} function & ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-reduce [function] arguments))
+
+^{:doc
+  {:default "Eagerly perform an ordered reduction from an explicit initial value."
+   "zh-CN" "从显式初始值开始按顺序立即归约。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type A} fold
+  [^{:type (Fn [A B] -> A)} function ^{:type A} initial ^{:type C} collection]
+  (kernel-leaf-fold function initial collection))
+
+^{:doc
+  {:default "Lazily return each intermediate ordered reduction accumulator."
+   "zh-CN" "惰性返回有序归约过程中的每个中间累积值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List A)} reductions
+  [^{:type (Fn [A B] -> A)} function & ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-reductions [function] arguments))
+
+^{:doc
+  {:default "Wrap a value as an early-termination marker for the nearest reduction."
+   "zh-CN" "把值包装为最近一层归约的提前终止标记。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type (Reduced A)} reduced [^{:type A} value]
+  (kernel-leaf-reduced value))
+
+^{:doc
+  {:default "Test whether a value is a Reduced marker."
+   "zh-CN" "测试一个值是否为 Reduced 标记。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} reduced? [^{:type A} value]
+  (kernel-leaf-reduced? value))
+
+^{:doc
+  {:default "Remove exactly one Reduced marker layer, leaving ordinary values unchanged."
+   "zh-CN" "只移除一层 Reduced 标记，普通值保持不变。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type A} unreduced [^{:type (Reduced A)} value]
+  (kernel-leaf-unreduced value))

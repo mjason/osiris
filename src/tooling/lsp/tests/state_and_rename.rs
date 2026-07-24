@@ -26,7 +26,7 @@ static NEXT_WORKSPACE: AtomicUsize = AtomicUsize::new(0);
 
 fn source() -> &'static str {
     r#"(module demo)
-(defn add-one [[x Int]] -> Int (+ x 1))
+^{:doc "Increment an integer."} (defn ^Int add-one [^Int x] (+ x 1))
 (alias 加一 add-one)
 (export [add-one 加一])
 (def result (加一 2))
@@ -75,7 +75,7 @@ fn python_decorator_targets_participate_in_navigation() {
     const DECORATOR_URI: &str = "file:///workspace/decorated.osr";
     let source = r#"(module decorated)
 (py/import host.runtime :as host)
-(defn publish [] -> Int 1)
+(defn ^Int publish [] 1)
 (alias 发布 publish)
 (py/decorate 发布 host.register)
 "#;
@@ -101,7 +101,7 @@ fn rename_keeps_canonical_and_alias_spelling_groups_separate() {
 
     let canonical_position = offset_to_position(
         source(),
-        source().find("add-one [[x").expect("canonical declaration"),
+        source().find("add-one [^Int x").expect("canonical declaration"),
     );
     let prepared = state
         .prepare_rename(URI, canonical_position)
@@ -219,16 +219,16 @@ fn json_rpc_advertises_and_dispatches_prepare_and_rename() {
 #[test]
 fn rename_validates_collisions_normalizes_nfc_and_emits_utf16_ranges() {
     let source = r#"(module demo)
-(defn first [[x Int]] -> Int x)
+^{:doc "Return an integer."} (defn ^Int first [^Int x] x)
 (alias 第一 first)
 (export [first 第一])
-(defn second [[x Int]] -> Int x)
+(defn ^Int second [^Int x] x)
 (def value (do "😀" (第一 1)))
 "#;
     let mut state = LspState::new();
     let diagnostics = state.did_open(URI, 1, source);
     assert!(diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
-    let first = offset_to_position(source, source.find("first [[x").expect("first"));
+    let first = offset_to_position(source, source.find("first [^Int x").expect("first"));
     let alias_offset = source.rfind("第一 1").expect("alias call");
     let alias = offset_to_position(source, alias_offset);
 
@@ -267,11 +267,8 @@ fn rename_validates_collisions_normalizes_nfc_and_emits_utf16_ranges() {
 #[test]
 fn signature_help_capability_and_local_typed_call_use_localized_parameters() {
     let source = r#"(module demo)
-(defn rolling
-  [[values Float]
-   ^{:osiris/names {"zh-CN" {:preferred 周期 :aliases [窗口]}}}
-   [window Int = 14]]
-  -> Float
+(defn ^Float rolling [^Float values [^{:type Int :osiris/names {"zh-CN" {:preferred 周期 :aliases [窗口]}}}
+   window = 14]]
   values)
 (def result (rolling 1.0 ))
 "#;

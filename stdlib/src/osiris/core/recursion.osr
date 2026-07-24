@@ -1,0 +1,229 @@
+;; Internal Phase-1 implementation for recursion and deferred values.
+^{:osiris/internal true}
+(module osiris.core.recursion)
+
+(export
+  [loop recur dotimes while letfn trampoline lazy-seq lazy-cat delay force
+   realized? deref])
+
+;; `loop`/`recur` stay ordinary surface macros. The runtime primitive receives
+;; one callback and the current state values; a `recur` result is a private
+;; control token consumed by that primitive. This keeps the reader and core
+;; AST free of a second looping syntax while still giving Python an O(1)-stack
+;; implementation.
+(defn-for-syntax osiris.kernel/loop-valid-bindings? [bindings]
+  (if (empty? bindings)
+    true
+    (if (empty? (rest bindings))
+      false
+      (osiris.kernel/loop-valid-bindings? (rest (rest bindings))))))
+
+(defn-for-syntax osiris.kernel/loop-params [bindings]
+  (if (empty? bindings)
+    '()
+    (let [pattern (first bindings)]
+      (cons (if (symbol? pattern)
+              pattern
+              (gensym "loop-state"))
+            (osiris.kernel/loop-params (rest (rest bindings)))))))
+
+(defn-for-syntax osiris.kernel/loop-inits [bindings]
+  (if (empty? bindings)
+    '()
+    (cons (nth bindings 1) (osiris.kernel/loop-inits (rest (rest bindings))))))
+
+(defn-for-syntax osiris.kernel/loop-destructure [bindings params]
+  (if (empty? bindings)
+    '()
+    (let [pattern (first bindings)
+          parameter (first params)
+          remaining
+          (osiris.kernel/loop-destructure (rest (rest bindings)) (rest params))]
+      (if (symbol? pattern)
+        remaining
+        (concat (list pattern parameter) remaining)))))
+
+^{:doc
+  {:default "Create a constant-stack lexical recursion target."
+   "zh-CN" "创建常量栈空间的词法递归目标。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro loop [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "loop requires a binding vector")
+    (if (not (osiris.kernel/loop-valid-bindings? bindings))
+      (syntax-error bindings "loop bindings require pattern/value pairs")
+      (if (empty? body)
+        (syntax-error &form "loop requires a body")
+        (let [params (osiris.kernel/loop-params bindings)
+              inits
+              (osiris.kernel/loop-inits bindings)
+              destructure
+              (osiris.kernel/loop-destructure bindings params)
+              callback-body
+              (if (empty? destructure)
+                `(do
+                   ~@body)
+                `(let [~@destructure]
+                   (do
+                     ~@body)))]
+          `(osiris.kernel/loop* (fn [~@params] ~callback-body) ~@inits))))))
+
+^{:doc
+  {:default "Tail-call the nearest loop or current function."
+   "zh-CN" "尾调用最近的循环或当前函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro recur [& values]
+  `(osiris.kernel/recur* ~@values))
+
+^{:doc
+  {:default "Run a body for integer indexes from zero to an exclusive bound."
+   "zh-CN" "对从零到不含上界的整数索引执行主体。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro dotimes [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "dotimes requires a binding vector")
+    (if (not (= (count bindings) 2))
+      (syntax-error bindings "dotimes requires exactly one name/count pair")
+      (let [binding (first bindings)]
+        (if (not (symbol? binding))
+          (syntax-error binding "dotimes binding must be a symbol")
+          (let [limit (gensym "dotimes-limit")
+                index (gensym "dotimes-index")]
+            `(let [~limit ~(nth bindings 1)]
+               (loop [~index 0]
+                 (if (< ~index ~limit)
+                   (do
+                     (let [~binding ~index]
+                       (do
+                         ~@body))
+                     (recur (+ ~index 1)))
+                   none)))))))))
+
+^{:doc
+  {:default "Reevaluate a condition before each iteration and return none."
+   "zh-CN" "每次迭代前重新求值条件并返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro while [condition & body]
+  `(loop []
+     (if (osiris.kernel/truthy* ~condition)
+       (do
+         ~@body
+         (recur))
+       none)))
+
+;; `letfn` needs a compiler-owned lexical frame so all names are visible while
+;; their lambda bodies are lowered.  The `letfn*` target is intentionally
+;; private; its surface shape remains ordinary Clojure-style bindings.
+(defn-for-syntax osiris.kernel/letfn-normalize [entries]
+  (if (empty? entries)
+    '()
+    (let [entry (first entries)
+          remaining (rest entries)]
+      (if (list? entry)
+        (if (empty? entry)
+          (syntax-error entry "letfn function binding cannot be empty")
+          (cons (first entry)
+                (cons (cons 'fn
+                            (cons (with-meta (first (rest entry)) (meta (first entry))) (rest (rest entry))))
+                      (osiris.kernel/letfn-normalize remaining))))
+        (if (empty? remaining)
+          (syntax-error entry "letfn requires name/function pairs")
+          (cons entry
+                (cons (first remaining) (osiris.kernel/letfn-normalize (rest remaining)))))))))
+
+^{:doc
+  {:default "Define mutually visible local functions."
+   "zh-CN" "定义彼此可见的局部函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro letfn [bindings & body]
+  (if (not (vector? bindings))
+    (syntax-error bindings "letfn requires a binding vector")
+    (if (empty? body)
+      (syntax-error &form "letfn requires a body")
+      `(osiris.kernel/letfn* ~(apply vector (osiris.kernel/letfn-normalize bindings))
+                             (do
+                               ~@body)))))
+
+^{:doc
+  {:default "Invoke returned zero-argument callables until a value is produced."
+   "zh-CN" "反复调用返回的零参数函数，直到产生普通值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro trampoline [function & args]
+  `(osiris.kernel/trampoline* ~function ~@args))
+
+^{:doc
+  {:default "Delay sequence production and memoize realization."
+   "zh-CN" "延迟序列生成并记忆求值结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro lazy-seq [& body]
+  `(osiris.kernel/lazy-seq* (fn [] (do
+                                     ~@body))))
+
+;; `lazy-cat` keeps each collection expression lazy and delegates traversal to
+;; the memoized sequence runtime.  Unlike `concat`, its surface form accepts
+;; arbitrary body expressions and therefore mirrors the Clojure macro shape.
+^{:doc
+  {:default "Concatenate collections lazily in source order."
+   "zh-CN" "按源码顺序惰性拼接集合。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro lazy-cat [& forms]
+  `(osiris.kernel/lazy-seq* (fn [] (osiris.kernel/concat ~@forms))))
+
+;; Delay/force are deliberately expressed as ordinary surface macros.  The
+;; compiler only owns the tiny runtime ABI; the delayed body remains a normal
+;; lexical function and therefore keeps source maps, metadata, and callback
+;; summaries intact.
+^{:doc
+  {:default "Create a one-time deferred computation."
+   "zh-CN" "创建只执行一次的延迟计算。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro delay [& body]
+  `(osiris.kernel/delay* (fn [] (do
+                                  ~@body))))
+
+^{:doc
+  {:default "Realize a Delay once or return another value unchanged."
+   "zh-CN" "实现 Delay 一次，其他值原样返回。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro force [value]
+  `(osiris.kernel/force* ~value))
+
+^{:doc
+  {:default "Report whether a deferred value has completed without forcing it."
+   "zh-CN" "在不触发求值的情况下报告延迟值是否完成。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro realized? [value]
+  `(osiris.kernel/realized* ~value))
+
+^{:doc
+  {:default "Read a Delay, Future, or Promise with optional timeout handling."
+   "zh-CN" "读取 Delay、Future 或 Promise，并可选择处理超时。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro deref [value & options]
+  (if (or (= (count options) 0) (= (count options) 2))
+    `(osiris.kernel/deref* ~value ~@options)
+    (syntax-error &form "deref accepts one argument or value/timeout/default")))

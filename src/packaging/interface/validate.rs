@@ -23,10 +23,44 @@ pub(in crate::interface) fn validate(interface: &Interface) -> InterfaceResult<(
             format!("incompatible compiler ABI `{}`", interface.compiler_abi),
         ));
     }
+    if interface.language_version != crate::LANGUAGE_VERSION {
+        return Err(InterfaceError::new(
+            "OSR-I0014",
+            format!(
+                "incompatible language version `{}`; expected `{}`",
+                interface.language_version,
+                crate::LANGUAGE_VERSION
+            ),
+        ));
+    }
     if interface.language_abi != LANGUAGE_ABI {
         return Err(InterfaceError::new(
             "OSR-I0014",
             format!("incompatible language ABI `{}`", interface.language_abi),
+        ));
+    }
+    if interface.standard_library_abi != crate::STANDARD_LIBRARY_ABI {
+        return Err(InterfaceError::new(
+            "OSR-I0016",
+            format!(
+                "incompatible standard-library ABI `{}`",
+                interface.standard_library_abi
+            ),
+        ));
+    }
+    if interface.linkable_helper_format != crate::LINKABLE_HELPER_FORMAT {
+        return Err(InterfaceError::new(
+            "OSR-I0017",
+            format!(
+                "incompatible Linkable-helper format `{}`",
+                interface.linkable_helper_format
+            ),
+        ));
+    }
+    if interface.python_target < crate::project::PythonVersion::MINIMUM {
+        return Err(InterfaceError::new(
+            "OSR-I0018",
+            format!("unsupported Python target `{}`", interface.python_target),
         ));
     }
     validate_model(interface)?;

@@ -10,8 +10,47 @@ fn options() -> CompileOptions {
 }
 
 #[test]
+fn non_strict_compilation_accepts_complete_inferred_public_signatures() {
+    let source = "(export [answer]) ^{:doc \"Answer.\"} (defn answer [] 42)";
+    let strict = compile(source, &options());
+    assert!(
+        strict
+            .analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-T0018")
+    );
+
+    let inferred = compile(source, &options().with_strict(false));
+    assert!(
+        inferred.analysis.diagnostics.is_empty(),
+        "{:?}",
+        inferred.analysis.diagnostics
+    );
+    assert!(inferred.interface.is_some());
+    assert!(inferred.python.is_some());
+}
+
+#[test]
+fn non_strict_public_inference_rejects_implicit_dynamic_boundaries() {
+    let source = "(py/import host :as host) (export [answer]) ^{:doc \"Answer.\"} (defn answer [] (host.answer))";
+    let result = compile(source, &options().with_strict(false));
+    assert!(result.analysis.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "OSR-T0051" && diagnostic.message.contains("annotate it explicitly")
+    }));
+    assert!(result.interface.is_none());
+
+    let explicit = compile(
+        "(py/import host :as host) (export [answer]) ^{:doc \"Answer.\"} (defn ^Any answer [] (host.answer))",
+        &options().with_strict(false),
+    );
+    assert!(!explicit.has_errors(), "{:?}", explicit.analysis.diagnostics);
+    assert!(explicit.interface.is_some());
+}
+
+#[test]
 fn trust_policy_hash_partitions_analysis_and_build_artifacts() {
-    let source = "(defn value [] -> Int 1)";
+    let source = "(defn ^Int value [] 1)";
     let first_policy = hir::ContractTrustPolicy::untrusted(format!("sha256:{}", "1".repeat(64)));
     let second_policy = hir::ContractTrustPolicy::untrusted(format!("sha256:{}", "2".repeat(64)));
     let first = compile(
@@ -88,11 +127,13 @@ fn invalid_static_records_fail_before_codegen() {
     let source = r#"
             (module example)
             (export [owner S])
+            ^{:doc "Schema S."}
             (defstatic-schema S
               :schema-id "example/schema"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "Record owner."}
+            (def ^Any owner none)
             (static-record S owner {:id 42})
         "#;
     let result = compile(source, &options());
@@ -113,11 +154,13 @@ fn public_static_records_are_bound_to_the_interface_provider() {
     let source = r#"
             (module example)
             (export [owner S])
+            ^{:doc "Schema S."}
             (defstatic-schema S
               :schema-id "example/schema"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "Record owner."}
+            (def ^Any owner none)
             (static-record S owner {:id "alpha"})
         "#;
     let options = options().with_provider("example-dist", "1.2.3");
@@ -155,12 +198,14 @@ fn workspace_compiles_typed_dependencies_before_importers() {
             (module app)
             (import dep.core :as dep)
             (export [call])
-            (defn call [] -> Int (dep/add 1 :value 2))
+            ^{:doc "Call the dependency."}
+            (defn ^Int call [] (dep/add 1 :value 2))
         "#;
     let dependency = r#"
             (module dep.core)
             (export [add])
-            (defn add [[x Int] [value Int]] -> Int (+ x value))
+            ^{:doc "Add two integers."}
+            (defn ^Int add [^Int x ^Int value] (+ x value))
         "#;
     let app_options = CompileOptions::new("app", PythonVersion::MINIMUM);
     let dependency_options = CompileOptions::new("dep.core", PythonVersion::MINIMUM);
@@ -233,7 +278,8 @@ fn recovering_workspace_keeps_healthy_imports_when_another_module_is_invalid() {
     let dependency = r#"
             (module dep.core)
             (export [add-one])
-            (defn add-one [[x Int]] -> Int (+ x 1))
+            ^{:doc "Increment an integer."}
+            (defn ^Int add-one [^Int x] (+ x 1))
         "#;
     let app = r#"
             (module app)
@@ -242,7 +288,7 @@ fn recovering_workspace_keeps_healthy_imports_when_another_module_is_invalid() {
         "#;
     let broken = r#"
             (module broken)
-            (defn invalid [[x Int]] -> Int)
+            (defn ^Int invalid [^Int x])
         "#;
     let dependency_options = CompileOptions::new("dep.core", PythonVersion::MINIMUM);
     let app_options = CompileOptions::new("app", PythonVersion::MINIMUM);
@@ -286,12 +332,14 @@ fn workspace_graph_hashes_are_stable_when_input_order_changes() {
             (module app)
             (import dep.core :as dep)
             (export [call])
-            (defn call [] -> Int (dep/add 1 :value 2))
+            ^{:doc "Call the dependency."}
+            (defn ^Int call [] (dep/add 1 :value 2))
         "#;
     let dependency = r#"
             (module dep.core)
             (export [add])
-            (defn add [[x Int] [value Int]] -> Int (+ x value))
+            ^{:doc "Add two integers."}
+            (defn ^Int add [^Int x ^Int value] (+ x value))
         "#;
     let app_options = CompileOptions::new("app", PythonVersion::MINIMUM);
     let dependency_options = CompileOptions::new("dep.core", PythonVersion::MINIMUM);

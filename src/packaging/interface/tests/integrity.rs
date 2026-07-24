@@ -32,6 +32,7 @@ fn public_static_schema_and_owned_record_round_trip() {
     let encoded = emit(&typed, &surface).expect("static interface should emit");
     let decoded = read(&encoded).expect("static interface should read");
 
+    assert_eq!(decoded.language_version, crate::LANGUAGE_VERSION);
     assert_eq!(decoded.static_schemas.len(), 1);
     assert_eq!(decoded.static_schemas[0].name, "Descriptor");
     assert_eq!(decoded.owned_records.len(), 1);

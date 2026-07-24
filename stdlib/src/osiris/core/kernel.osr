@@ -1,0 +1,256 @@
+;; Implementation namespace for typed contracts between osiris.core and Kernel.
+^{:osiris/internal true}
+(module osiris.core.kernel)
+
+(export
+  [kernel-leaf-apply kernel-leaf-identity kernel-leaf-constantly
+   kernel-leaf-comp kernel-leaf-partial kernel-leaf-juxt
+   kernel-leaf-complement kernel-leaf-map kernel-leaf-mapv
+   kernel-leaf-mapcat kernel-leaf-mapcatv kernel-leaf-filter
+   kernel-leaf-filterv kernel-leaf-remove kernel-leaf-removev
+   kernel-leaf-reduce kernel-leaf-fold kernel-leaf-reductions
+   kernel-leaf-reduced kernel-leaf-reduced? kernel-leaf-unreduced
+   kernel-leaf-first kernel-leaf-rest kernel-leaf-next kernel-leaf-nth
+   kernel-leaf-count kernel-leaf-empty kernel-leaf-empty? kernel-leaf-seq
+   kernel-leaf-seq? kernel-leaf-coll? kernel-leaf-sequential?
+   kernel-leaf-cons kernel-leaf-concat kernel-leaf-range
+   kernel-leaf-repeat kernel-leaf-repeatedly kernel-leaf-iterate
+   kernel-leaf-cycle kernel-leaf-sequence kernel-leaf-take
+   kernel-leaf-drop kernel-leaf-take-while kernel-leaf-drop-while
+   kernel-leaf-take-last kernel-leaf-drop-last kernel-leaf-partition
+   kernel-leaf-partition-all kernel-leaf-partition-by
+   kernel-leaf-interleave kernel-leaf-interpose kernel-leaf-distinct
+   kernel-leaf-dedupe kernel-leaf-flatten kernel-leaf-keep
+   kernel-leaf-keep-indexed kernel-leaf-map-indexed kernel-leaf-run!
+   kernel-leaf-doall kernel-leaf-dorun kernel-leaf-some kernel-leaf-every?
+   kernel-leaf-not-every? kernel-leaf-not-any? kernel-leaf-get
+   kernel-leaf-assoc kernel-leaf-dissoc kernel-leaf-update
+   kernel-leaf-get-in kernel-leaf-assoc-in kernel-leaf-update-in
+   kernel-leaf-select-keys kernel-leaf-nil? kernel-leaf-some?
+   kernel-leaf-true? kernel-leaf-false? kernel-leaf-number?
+   kernel-leaf-string? kernel-leaf-list? kernel-leaf-vector?
+   kernel-leaf-map? kernel-leaf-set? kernel-leaf-sequence?])
+
+(extern python "osiris.kernel"
+  ^{:python/name "apply" :type-params [A F P R]}
+  (defn ^{:type R} kernel-leaf-apply
+    [^{:type F} function ^{:type P} prefix ^{:type A} arguments])
+  ^{:python/name "identity" :type-params [A]}
+  (defn ^{:type A} kernel-leaf-identity [^{:type A} value])
+  ^{:python/name "constantly" :type-params [A B]}
+  (defn ^{:type (Fn [B] -> A)} kernel-leaf-constantly [^{:type A} value])
+  ^{:python/name "comp" :type-params [A B]}
+  (defn ^{:type (Fn [A] -> B)} kernel-leaf-comp
+    [& ^{:type (Fn [A] -> B)} functions])
+  ^{:python/name "partial" :type-params [A B]}
+  (defn ^{:type (Fn [A] -> B)} kernel-leaf-partial
+    [& ^{:type (Fn [A] -> B)} functions])
+  ^{:python/name "juxt" :type-params [A B]}
+  (defn ^{:type (Fn [A] -> (Vector B))} kernel-leaf-juxt
+    [& ^{:type (Fn [A] -> B)} functions])
+  ^{:python/name "complement" :type-params [A B]}
+  (defn ^{:type (Fn [A] -> Bool)} kernel-leaf-complement
+    [^{:type (Fn [A] -> B)} predicate])
+  ^{:python/name "map" :type-params [A B C]}
+  (defn ^{:type (List B)} kernel-leaf-map
+    [^{:type (Fn [A] -> B)} function & ^{:type C} collections])
+  ^{:python/name "mapv" :type-params [A B C]}
+  (defn ^{:type (Vector B)} kernel-leaf-mapv
+    [^{:type (Fn [A] -> B)} function & ^{:type C} collections])
+  ^{:python/name "mapcat" :type-params [A B C]}
+  (defn ^{:type (List B)} kernel-leaf-mapcat
+    [^{:type (Fn [A] -> (List B))} function & ^{:type C} collections])
+  ^{:python/name "mapcatv" :type-params [A B C]}
+  (defn ^{:type (Vector B)} kernel-leaf-mapcatv
+    [^{:type (Fn [A] -> (List B))} function & ^{:type C} collections])
+  ^{:python/name "filter" :type-params [A B C]}
+  (defn ^{:type (List A)} kernel-leaf-filter
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "filterv" :type-params [A B C]}
+  (defn ^{:type (Vector A)} kernel-leaf-filterv
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "remove" :type-params [A B C]}
+  (defn ^{:type (List A)} kernel-leaf-remove
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "removev" :type-params [A B C]}
+  (defn ^{:type (Vector A)} kernel-leaf-removev
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "reduce" :type-params [A B C]}
+  (defn ^{:type A} kernel-leaf-reduce
+    [^{:type (Fn [A B] -> A)} function [^{:type (Option A)} initial = none]
+     ^{:type C} collection])
+  ^{:python/name "fold" :type-params [A B C]}
+  (defn ^{:type A} kernel-leaf-fold
+    [^{:type (Fn [A B] -> A)} function ^{:type A} initial ^{:type C} collection])
+  ^{:python/name "reductions" :type-params [A B C]}
+  (defn ^{:type (List A)} kernel-leaf-reductions
+    [^{:type (Fn [A B] -> A)} function [^{:type (Option A)} initial = none]
+     ^{:type C} collection])
+  ^{:python/name "reduced" :type-params [A]}
+  (defn ^{:type (Reduced A)} kernel-leaf-reduced [^{:type A} value])
+  ^{:python/name "reduced_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-reduced? [^{:type A} value])
+  ^{:python/name "unreduced" :type-params [A]}
+  (defn ^{:type A} kernel-leaf-unreduced [^{:type (Reduced A)} value])
+  ^{:python/name "first" :type-params [A C]}
+  (defn ^{:type (Option A)} kernel-leaf-first [^{:type C} collection])
+  ^{:python/name "rest" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-rest [^{:type C} collection])
+  ^{:python/name "next" :type-params [A C]}
+  (defn ^{:type (Option (List A))} kernel-leaf-next [^{:type C} collection])
+  ^{:python/name "nth" :type-params [B C R]}
+  (defn ^{:type R} kernel-leaf-nth
+    [^{:type C} collection ^{:type Int} index
+     [^{:type (Option B)} not-found = none]])
+  ^{:python/name "count" :type-params [C]}
+  (defn ^{:type Int} kernel-leaf-count [^{:type C} collection])
+  ^{:python/name "empty" :type-params [C]}
+  (defn ^{:type C} kernel-leaf-empty [^{:type C} collection])
+  ^{:python/name "empty_p" :type-params [C]}
+  (defn ^{:type Bool} kernel-leaf-empty? [^{:type C} value])
+  ^{:python/name "seq" :type-params [A C]}
+  (defn ^{:type (Option (List A))} kernel-leaf-seq [^{:type C} collection])
+  ^{:python/name "seq_p" :type-params [C]}
+  (defn ^{:type Bool} kernel-leaf-seq? [^{:type C} value])
+  ^{:python/name "coll_p" :type-params [C]}
+  (defn ^{:type Bool} kernel-leaf-coll? [^{:type C} value])
+  ^{:python/name "sequential_p" :type-params [C]}
+  (defn ^{:type Bool} kernel-leaf-sequential? [^{:type C} value])
+  ^{:python/name "cons" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-cons
+    [^{:type A} value ^{:type C} collection])
+  ^{:python/name "concat" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-concat [& ^{:type C} collections])
+  ^{:python/name "range"}
+  (defn ^{:type (List Int)} kernel-leaf-range
+    [[^{:type (Option Int)} start = none] [^{:type (Option Int)} end = none]
+     [^{:type (Option Int)} step = none]])
+  ^{:python/name "repeat" :type-params [A]}
+  (defn ^{:type (List A)} kernel-leaf-repeat
+    [[^{:type (Option Int)} count = none] ^{:type A} value])
+  ^{:python/name "repeatedly" :type-params [A]}
+  (defn ^{:type (List A)} kernel-leaf-repeatedly
+    [[^{:type (Option Int)} count = none] ^{:type (Fn [] -> A)} function])
+  ^{:python/name "iterate" :type-params [A]}
+  (defn ^{:type (List A)} kernel-leaf-iterate
+    [^{:type (Fn [A] -> A)} function ^{:type A} initial])
+  ^{:python/name "cycle" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-cycle [^{:type C} collection])
+  ^{:python/name "sequence" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-sequence [^{:type C} collection])
+  ^{:python/name "take" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-take
+    [^{:type Int} count ^{:type C} collection])
+  ^{:python/name "drop" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-drop
+    [^{:type Int} count ^{:type C} collection])
+  ^{:python/name "take_while" :type-params [A B C]}
+  (defn ^{:type (List A)} kernel-leaf-take-while
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "drop_while" :type-params [A B C]}
+  (defn ^{:type (List A)} kernel-leaf-drop-while
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "take_last" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-take-last
+    [^{:type Int} count ^{:type C} collection])
+  ^{:python/name "drop_last" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-drop-last
+    [[^{:type (Option Int)} count = none] ^{:type C} collection])
+  ^{:python/name "partition" :type-params [A C]}
+  (defn ^{:type (List (Vector A))} kernel-leaf-partition
+    [^{:type Int} size [^{:type (Option Int)} step = none]
+     [^{:type (Option C)} padding = none] ^{:type C} collection])
+  ^{:python/name "partition_all" :type-params [A C]}
+  (defn ^{:type (List (Vector A))} kernel-leaf-partition-all
+    [^{:type Int} size [^{:type (Option Int)} step = none] ^{:type C} collection])
+  ^{:python/name "partition_by" :type-params [A B C]}
+  (defn ^{:type (List (Vector A))} kernel-leaf-partition-by
+    [^{:type (Fn [A] -> B)} function ^{:type C} collection])
+  ^{:python/name "interleave" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-interleave [& ^{:type C} collections])
+  ^{:python/name "interpose" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-interpose
+    [^{:type A} separator ^{:type C} collection])
+  ^{:python/name "distinct" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-distinct [^{:type C} collection])
+  ^{:python/name "dedupe" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-dedupe [^{:type C} collection])
+  ^{:python/name "flatten" :type-params [A C]}
+  (defn ^{:type (List A)} kernel-leaf-flatten [^{:type C} collection])
+  ^{:python/name "keep" :type-params [A B C]}
+  (defn ^{:type (List B)} kernel-leaf-keep
+    [^{:type (Fn [A] -> B)} function ^{:type C} collection])
+  ^{:python/name "keep_indexed" :type-params [A B C]}
+  (defn ^{:type (List B)} kernel-leaf-keep-indexed
+    [^{:type (Fn [Int A] -> B)} function ^{:type C} collection])
+  ^{:python/name "map_indexed" :type-params [A B C]}
+  (defn ^{:type (List B)} kernel-leaf-map-indexed
+    [^{:type (Fn [Int A] -> B)} function ^{:type C} collection])
+  ^{:python/name "run_bang" :type-params [A B C]}
+  (defn ^{:type None} kernel-leaf-run!
+    [^{:type (Fn [A] -> B)} function ^{:type C} collection])
+  ^{:python/name "doall" :type-params [C]}
+  (defn ^{:type C} kernel-leaf-doall
+    [[^{:type (Option Int)} count = none] ^{:type C} collection])
+  ^{:python/name "dorun" :type-params [C]}
+  (defn ^{:type None} kernel-leaf-dorun
+    [[^{:type (Option Int)} count = none] ^{:type C} collection])
+  ^{:python/name "some" :type-params [A B C]}
+  (defn ^{:type (Option B)} kernel-leaf-some
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "every_p" :type-params [A B C]}
+  (defn ^{:type Bool} kernel-leaf-every?
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "not_every_p" :type-params [A B C]}
+  (defn ^{:type Bool} kernel-leaf-not-every?
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "not_any_p" :type-params [A B C]}
+  (defn ^{:type Bool} kernel-leaf-not-any?
+    [^{:type (Fn [A] -> B)} predicate ^{:type C} collection])
+  ^{:python/name "get" :type-params [B C K R]}
+  (defn ^{:type R} kernel-leaf-get
+    [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]])
+  ^{:python/name "assoc" :type-params [A C]}
+  (defn ^{:type C} kernel-leaf-assoc [^{:type C} collection & ^{:type A} entries])
+  ^{:python/name "dissoc" :type-params [C K]}
+  (defn ^{:type C} kernel-leaf-dissoc [^{:type C} collection & ^{:type K} keys])
+  ^{:python/name "update" :type-params [A B C K]}
+  (defn ^{:type C} kernel-leaf-update
+    [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+     ^{:type A} arguments])
+  ^{:python/name "get_in" :type-params [A B C R]}
+  (defn ^{:type R} kernel-leaf-get-in
+    [^{:type C} collection ^{:type (List A)} keys
+     [^{:type (Option B)} not-found = none]])
+  ^{:python/name "assoc_in" :type-params [A C V]}
+  (defn ^{:type C} kernel-leaf-assoc-in
+    [^{:type C} collection ^{:type (List A)} keys ^{:type V} value])
+  ^{:python/name "update_in" :type-params [A B C K]}
+  (defn ^{:type C} kernel-leaf-update-in
+    [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+     ^{:type A} arguments])
+  ^{:python/name "select_keys" :type-params [A C K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-select-keys
+    [^{:type C} collection ^{:type (List A)} keys])
+  ^{:python/name "nil_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-nil? [^{:type A} value])
+  ^{:python/name "some_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-some? [^{:type A} value])
+  ^{:python/name "true_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-true? [^{:type A} value])
+  ^{:python/name "false_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-false? [^{:type A} value])
+  ^{:python/name "number_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-number? [^{:type A} value])
+  ^{:python/name "string_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-string? [^{:type A} value])
+  ^{:python/name "list_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-list? [^{:type A} value])
+  ^{:python/name "vector_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-vector? [^{:type A} value])
+  ^{:python/name "map_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-map? [^{:type A} value])
+  ^{:python/name "set_p" :type-params [A]}
+  (defn ^{:type Bool} kernel-leaf-set? [^{:type A} value])
+  ^{:python/name "sequence_p" :type-params [C]}
+  (defn ^{:type Bool} kernel-leaf-sequence? [^{:type C} value]))

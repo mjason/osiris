@@ -1,0 +1,122 @@
+;; Source-distributed Osiris standard module. Kernel leaves are linked privately.
+(module osiris.python)
+
+(export
+  [get-attr get-attr-or has-attr? set-attr! del-attr! get-item set-item!
+   del-item! call iter type-name])
+
+(import osiris.python.kernel :refer :all)
+
+^{:doc
+  {:default "Read a Python attribute by string name through an explicit Any boundary."
+   "zh-CN" "通过显式 Any 边界按字符串名称读取 Python 属性。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Any} get-attr [^{:type A} object ^{:type Str} name]
+  (kernel-leaf-get-attr object name))
+
+^{:doc
+  {:default "Read a Python attribute or return an explicit fallback when it is absent."
+   "zh-CN" "读取 Python 属性；缺失时返回显式回退值。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Any} get-attr-or
+  [^{:type A} object ^{:type Str} name ^{:type Any} fallback]
+  (kernel-leaf-get-attr-or object name fallback))
+
+^{:doc
+  {:default "Test whether a Python object exposes an attribute with a string name."
+   "zh-CN" "测试 Python 对象是否具有指定字符串名称的属性。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Bool} has-attr? [^{:type A} object ^{:type Str} name]
+  (kernel-leaf-has-attr? object name))
+
+^{:doc
+  {:default "Mutate a Python attribute explicitly and return none."
+   "zh-CN" "显式修改 Python 属性并返回 none。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type None} set-attr!
+  [^{:type A} object ^{:type Str} name ^{:type Any} value]
+  (kernel-leaf-set-attr! object name value))
+
+^{:doc
+  {:default "Delete a Python attribute explicitly and return none."
+   "zh-CN" "显式删除 Python 属性并返回 none。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type None} del-attr! [^{:type A} object ^{:type Str} name]
+  (kernel-leaf-del-attr! object name))
+
+^{:doc
+  {:default "Read a Python item through an explicit Any boundary."
+   "zh-CN" "通过显式 Any 边界读取 Python item。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Any} get-item [^{:type A} object ^{:type Any} key]
+  (kernel-leaf-get-item object key))
+
+^{:doc
+  {:default "Mutate a Python item explicitly and return none."
+   "zh-CN" "显式修改 Python item 并返回 none。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type None} set-item!
+  [^{:type A} object ^{:type Any} key ^{:type Any} value]
+  (kernel-leaf-set-item! object key value))
+
+^{:doc
+  {:default "Delete a Python item explicitly and return none."
+   "zh-CN" "显式删除 Python item 并返回 none。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type None} del-item! [^{:type A} object ^{:type Any} key]
+  (kernel-leaf-del-item! object key))
+
+^{:doc
+  {:default "Call a Python callable with explicit argument and keyword collections through an Any boundary."
+   "zh-CN" "通过 Any 边界用显式参数与关键字集合调用 Python 可调用对象。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Any} call
+  [^{:type Any} callable ^{:type (List Any)} args
+   [^{:type (Option (Map Str Any))} kwargs = none]]
+  (kernel-leaf-call callable args kwargs))
+
+^{:doc
+  {:default "Adapt a Python iterable into the logical one-pass dynamic sequence boundary."
+   "zh-CN" "将 Python iterable 适配为逻辑单遍动态序列边界。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type (List Any)} iter [^{:type A} object]
+  (kernel-leaf-iter object))
+
+^{:doc
+  {:default "Return a Python diagnostic display type name without creating a binding identity."
+   "zh-CN" "返回用于诊断显示的 Python 类型名称，不创建 binding identity。"}
+  :category "python"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type Str} type-name [^{:type A} object]
+  (kernel-leaf-type-name object))

@@ -1,4 +1,4 @@
-//! A small, structured Python 3.9 AST and deterministic source printer.
+//! A small, structured Python 3.11 AST and deterministic source printer.
 //!
 //! Backend passes should build these nodes instead of assembling Python source
 //! fragments.  The printer deliberately owns all syntax decisions, including
@@ -18,7 +18,7 @@ impl Module {
         Self { body }
     }
 
-    /// Render this module as deterministic Python 3.9 source.
+    /// Render this module as deterministic Python 3.11 source.
     pub fn to_source(&self) -> Result<String, PrintError> {
         render(self)
     }
@@ -164,7 +164,7 @@ pub struct ClassDef {
     pub body: Vec<Stmt>,
 }
 
-/// A `try` statement with any combination accepted by Python 3.9.
+/// A `try` statement with any combination accepted by Python 3.11.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Try {
     pub body: Vec<Stmt>,

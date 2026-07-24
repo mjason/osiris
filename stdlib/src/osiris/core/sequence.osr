@@ -1,0 +1,456 @@
+;; Internal authored implementations for the osiris.core facade.
+^{:osiris/internal true}
+(module osiris.core.sequence)
+
+(export
+  [first rest next nth count empty empty? seq seq? coll? sequential? cons
+   concat range repeat repeatedly iterate cycle sequence take drop
+   take-while drop-while take-last drop-last partition partition-all
+   partition-by interleave interpose distinct dedupe flatten keep
+   keep-indexed map-indexed run! doall dorun some every? not-every?
+   not-any?])
+
+(import osiris.core.kernel :refer :all)
+
+^{:doc
+  {:default "Return the first sequence item or none without losing a lazy item."
+   "zh-CN" "返回序列首项或 none，并且不会丢失惰性元素。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (Option A)} first [^{:type C} collection]
+  (kernel-leaf-first collection))
+
+^{:doc
+  {:default "Return the sequence after its first item, using an empty sequence when needed."
+   "zh-CN" "返回去掉首项后的序列，必要时返回空序列。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} rest [^{:type C} collection]
+  (kernel-leaf-rest collection))
+
+^{:doc
+  {:default "Return the non-empty sequence after the first item, or none when empty."
+   "zh-CN" "返回首项后的非空序列；没有剩余项时返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (Option (List A))} next [^{:type C} collection]
+  (kernel-leaf-next collection))
+
+^{:doc
+  {:default "Return a zero-based item, raising IndexError or using an explicit fallback when absent."
+   "zh-CN" "返回零基索引项；缺失时抛出 IndexError 或使用显式回退值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Union A B)} nth
+  [^{:type C} collection ^{:type Int} index & ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-nth [collection index] arguments))
+
+^{:doc
+  {:default "Eagerly count collection items; none counts as zero."
+   "zh-CN" "立即统计集合元素数量；none 的数量为零。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Int} count [^{:type C} collection]
+  (kernel-leaf-count collection))
+
+^{:doc
+  {:default "Return an empty logical collection of the same family when that family defines one."
+   "zh-CN" "在对应集合族有定义时，返回同族的空逻辑集合。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type C} empty [^{:type C} collection]
+  (kernel-leaf-empty collection))
+
+^{:doc
+  {:default "Test emptiness while probing at most one lazy item and retaining that item."
+   "zh-CN" "测试是否为空，最多探测一个惰性元素并保留该元素。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Bool} empty? [^{:type C} value]
+  (kernel-leaf-empty? value))
+
+^{:doc
+  {:default "Return none for empty input or a non-empty repeatable sequence view."
+   "zh-CN" "空输入返回 none，否则返回非空且可重复遍历的序列视图。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (Option (List A))} seq [^{:type C} collection]
+  (kernel-leaf-seq collection))
+
+^{:doc
+  {:default "Test whether a value is a logical sequence."
+   "zh-CN" "测试一个值是否为逻辑序列。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Bool} seq? [^{:type C} value]
+  (kernel-leaf-seq? value))
+
+^{:doc
+  {:default "Test whether a value belongs to a logical collection family."
+   "zh-CN" "测试一个值是否属于逻辑集合族。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Bool} coll? [^{:type C} value]
+  (kernel-leaf-coll? value))
+
+^{:doc
+  {:default "Test whether a value has ordered sequential semantics."
+   "zh-CN" "测试一个值是否具有有序顺序语义。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type Bool} sequential? [^{:type C} value]
+  (kernel-leaf-sequential? value))
+
+^{:doc
+  {:default "Lazily prefix one value to a collection."
+   "zh-CN" "将一个值惰性添加到集合前端。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} cons [^{:type A} value ^{:type C} collection]
+  (kernel-leaf-cons value collection))
+
+^{:doc
+  {:default "Lazily concatenate collections in source order."
+   "zh-CN" "按源码顺序惰性拼接集合。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} concat [& ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-concat [] collections))
+
+^{:doc
+  {:default "Produce an end-exclusive lazy numeric sequence; a zero step is invalid."
+   "zh-CN" "生成不含结束值的惰性数值序列；步长不能为零。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type (List Int)} range [& ^{:type Int} arguments]
+  (kernel-leaf-apply kernel-leaf-range [] arguments))
+
+^{:doc
+  {:default "Lazily repeat one single-evaluated value, either finitely or indefinitely."
+   "zh-CN" "惰性重复一个只求值一次的值，可指定次数或无限重复。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type (List A)} repeat [& ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-repeat [] arguments))
+
+^{:doc
+  {:default "Lazily invoke a zero-argument function once for each realized item."
+   "zh-CN" "每实现一个元素时惰性调用一次零参数函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type (List A)} repeatedly [& ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-repeatedly [] arguments))
+
+^{:doc
+  {:default "Produce a lazy sequence of an initial value followed by repeated function application."
+   "zh-CN" "生成由初始值及反复应用函数所得值组成的惰性序列。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A]}
+(defn ^{:type (List A)} iterate
+  [^{:type (Fn [A] -> A)} function ^{:type A} initial]
+  (kernel-leaf-iterate function initial))
+
+^{:doc
+  {:default "Lazily repeat a finite collection; an empty input remains empty."
+   "zh-CN" "惰性循环有限集合；空输入保持为空。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} cycle [^{:type C} collection]
+  (kernel-leaf-cycle collection))
+
+^{:doc
+  {:default "Return a repeatable lazy view without eagerly materializing its input."
+   "zh-CN" "返回可重复遍历的惰性视图，不提前实体化输入。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} sequence [^{:type C} collection]
+  (kernel-leaf-sequence collection))
+
+^{:doc
+  {:default "Lazily return at most the requested prefix without consuming unnecessary input."
+   "zh-CN" "惰性返回不超过指定数量的前缀，不消费多余输入。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} take [^{:type Int} count ^{:type C} collection]
+  (kernel-leaf-take count collection))
+
+^{:doc
+  {:default "Lazily skip the requested prefix and return the remaining sequence."
+   "zh-CN" "惰性跳过指定数量的前缀并返回剩余序列。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} drop [^{:type Int} count ^{:type C} collection]
+  (kernel-leaf-drop count collection))
+
+^{:doc
+  {:default "Lazily retain the prefix whose predicate results remain truthy."
+   "zh-CN" "惰性保留谓词结果持续为真的前缀。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List A)} take-while
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-take-while predicate collection))
+
+^{:doc
+  {:default "Lazily skip the prefix whose predicate results remain truthy."
+   "zh-CN" "惰性跳过谓词结果持续为真的前缀。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List A)} drop-while
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-drop-while predicate collection))
+
+^{:doc
+  {:default "Return the requested suffix after exhausting a finite input."
+   "zh-CN" "耗尽有限输入后返回指定数量的后缀。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} take-last [^{:type Int} count ^{:type C} collection]
+  (kernel-leaf-take-last count collection))
+
+^{:doc
+  {:default "Lazily omit a trailing count using bounded lookahead; the count defaults to one."
+   "zh-CN" "使用有界前瞻惰性省略末尾元素；数量默认为一。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} drop-last [& ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-drop-last [] arguments))
+
+^{:doc
+  {:default "Lazily produce Vector windows, omitting or explicitly padding an incomplete tail."
+   "zh-CN" "惰性生成 Vector 窗口，省略不完整尾部或按显式 padding 补齐。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List (Vector A))} partition
+  [^{:type Int} size & ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-partition [size] arguments))
+
+^{:doc
+  {:default "Lazily produce Vector windows including every incomplete trailing window."
+   "zh-CN" "惰性生成 Vector 窗口，并包含所有不完整尾部窗口。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List (Vector A))} partition-all
+  [^{:type Int} size & ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-partition-all [size] arguments))
+
+^{:doc
+  {:default "Lazily group adjacent values with equal keys, computing each key once."
+   "zh-CN" "惰性分组键相等的相邻值，每个值的键只计算一次。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List (Vector A))} partition-by
+  [^{:type (Fn [A] -> B)} function ^{:type C} collection]
+  (kernel-leaf-partition-by function collection))
+
+^{:doc
+  {:default "Lazily alternate inputs in order and stop when the shortest input ends."
+   "zh-CN" "按顺序惰性交错输入，并在最短输入结束时停止。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} interleave [& ^{:type C} collections]
+  (kernel-leaf-apply kernel-leaf-interleave [] collections))
+
+^{:doc
+  {:default "Lazily insert one separator between adjacent collection values."
+   "zh-CN" "在集合相邻值之间惰性插入一个分隔值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} interpose [^{:type A} separator ^{:type C} collection]
+  (kernel-leaf-interpose separator collection))
+
+^{:doc
+  {:default "Lazily retain the first occurrence of each logically equal value."
+   "zh-CN" "惰性保留每个逻辑相等值的首次出现。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} distinct [^{:type C} collection]
+  (kernel-leaf-distinct collection))
+
+^{:doc
+  {:default "Lazily remove adjacent logically equal duplicates while preserving order."
+   "zh-CN" "惰性移除相邻的逻辑相等重复值并保持顺序。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} dedupe [^{:type C} collection]
+  (kernel-leaf-dedupe collection))
+
+^{:doc
+  {:default "Lazily flatten nested sequential values while treating strings, maps, and sets as leaves."
+   "zh-CN" "惰性展平嵌套顺序值，并将字符串、Map 与 Set 视为叶子。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A C]}
+(defn ^{:type (List A)} flatten [^{:type C} collection]
+  (kernel-leaf-flatten collection))
+
+^{:doc
+  {:default "Lazily map a function and discard only results equal to none."
+   "zh-CN" "惰性映射函数，并且只丢弃等于 none 的结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List B)} keep
+  [^{:type (Fn [A] -> B)} function ^{:type C} collection]
+  (kernel-leaf-keep function collection))
+
+^{:doc
+  {:default "Lazily map zero-based indexes and values, discarding only none results."
+   "zh-CN" "惰性映射零基索引和值，并且只丢弃 none 结果。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List B)} keep-indexed
+  [^{:type (Fn [Int A] -> B)} function ^{:type C} collection]
+  (kernel-leaf-keep-indexed function collection))
+
+^{:doc
+  {:default "Lazily map zero-based indexes and values in source order."
+   "zh-CN" "按源码顺序惰性映射零基索引和值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (List B)} map-indexed
+  [^{:type (Fn [Int A] -> B)} function ^{:type C} collection]
+  (kernel-leaf-map-indexed function collection))
+
+^{:doc
+  {:default "Call a function for each value in order for effects, then return none."
+   "zh-CN" "为副作用按顺序对每个值调用函数，然后返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type None} run! [^{:type (Fn [A] -> B)} function ^{:type C} collection]
+  (kernel-leaf-run! function collection))
+
+^{:doc
+  {:default "Realize all or a finite prefix of a lazy collection and return the collection."
+   "zh-CN" "实现惰性集合的全部或有限前缀，并返回该集合。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type C} doall [& ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-doall [] arguments))
+
+^{:doc
+  {:default "Realize all or a finite prefix of a lazy collection and return none."
+   "zh-CN" "实现惰性集合的全部或有限前缀，并返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [C]}
+(defn ^{:type None} dorun [& ^{:type Any} arguments]
+  (kernel-leaf-apply kernel-leaf-dorun [] arguments))
+
+^{:doc
+  {:default "Return the first truthy predicate result, or none when no result is truthy."
+   "zh-CN" "返回首个为真的谓词结果；没有真结果时返回 none。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type (Option B)} some
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-some predicate collection))
+
+^{:doc
+  {:default "Short-circuit when a predicate result is falsey and report whether all values passed."
+   "zh-CN" "谓词结果为假时短路，并报告是否所有值都通过。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type Bool} every?
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-every? predicate collection))
+
+^{:doc
+  {:default "Short-circuit and report whether at least one predicate result is falsey."
+   "zh-CN" "短路并报告是否至少有一个谓词结果为假。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type Bool} not-every?
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-not-every? predicate collection))
+
+^{:doc
+  {:default "Short-circuit and report whether no predicate result is truthy."
+   "zh-CN" "短路并报告是否没有任何谓词结果为真。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false
+  :type-params [A B C]}
+(defn ^{:type Bool} not-any?
+  [^{:type (Fn [A] -> B)} predicate ^{:type C} collection]
+  (kernel-leaf-not-any? predicate collection))

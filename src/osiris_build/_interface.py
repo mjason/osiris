@@ -19,9 +19,21 @@ from ._sidecar import _validate_sidecar, _validate_sidecar_against_interfaces
 
 
 _INTERFACE_FORMAT = "osiris-interface"
-_INTERFACE_FORMAT_VERSION = 2
+_INTERFACE_FORMAT_VERSION = 3
 _INTERFACE_COMPILER_ABI = "osiris-compiler-v0"
+_LANGUAGE_VERSION = "0.1"
 _INTERFACE_LANGUAGE_ABI = "osiris-language-v1"
+_STANDARD_LIBRARY_ABI = 1
+_LINKABLE_HELPER_FORMAT = 1
+
+
+def _is_supported_python_target(value: str) -> bool:
+    parts = value.split(".")
+    return (
+        len(parts) == 2
+        and all(part.isascii() and part.isdigit() for part in parts)
+        and tuple(map(int, parts)) >= (3, 11)
+    )
 
 
 def _interface_projection(path: str, data: bytes) -> _InterfaceProjection:
@@ -50,7 +62,16 @@ def _interface_projection(path: str, data: bytes) -> _InterfaceProjection:
     header = _sexpr_map(
         wrapped["osiris-interface/header"],
         "`%s` header" % path,
-        {"format", "format-version", "compiler-abi", "language-abi"},
+        {
+            "format",
+            "format-version",
+            "compiler-abi",
+            "language-version",
+            "language-abi",
+            "standard-library-abi",
+            "linkable-helper-format",
+            "python-target",
+        },
     )
     if (
         _sexpr_string(header["format"], "`%s` format" % path) != _INTERFACE_FORMAT
@@ -58,10 +79,23 @@ def _interface_projection(path: str, data: bytes) -> _InterfaceProjection:
         != _INTERFACE_FORMAT_VERSION
         or _sexpr_string(header["compiler-abi"], "`%s` compiler-abi" % path)
         != _INTERFACE_COMPILER_ABI
+        or _sexpr_string(header["language-version"], "`%s` language-version" % path)
+        != _LANGUAGE_VERSION
         or _sexpr_string(header["language-abi"], "`%s` language-abi" % path)
         != _INTERFACE_LANGUAGE_ABI
+        or _sexpr_integer(
+            header["standard-library-abi"], "`%s` standard-library-abi" % path
+        )
+        != _STANDARD_LIBRARY_ABI
+        or _sexpr_integer(
+            header["linkable-helper-format"], "`%s` linkable-helper-format" % path
+        )
+        != _LINKABLE_HELPER_FORMAT
     ):
         raise _error("interface `%s` has an incompatible format or ABI" % path)
+    python_target = _sexpr_string(header["python-target"], "`%s` python-target" % path)
+    if not _is_supported_python_target(python_target):
+        raise _error("interface `%s` has an unsupported Python target" % path)
 
     body = _sexpr_map(
         wrapped["osiris-interface/body"],
@@ -147,4 +181,13 @@ def _interface_projection(path: str, data: bytes) -> _InterfaceProjection:
     for record in records:
         if record["module"] != module:
             raise _error("interface `%s` contains a record owned by another module" % path)
-    return _InterfaceProjection(path, module, semantic_interface_hash, records)
+    return _InterfaceProjection(
+        path,
+        module,
+        semantic_interface_hash,
+        _LANGUAGE_VERSION,
+        _STANDARD_LIBRARY_ABI,
+        _LINKABLE_HELPER_FORMAT,
+        python_target,
+        records,
+    )

@@ -52,7 +52,16 @@ pub fn lower_module_with_trust_policy(
     fallback_name: &str,
     trust_policy: &ContractTrustPolicy,
 ) -> LowerResult {
-    lower_module_internal(module, fallback_name, None, trust_policy)
+    lower_module_internal(module, fallback_name, None, trust_policy, true)
+}
+
+pub(crate) fn lower_module_with_compiler_policy(
+    module: &ast::Module,
+    fallback_name: &str,
+    trust_policy: &ContractTrustPolicy,
+    strict: bool,
+) -> LowerResult {
+    lower_module_internal(module, fallback_name, None, trust_policy, strict)
 }
 
 /// Lower a module while resolving ordinary imports against an explicit,
@@ -81,7 +90,23 @@ pub fn lower_module_with_interfaces_and_trust_policy<P: InterfaceProvider>(
     interfaces: &P,
     trust_policy: &ContractTrustPolicy,
 ) -> LowerResult {
-    lower_module_internal(module, fallback_name, Some(interfaces), trust_policy)
+    lower_module_internal(module, fallback_name, Some(interfaces), trust_policy, true)
+}
+
+pub(crate) fn lower_module_with_interfaces_and_compiler_policy<P: InterfaceProvider>(
+    module: &ast::Module,
+    fallback_name: &str,
+    interfaces: &P,
+    trust_policy: &ContractTrustPolicy,
+    strict: bool,
+) -> LowerResult {
+    lower_module_internal(
+        module,
+        fallback_name,
+        Some(interfaces),
+        trust_policy,
+        strict,
+    )
 }
 
 fn lower_module_internal(
@@ -89,18 +114,20 @@ fn lower_module_internal(
     fallback_name: &str,
     interfaces: Option<&dyn InterfaceProvider>,
     trust_policy: &ContractTrustPolicy,
+    strict: bool,
 ) -> LowerResult {
     let name = module
         .name
         .as_ref()
         .map_or_else(|| fallback_name.to_owned(), |name| name.canonical.clone());
-    let mut lowerer = Lowerer::new(name, module, interfaces, trust_policy);
+    let mut lowerer = Lowerer::new(name, module, interfaces, trust_policy, strict);
     lowerer.predeclare(module);
     lowerer.resolve_aliases(module);
     lowerer.resolve_nominal_types(module.span);
     lowerer.resolve_exports(module);
     lowerer.validate_boundary_signatures(module);
     lowerer.lower_items(module);
+    lowerer.validate_published_contracts(module);
     lowerer.finish(module)
 }
 
@@ -142,6 +169,7 @@ struct Lowerer<'a> {
     function_recur_contexts: Vec<FunctionRecurContext>,
     struct_fields: BTreeMap<String, StructFieldTable>,
     trust_policy: &'a ContractTrustPolicy,
+    strict: bool,
     contract_evidence_stack: Vec<ContractEvidence>,
     unknown_nominal_types: BTreeSet<String>,
 }

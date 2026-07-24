@@ -18,7 +18,9 @@ fn source(text: &str) -> ast::Module {
 fn fixture_interface() -> (PathBuf, String) {
     let source_text = r#"
             (module dep.core)
-            (defn run [[x Int]] -> Int x)
+            ^{:doc "Return an integer."}
+            (defn ^Int run [^Int x] x)
+            ^{:doc "A point fixture."}
             (defstruct Point [x Int])
             (alias 执行 run)
             (export [run Point 执行])

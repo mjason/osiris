@@ -5,11 +5,26 @@ pub(super) fn run_check(arguments: &[String]) -> CliOutcome {
         Ok(arguments) => arguments,
         Err(message) => return CliOutcome::usage_error(message),
     };
-    let context = match compile_context(Path::new(arguments.path)) {
+    let requested = Path::new(arguments.path.unwrap_or("."));
+    let entry = if requested.is_dir() {
+        let project = match ProjectConfig::discover(requested) {
+            Ok(project) => project,
+            Err(error) => return config_error(&error),
+        };
+        match first_project_source(&project) {
+            Ok(entry) => entry,
+            Err(message) => {
+                return CliOutcome::failure(1, String::new(), format!("osr: {message}\n"));
+            }
+        }
+    } else {
+        requested.to_path_buf()
+    };
+    let context = match compile_context(&entry) {
         Ok(context) => context,
         Err(error) => return config_error(&error),
     };
-    let mut sources = match load_workspace_sources(Path::new(arguments.path), &context) {
+    let mut sources = match load_workspace_sources(&entry, &context) {
         Ok(sources) => sources,
         Err(message) => return CliOutcome::failure(1, String::new(), format!("osr: {message}\n")),
     };
@@ -31,7 +46,7 @@ pub(super) fn run_check(arguments: &[String]) -> CliOutcome {
 }
 
 pub(super) struct CheckArguments<'a> {
-    path: &'a str,
+    path: Option<&'a str>,
     site_roots: Vec<&'a str>,
 }
 
@@ -56,8 +71,5 @@ pub(super) fn parse_check_arguments(arguments: &[String]) -> Result<CheckArgumen
         }
         index += 1;
     }
-    Ok(CheckArguments {
-        path: path.ok_or_else(|| "missing FILE for 'check'".to_owned())?,
-        site_roots,
-    })
+    Ok(CheckArguments { path, site_roots })
 }

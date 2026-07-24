@@ -1,5 +1,10 @@
 use super::*;
 
+mod metadata;
+
+pub(in crate::interface) use metadata::validate_declaration_metadata;
+use metadata::{normalize_documentation, normalize_localized_names};
+
 pub(in crate::interface) fn project_metadata(
     metadata: &[MetadataEntry],
     projection: MetadataProjection,
@@ -24,17 +29,22 @@ pub(in crate::interface) fn project_metadata(
     }
 }
 
-pub(in crate::interface) fn normalize_metadata(
+pub(crate) fn normalize_metadata(
     metadata: &[MetadataEntry],
 ) -> InterfaceResult<Vec<MetadataEntry>> {
     validate_metadata_target(metadata, "metadata target")?;
     let mut values = metadata
         .iter()
-        .map(|entry| MetadataEntry {
-            key: normalize_form(&entry.key),
-            value: normalize_form(&entry.value),
+        .map(|entry| {
+            let key = normalize_form(&entry.key);
+            let value = match form_name(&key).map(|name| name.trim_start_matches(':')) {
+                Some("doc") => normalize_documentation(&entry.value)?,
+                Some("osiris/names") => normalize_localized_names(&entry.value)?,
+                _ => normalize_form(&entry.value),
+            };
+            Ok(MetadataEntry { key, value })
         })
-        .collect::<Vec<_>>();
+        .collect::<InterfaceResult<Vec<_>>>()?;
     values.sort_by_cached_key(|entry| form_text(&entry.key));
     for pair in values.windows(2) {
         if form_text(&pair[0].key) == form_text(&pair[1].key) {
@@ -44,7 +54,7 @@ pub(in crate::interface) fn normalize_metadata(
     Ok(values)
 }
 
-pub(in crate::interface) fn normalize_form(form: &Form) -> Form {
+pub(crate) fn normalize_form(form: &Form) -> Form {
     let kind = match &form.kind {
         FormKind::None => FormKind::None,
         FormKind::Bool(value) => FormKind::Bool(*value),
@@ -80,7 +90,7 @@ pub(in crate::interface) fn normalize_form(form: &Form) -> Form {
         FormKind::Error(message) => FormKind::Error(message.clone()),
     };
     let mut result = form_node(kind);
-    result.metadata = normalize_metadata(&form.metadata).unwrap_or_default();
+    result.metadata = normalize_metadata(&form.metadata).unwrap_or_else(|_| form.metadata.clone());
     result
 }
 

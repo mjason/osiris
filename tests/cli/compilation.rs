@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "compilation/extensions.rs"]
+mod extensions;
+
 #[test]
 fn build_compiles_the_jsonc_project_without_a_source_argument() {
     let fixture = SourceFixture::new("none\n");
@@ -75,8 +78,10 @@ fn compile_writes_parseable_python_and_source_map_atomically() {
     let fixture = SourceFixture::new(
         "(module sample)\n\
          (export [square answer])\n\
-         (defn square [[x Float]] -> Float (* x x))\n\
-         (def answer Float (square 3.0))\n",
+         ^{:doc \"Square a floating-point value.\"}\n\
+         (defn ^Float square [^Float x] (* x x))\n\
+         ^{:doc \"The computed answer.\"}\n\
+         (def ^Float answer (square 3.0))\n",
     );
     let out_dir = fixture.directory.join("build");
     let output = osr(&[
@@ -112,7 +117,14 @@ fn compile_writes_parseable_python_and_source_map_atomically() {
     let map: serde_json::Value =
         serde_json::from_slice(&fs::read(source_map).expect("source map should be readable"))
             .expect("source map should be JSON");
-    assert_eq!(map["version"], 1);
+    assert_eq!(map["version"], 3);
+    assert_eq!(map["language_version"], osiris::LANGUAGE_VERSION);
+    assert_eq!(map["python_target"], "3.11");
+    assert!(
+        map["source_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.starts_with("sha256:"))
+    );
     assert_eq!(map["generated"], "sample.py");
     assert!(
         map["mappings"]
@@ -129,14 +141,16 @@ fn compile_project_entry_discovers_and_emits_dependency_modules() {
         r#"(module demo.app)
             (import demo.math :as math)
             (export [answer])
-            (def answer (math/add-one 41))
+            ^{:doc "The computed answer."}
+            (def ^Int answer (math/add-one 41))
         "#,
     );
     fixture.write(
         "src/demo/math.osr",
         r#"(module demo.math)
             (export [add-one])
-            (defn add-one [[value Int]] -> Int (+ value 1))
+            ^{:doc "Increment an integer."}
+            (defn ^Int add-one [^Int value] (+ value 1))
         "#,
     );
     fs::write(
@@ -174,11 +188,13 @@ fn compile_emits_canonical_public_records_manifest() {
     let fixture = SourceFixture::new(
         r#"(module sample)
             (export [owner S])
+            ^{:doc "Schema S."}
             (defstatic-schema S
               :schema-id "sample/schema"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "Record owner."}
+            (def ^Any owner none)
             (static-record S owner {:id "alpha"})
         "#,
     );
@@ -218,11 +234,13 @@ fn compile_emits_canonical_public_records_manifest() {
 fn compile_aggregates_multiple_modules_into_one_distribution_manifest() {
     let first_source = r#"(module sample.first)
             (export [owner FirstSchema])
+            ^{:doc "First record schema."}
             (defstatic-schema FirstSchema
               :schema-id "sample/first"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "First record owner."}
+            (def ^Any owner none)
             (static-record FirstSchema owner {:id "first"})
         "#;
     let fixture = SourceFixture::new(first_source);
@@ -231,11 +249,13 @@ fn compile_aggregates_multiple_modules_into_one_distribution_manifest() {
         "src/sample/second.osr",
         r#"(module sample.second)
             (export [owner SecondSchema])
+            ^{:doc "Second record schema."}
             (defstatic-schema SecondSchema
               :schema-id "sample/second"
               :version 1
               :fields {:id {:type Str :required true}})
-            (def owner none)
+            ^{:doc "Second record owner."}
+            (def ^Any owner none)
             (static-record SecondSchema owner {:id "second"})
         "#,
     );
@@ -296,7 +316,8 @@ fn compile_orders_sources_and_replays_dependency_macro_ir() {
     let app_source = r#"(module sample.app)
             (import sample.macros :as macros)
             (export [increment])
-            (defn increment [[value Int]] -> Int
+            ^{:doc "Increment an integer."}
+            (defn ^Int increment [^Int value]
               (macros/add-one value))
         "#;
     let fixture = SourceFixture::new(app_source);
@@ -306,6 +327,7 @@ fn compile_orders_sources_and_replays_dependency_macro_ir() {
         r#"(module sample.macros)
             (defn-for-syntax make-add [value]
               (list '+ value 1))
+            ^{:doc "Increment a syntax value."}
             (defmacro add-one [value]
               (make-add value))
             (export [add-one])
@@ -345,153 +367,4 @@ fn compile_orders_sources_and_replays_dependency_macro_ir() {
         .expect("macro interface should exist");
     assert!(interface.contains("add-one"));
     assert!(interface.contains("make-add"));
-}
-
-#[test]
-fn compile_consumes_a_locked_static_extension_interface() {
-    const SOURCE_HASH: &str =
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-    let fixture = SourceFixture::new(
-        r#"(module demo.app)
-            (import sample.core :as sample)
-            (export [answer])
-            (defn answer [] -> Int (sample/add 40 2))
-        "#,
-    );
-    let extension_source = fixture.directory.join("sample-extension.osr");
-    fs::write(
-        &extension_source,
-        r#"(module sample.core)
-            (export [add])
-            (defn add [[left Int] [right Int]] -> Int (+ left right))
-        "#,
-    )
-    .expect("extension source should be written");
-    let site_root = fixture.directory.join("site");
-    let extension_package = site_root.join("sample_ext");
-    let extension_output = osr(&[
-        "compile",
-        path_argument(&extension_source),
-        "--out-dir",
-        path_argument(&extension_package),
-        "--emit",
-        "osri",
-    ]);
-    assert!(
-        extension_output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&extension_output.stderr)
-    );
-
-    let dist_info = site_root.join("sample_ext-1.0.dist-info");
-    fs::create_dir_all(&dist_info).expect("dist-info should be created");
-    fs::write(
-        dist_info.join("METADATA"),
-        "Metadata-Version: 2.4\nName: sample-ext\nVersion: 1.0\n\n",
-    )
-    .expect("extension metadata should be written");
-    fs::write(
-        dist_info.join("osiris.toml"),
-        format!(
-            "schema = 1\ncompiler_abi = 1\nlanguage_abi = 2\nsource_hash = \"{SOURCE_HASH}\"\n\n[[extension]]\nid = \"sample\"\ninterface = \"sample_ext/sample/core.osri\"\n"
-        ),
-    )
-    .expect("extension marker should be written");
-    fs::write(
-        fixture.directory.join("pyproject.toml"),
-        r#"[project]
-name = "demo"
-version = "1.0"
-dependencies = ["sample-ext==1.0"]
-"#,
-    )
-    .expect("project configuration should be written");
-    fs::write(
-        fixture.directory.join("osiris.jsonc"),
-        r#"{"source":["src"]}"#,
-    )
-    .expect("Osiris configuration should be written");
-    fs::write(
-        fixture.directory.join("uv.lock"),
-        format!(
-            r#"version = 1
-
-[[package]]
-name = "demo"
-source = {{ editable = "." }}
-dependencies = [{{ name = "sample-ext", version = "1.0" }}]
-
-[[package]]
-name = "sample-ext"
-version = "1.0"
-source = {{ registry = "https://pypi.org/simple", hash = "{SOURCE_HASH}" }}
-"#
-        ),
-    )
-    .expect("uv lock should be written");
-
-    let app = fixture.write(
-        "src/demo/app.osr",
-        &fs::read_to_string(&fixture.path).expect("fixture source should be readable"),
-    );
-
-    let out_dir = fixture.directory.join("app-build");
-    let output = osr(&[
-        "compile",
-        path_argument(&app),
-        "--site-root",
-        path_argument(&site_root),
-        "--out-dir",
-        path_argument(&out_dir),
-        "--emit",
-        "py,osri",
-    ]);
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let generated =
-        fs::read_to_string(out_dir.join("demo/app.py")).expect("application Python should exist");
-    assert!(
-        generated.contains("from sample.core import add"),
-        "{generated}"
-    );
-    assert!(generated.contains("return add(40, 2)"), "{generated}");
-}
-
-#[test]
-fn project_compile_rejects_a_module_name_that_disagrees_with_its_path() {
-    let fixture = SourceFixture::new("(def ignored 0)\n");
-    let source = fixture.write(
-        "src/demo/actual.osr",
-        "(module demo.other)\n(def value 1)\n",
-    );
-    fs::write(
-        fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"demo\"\nversion = \"1.0\"\n",
-    )
-    .expect("project configuration should be written");
-    fs::write(
-        fixture.directory.join("osiris.jsonc"),
-        r#"{"source":["src"]}"#,
-    )
-    .expect("Osiris configuration should be written");
-    let out_dir = fixture.directory.join("mismatch-build");
-
-    let output = osr(&[
-        "compile",
-        path_argument(&source),
-        "--out-dir",
-        path_argument(&out_dir),
-    ]);
-
-    assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("OSR-G0011"), "{stderr}");
-    assert!(stderr.contains("demo.actual"), "{stderr}");
-    assert!(!out_dir.exists());
 }

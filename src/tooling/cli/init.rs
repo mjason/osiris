@@ -25,7 +25,8 @@ fn extension_starter_source(module: &str) -> String {
 ;; 公开声明会进入 wheel 内的 .osri 接口，并可由下游 Osiris 项目导入。
 (export [identity])
 
-^{{:doc {{"zh-CN" "返回输入值。" "en" "Return the input value."}}}}
+^{{:doc {{:default "Return the input value."
+          "zh-CN" "返回输入值。"}}}}
 (defn ^Any identity [^Any value] value)
 "#
     )
@@ -42,7 +43,7 @@ const PROJECT_CONFIG: &str = r#"{
   "targetPython": "3.11",
   "strict": true,
 
-  // LSP 展示语言：中文使用 zh-CN，英文使用 en。
+  // LSP 展示语言使用标准 BCP 47 tag，例如 zh-CN、ja 或 en。
   "displayLocale": "zh-CN"
 }
 "#;
@@ -154,7 +155,7 @@ fn uv_init(root: &Path) -> Result<(), String> {
 }
 
 fn uv_add_osiris(root: &Path) -> Result<(), String> {
-    let requirement = format!("osiris-lang>={}", crate::version());
+    let requirement = compatible_osiris_requirement();
     let output = Command::new("uv")
         .args(["add", "--dev", &requirement])
         .current_dir(root)
@@ -216,7 +217,7 @@ fn configure_extension_backend(document: &mut DocumentMut) -> Result<(), String>
         ));
     }
     build["build-backend"] = value("osiris_build");
-    let requirement = format!("osiris-lang=={}", crate::version());
+    let requirement = compatible_osiris_requirement();
     if !build.contains_key("requires") {
         build["requires"] = Item::Value(Value::Array(Array::new()));
     }
@@ -285,9 +286,20 @@ fn configure_osiris_jsonc(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn has_osiris_dependency(document: &DocumentMut) -> bool {
+    let compatible = compatible_osiris_requirement();
     dependency_items(document).any(|dependency| {
-        dependency_name(dependency) == "osiris-lang" && dependency.contains(crate::version())
+        dependency_name(dependency) == "osiris-lang"
+            && (dependency == compatible
+                || dependency == format!("osiris-lang=={}", crate::version()))
     })
+}
+
+fn compatible_osiris_requirement() -> String {
+    let mut parts = crate::version().split('.');
+    let major = parts.next().unwrap_or("0");
+    let minor = parts.next().unwrap_or("0");
+    let next_minor = minor.parse::<u64>().unwrap_or(0) + 1;
+    format!("osiris-lang>={major}.{minor},<{major}.{next_minor}")
 }
 
 fn dependency_items(document: &DocumentMut) -> impl Iterator<Item = &str> {
@@ -383,8 +395,8 @@ mod tests {
     #[test]
     fn only_the_current_compiler_requirement_skips_uv_add() {
         let current = format!(
-            "[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n",
-            crate::version()
+            "[dependency-groups]\ndev = [\"{}\"]\n",
+            compatible_osiris_requirement()
         )
         .parse::<DocumentMut>()
         .unwrap();

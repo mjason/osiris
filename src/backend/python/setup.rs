@@ -1,7 +1,81 @@
 use super::*;
 
 impl<'hir> Backend<'hir> {
+    pub(super) fn standard_positional_keywords(
+        &self,
+        callee: &hir::Expr,
+        positional_count: usize,
+    ) -> BTreeMap<usize, String> {
+        let hir::ExprKind::Binding(id) = &callee.kind else {
+            return BTreeMap::new();
+        };
+        let Some(standard) = crate::stdlib::find_by_id(id) else {
+            return BTreeMap::new();
+        };
+        let Ok(interface) = crate::stdlib::interface_artifact(standard.namespace) else {
+            return BTreeMap::new();
+        };
+        let Some(function) = interface
+            .functions
+            .iter()
+            .find(|function| function.binding == id.as_str())
+        else {
+            return BTreeMap::new();
+        };
+        let Some(optional_start) =
+            function
+                .parameters
+                .iter()
+                .enumerate()
+                .find_map(|(index, parameter)| {
+                    (parameter.has_default
+                        && function.parameters[index + 1..]
+                            .iter()
+                            .any(|later| !later.has_default && !later.variadic))
+                    .then_some(index)
+                })
+        else {
+            return BTreeMap::new();
+        };
+        if positional_count <= optional_start {
+            return BTreeMap::new();
+        }
+        let suffix = &function.parameters[optional_start..];
+        let required = suffix
+            .iter()
+            .filter(|parameter| !parameter.has_default && !parameter.variadic)
+            .count();
+        let supplied_suffix = positional_count - optional_start;
+        if supplied_suffix < required {
+            return BTreeMap::new();
+        }
+        let supplied_optional = supplied_suffix - required;
+        let selected = suffix
+            .iter()
+            .filter(|parameter| parameter.has_default)
+            .take(supplied_optional)
+            .chain(
+                suffix
+                    .iter()
+                    .filter(|parameter| !parameter.has_default && !parameter.variadic),
+            )
+            .collect::<Vec<_>>();
+        selected
+            .into_iter()
+            .enumerate()
+            .map(|(offset, parameter)| (optional_start + offset, parameter.canonical.clone()))
+            .collect()
+    }
+
     pub(super) fn new(hir: &'hir hir::Module, target: PythonVersion) -> Self {
+        Self::with_runtime_module(hir, target, runtime_module_for(&hir.name))
+    }
+
+    pub(super) fn with_runtime_module(
+        hir: &'hir hir::Module,
+        target: PythonVersion,
+        runtime_module: String,
+    ) -> Self {
         let bindings = hir
             .bindings
             .iter()
@@ -53,6 +127,43 @@ impl<'hir> Backend<'hir> {
                 .entry(binding.name.id.clone())
                 .or_insert_with(|| binding.name.python.clone());
         }
+        // A facade binding and a compiler-generated intrinsic binding may
+        // intentionally target the same linked helper. They must share one
+        // Python name; otherwise the grouped import can replace one alias
+        // while expressions still reference the other.
+        let mut runtime_groups = BTreeMap::<(String, String), Vec<crate::name::BindingId>>::new();
+        for binding in &hir.bindings {
+            let Some(runtime) = &binding.runtime else {
+                continue;
+            };
+            if matches!(
+                binding.name.kind,
+                crate::name::BindingKind::Module | crate::name::BindingKind::PythonModule
+            ) {
+                continue;
+            }
+            runtime_groups
+                .entry((runtime.module.clone(), runtime.name.clone()))
+                .or_default()
+                .push(binding.name.id.clone());
+        }
+        for ids in runtime_groups.values_mut() {
+            if ids.len() < 2 {
+                continue;
+            }
+            ids.sort();
+            let preferred = ids
+                .iter()
+                .find(|id| crate::stdlib::find_by_id(id).is_some())
+                .unwrap_or(&ids[0]);
+            let shared = names
+                .get(preferred)
+                .cloned()
+                .expect("runtime binding was assigned a Python name");
+            for id in ids {
+                names.insert(id.clone(), shared.clone());
+            }
+        }
         Self {
             target,
             bindings,
@@ -69,6 +180,10 @@ impl<'hir> Backend<'hir> {
             typevar_names: BTreeMap::new(),
             active_type_parameters: BTreeMap::new(),
             binding_overrides: Vec::new(),
+            runtime_module,
+            runtime_helpers: BTreeSet::new(),
+            linked_runtime_helpers: BTreeMap::new(),
+            reachable_standard_bindings: BTreeSet::new(),
         }
     }
 
@@ -160,10 +275,50 @@ impl<'hir> Backend<'hir> {
             return;
         }
         let local = self.python_name(&binding.name.id).to_owned();
+        let standard = crate::stdlib::find_by_id(id);
+        let module = if standard.is_some() && binding.name.kind == crate::name::BindingKind::Type {
+            self.runtime_helpers.insert(runtime.name.clone());
+            self.reachable_standard_bindings
+                .insert(id.as_str().to_owned());
+            self.runtime_module.clone()
+        } else if let Some(standard) = standard {
+            self.reachable_standard_bindings
+                .insert(id.as_str().to_owned());
+            format!(
+                "{}.stdlib.{}",
+                self.runtime_module,
+                standard.namespace.rsplit('.').next().unwrap_or("standard")
+            )
+        } else if runtime.module == "osiris.kernel" {
+            self.runtime_helpers.insert(runtime.name.clone());
+            if standard.is_some() {
+                self.reachable_standard_bindings
+                    .insert(id.as_str().to_owned());
+            }
+            self.runtime_module.clone()
+        } else {
+            runtime.module.replace('/', ".")
+        };
         self.from_imports
-            .entry(runtime.module.replace('/', "."))
+            .entry(module)
             .or_default()
             .insert(runtime.name.clone(), Some(local));
+    }
+
+    pub(super) fn linked_runtime_helper(&mut self, helper: &str) -> py::Expr {
+        if let Some(local) = self.linked_runtime_helpers.get(helper) {
+            return py::Expr::name(local.clone());
+        }
+
+        let local = self.fresh_helper(&format!("_osr_{}", python_identifier(helper)));
+        self.runtime_helpers.insert(helper.to_owned());
+        self.from_imports
+            .entry(self.runtime_module.clone())
+            .or_default()
+            .insert(helper.to_owned(), Some(local.clone()));
+        self.linked_runtime_helpers
+            .insert(helper.to_owned(), local.clone());
+        py::Expr::name(local)
     }
 
     pub(super) fn register_runtime_type(&mut self, nominal_binding: &str) {
@@ -264,4 +419,21 @@ impl<'hir> Backend<'hir> {
             })
             .collect()
     }
+
+    pub(super) fn runtime_support(&self) -> Option<RuntimeSupport> {
+        (!self.runtime_helpers.is_empty() || !self.reachable_standard_bindings.is_empty()).then(
+            || RuntimeSupport {
+                package: self.runtime_module.clone(),
+                helpers: self.runtime_helpers.clone(),
+                binding_ids: self.reachable_standard_bindings.clone(),
+            },
+        )
+    }
+}
+
+fn runtime_module_for(module: &str) -> String {
+    module.split_once('.').map_or_else(
+        || "__osiris_runtime__".to_owned(),
+        |(package, _)| format!("{package}.__osiris_runtime__"),
+    )
 }

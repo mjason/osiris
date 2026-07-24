@@ -1,0 +1,496 @@
+;; Internal Phase-1 implementation for the osiris.core control facade.
+^{:osiris/internal true}
+(module osiris.core.control)
+
+(export
+  [-> ->> cond-> cond->> as-> doto defn- and or when if-not when-not cond
+   if-let when-let if-some when-some some-> some->> condp case])
+
+(defn-for-syntax osiris.kernel/thread-first-step [value step]
+  (if (list? step)
+    (if (empty? step)
+      (syntax-error step "threading step cannot be an empty list")
+      (with-meta (concat (list (first step) value) (rest step)) (meta step)))
+    (if (symbol? step)
+      (list step value)
+      (syntax-error step "threading step must be a symbol or non-empty list"))))
+
+(defn-for-syntax osiris.kernel/thread-last-step [value step]
+  (if (list? step)
+    (if (empty? step)
+      (syntax-error step "threading step cannot be an empty list")
+      (with-meta (concat step (list value)) (meta step)))
+    (if (symbol? step)
+      (list step value)
+      (syntax-error step "threading step must be a symbol or non-empty list"))))
+
+(defn-for-syntax osiris.kernel/cond-thread [call threader value clauses]
+  (if (empty? clauses)
+    value
+    (if (empty? (rest clauses))
+      (syntax-error call "conditional threading requires condition and step pairs")
+      (let [condition (first clauses)
+            step (nth clauses 1)
+            temporary
+            (gensym "thread")
+            threaded (threader temporary step)]
+        (osiris.kernel/cond-thread call
+                                   threader
+                                   `(let [~temporary ~value]
+                                      (if (osiris.kernel/truthy* ~condition)
+                                        ~threaded
+                                        ~temporary))
+                                   (rest (rest clauses)))))))
+
+^{:doc
+  {:default "Thread a value through forms as the second item of each call."
+   "zh-CN" "把值依次作为每个调用的第二项传入。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro -> [value & steps]
+  (reduce osiris.kernel/thread-first-step value steps))
+
+^{:doc
+  {:default "Thread a value through forms as the final item of each call."
+   "zh-CN" "把值依次作为每个调用的最后一项传入。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro ->> [value & steps]
+  (reduce osiris.kernel/thread-last-step value steps))
+
+^{:doc
+  {:default "Conditionally apply thread-first steps while evaluating the initial value once."
+   "zh-CN" "在初始值只求值一次的前提下，有条件地应用首位线程步骤。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro cond-> [value & clauses]
+  (osiris.kernel/cond-thread &form osiris.kernel/thread-first-step value clauses))
+
+^{:doc
+  {:default "Conditionally apply thread-last steps while evaluating the initial value once."
+   "zh-CN" "在初始值只求值一次的前提下，有条件地应用末位线程步骤。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro cond->> [value & clauses]
+  (osiris.kernel/cond-thread &form osiris.kernel/thread-last-step value clauses))
+
+(defn-for-syntax osiris.kernel/as-thread [name value forms]
+  (if (empty? forms)
+    value
+    `(let [~name ~value]
+       ~(osiris.kernel/as-thread name (first forms) (rest forms)))))
+
+^{:doc
+  {:default "Thread a value through forms using an explicit binding position."
+   "zh-CN" "使用显式绑定位置把值依次传入各个形式。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro as-> [value name & forms]
+  (if (not (symbol? name))
+    (syntax-error name "as-> requires a symbol binding")
+    (osiris.kernel/as-thread name value forms)))
+
+(defn-for-syntax osiris.kernel/doto-calls [value forms]
+  (if (empty? forms)
+    '()
+    (cons (osiris.kernel/thread-first-step value (first forms))
+          (osiris.kernel/doto-calls value (rest forms)))))
+
+^{:doc
+  {:default "Evaluate a value once, call side-effecting forms on it, and return it."
+   "zh-CN" "只求值对象一次，在其上执行副作用调用，然后返回该对象。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro doto [value & forms]
+  (let [temporary (gensym "doto")]
+    `(let [~temporary ~value]
+       (do
+         ~@(osiris.kernel/doto-calls temporary forms)
+         ~temporary))))
+
+;; `defn-` is the Clojure spelling for a private function declaration.  Osiris
+;; already makes every non-exported binding private at the interface boundary,
+;; so the macro only preserves the authored intent as Rich Metadata while
+;; lowering to the ordinary compiler-owned `defn` declaration.
+^{:doc
+  {:default "Define a namespace-private function with authored private metadata."
+   "zh-CN" "定义携带显式私有元数据的命名空间私有函数。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro defn- [name & declaration]
+  (if (not (symbol? name))
+    (syntax-error name "defn- requires a symbol name")
+    (let [definition (cons 'defn (cons name declaration))]
+      (with-meta definition (assoc (meta definition) :private true)))))
+
+(defn-for-syntax osiris.kernel/and-form [forms]
+  (if (empty? forms)
+    true
+    (if (empty? (rest forms))
+      (first forms)
+      (let [temporary (gensym "and")]
+        `(let [~temporary ~(first forms)]
+           (if (osiris.kernel/truthy* ~temporary)
+             ~(osiris.kernel/and-form (rest forms))
+             ~temporary))))))
+
+(defn-for-syntax osiris.kernel/or-form [forms]
+  (if (empty? forms)
+    none
+    (if (empty? (rest forms))
+      (first forms)
+      (let [temporary (gensym "or")]
+        `(let [~temporary ~(first forms)]
+           (if (osiris.kernel/truthy* ~temporary)
+             ~temporary
+             ~(osiris.kernel/or-form (rest forms))))))))
+
+(defn-for-syntax osiris.kernel/cond-form [call clauses]
+  (if (empty? clauses)
+    none
+    (if (empty? (rest clauses))
+      (syntax-error call "cond requires condition/result pairs")
+      (let [condition (first clauses)
+            result (nth clauses 1)
+            remaining
+            (rest (rest clauses))]
+        (if (= condition :else)
+          (if (empty? remaining)
+            result
+            (syntax-error condition ":else must be the final cond condition"))
+          `(if (osiris.kernel/truthy* ~condition)
+             ~result
+             ~(osiris.kernel/cond-form call remaining)))))))
+
+^{:doc
+  {:default "Evaluate forms left to right until the first falsey value."
+   "zh-CN" "从左到右求值，遇到第一个假值时停止。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro and [& forms]
+  (osiris.kernel/and-form forms))
+
+^{:doc
+  {:default "Evaluate forms left to right until the first truthy value."
+   "zh-CN" "从左到右求值，遇到第一个真值时停止。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro or [& forms]
+  (osiris.kernel/or-form forms))
+
+^{:doc
+  {:default "Evaluate a body when its condition is truthy."
+   "zh-CN" "条件为真时执行主体。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro when [condition & body]
+  (if (empty? body)
+    `(if (osiris.kernel/truthy* ~condition)
+       none
+       none)
+    `(if (osiris.kernel/truthy* ~condition)
+       (do
+         ~@body)
+       none)))
+
+^{:doc
+  {:default "Select the then branch when a condition is falsey."
+   "zh-CN" "条件为假时选择 then 分支。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro if-not [condition then & else]
+  (if (> (count else) 1)
+    (syntax-error &form "if-not accepts at most one else expression")
+    `(if (not (osiris.kernel/truthy* ~condition))
+       ~then
+       ~(if (empty? else)
+          none
+          (first else)))))
+
+^{:doc
+  {:default "Evaluate a body when its condition is falsey."
+   "zh-CN" "条件为假时执行主体。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro when-not [condition & body]
+  `(if (not (osiris.kernel/truthy* ~condition))
+     ~(if (empty? body)
+        none
+        `(do
+           ~@body))
+     none))
+
+^{:doc
+  {:default "Select the first branch whose test is truthy."
+   "zh-CN" "选择测试为真的第一个分支。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro cond [& clauses]
+  (osiris.kernel/cond-form &form clauses))
+
+(defn-for-syntax osiris.kernel/control-binding? [bindings]
+  (if (not (vector? bindings))
+    false
+    (= (count bindings) 2)))
+
+(defn-for-syntax osiris.kernel/control-binding-pattern? [pattern]
+  (if (symbol? pattern)
+    true
+    (if (vector? pattern)
+      true
+      (map? pattern))))
+
+(defn-for-syntax osiris.kernel/if-let-form [call bindings then else]
+  (if (not (osiris.kernel/control-binding? bindings))
+    (syntax-error bindings "if-let requires exactly one binding pair")
+    (let [pattern (first bindings)]
+      (if (not (osiris.kernel/control-binding-pattern? pattern))
+        (syntax-error pattern "if-let binding pattern must be a symbol, vector, or map")
+        (let [temporary (gensym "if-let")]
+          `(let [~temporary ~(nth bindings 1)]
+             (if (osiris.kernel/truthy* ~temporary)
+               (let [~pattern (osiris.kernel/present* ~temporary)]
+                 ~then)
+               ~else)))))))
+
+^{:doc
+  {:default "Bind one expression and branch on its truthiness."
+   "zh-CN" "绑定一个表达式并根据其真假选择分支。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro if-let [bindings then & else]
+  (if (> (count else) 1)
+    (syntax-error &form "if-let accepts at most one else expression")
+    (osiris.kernel/if-let-form &form
+                               bindings
+                               then
+                               (if (empty? else)
+                                 none
+                                 (first else)))))
+
+^{:doc
+  {:default "Bind one expression and evaluate a body when it is truthy."
+   "zh-CN" "绑定一个表达式，并在其为真时执行主体。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro when-let [bindings & body]
+  (osiris.kernel/if-let-form &form
+                             bindings
+                             (if (empty? body)
+                               none
+                               `(do
+                                  ~@body))
+                             none))
+
+(defn-for-syntax osiris.kernel/if-some-form [call bindings then else]
+  (if (not (osiris.kernel/control-binding? bindings))
+    (syntax-error bindings "if-some requires exactly one binding pair")
+    (let [pattern (first bindings)]
+      (if (not (osiris.kernel/control-binding-pattern? pattern))
+        (syntax-error pattern
+                      "if-some binding pattern must be a symbol, vector, or map")
+        (let [temporary (gensym "if-some")]
+          `(let [~temporary ~(nth bindings 1)]
+             (if (osiris.kernel/nil* ~temporary)
+               ~else
+               (let [~pattern (osiris.kernel/present* ~temporary)]
+                 ~then))))))))
+
+^{:doc
+  {:default "Bind one expression and branch when its value is not none."
+   "zh-CN" "绑定一个表达式，并在其值不是 none 时选择分支。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro if-some [bindings then & else]
+  (if (> (count else) 1)
+    (syntax-error &form "if-some accepts at most one else expression")
+    (osiris.kernel/if-some-form &form
+                                bindings
+                                then
+                                (if (empty? else)
+                                  none
+                                  (first else)))))
+
+^{:doc
+  {:default "Bind one expression and evaluate a body when it is not none."
+   "zh-CN" "绑定一个表达式，并在其值不是 none 时执行主体。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro when-some [bindings & body]
+  (osiris.kernel/if-some-form &form
+                              bindings
+                              (if (empty? body)
+                                none
+                                `(do
+                                   ~@body))
+                              none))
+
+;; Runtime nil predicates are kept as tiny macros so callers do not need to
+;; know the private intrinsic spelling.  The phase-1 evaluator still uses its
+;; own `nil?`/`some?` builtins when inspecting syntax data.
+(defn-for-syntax osiris.kernel/some-thread-form [threader value steps]
+  (if (empty? steps)
+    value
+    (let [temporary (gensym "some-thread")
+          threaded
+          (threader `(osiris.kernel/present* ~temporary) (first steps))]
+      `(let [~temporary ~value]
+         (if (osiris.kernel/nil* ~temporary)
+           none
+           ~(osiris.kernel/some-thread-form threader threaded (rest steps)))))))
+
+^{:doc
+  {:default "Thread a non-none value through thread-first steps."
+   "zh-CN" "把非 none 值依次传入首位线程步骤。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro some-> [value & steps]
+  (osiris.kernel/some-thread-form osiris.kernel/thread-first-step value steps))
+
+^{:doc
+  {:default "Thread a non-none value through thread-last steps."
+   "zh-CN" "把非 none 值依次传入末位线程步骤。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro some->> [value & steps]
+  (osiris.kernel/some-thread-form osiris.kernel/thread-last-step value steps))
+
+;; `condp` keeps the predicate and dispatch expression single-evaluation while
+;; leaving each test/result branch lazy.  `:>>` applies its following function
+;; to the dispatch value when the predicate succeeds.
+(defn-for-syntax osiris.kernel/condp-operator? [predicate]
+  (if (not (symbol? predicate))
+    false
+    (or (= predicate '=)
+        (= predicate '==)
+        (= predicate '!=)
+        (= predicate 'not=)
+        (= predicate '<)
+        (= predicate '<=)
+        (= predicate '>)
+        (= predicate '>=))))
+
+(defn-for-syntax osiris.kernel/condp-form [call predicate value clauses]
+  (if (empty? clauses)
+    (syntax-error call "condp requires an explicit :else clause")
+    (if (= (first clauses) :else)
+      (if (= (count clauses) 2)
+        (nth clauses 1)
+        (syntax-error (first clauses) ":else must be the final condp clause"))
+      (if (empty? (rest clauses))
+        (syntax-error (first clauses) "condp test requires a result expression")
+        (let [test (first clauses)
+              result (nth clauses 1)
+              remaining (rest (rest clauses))]
+          (if (= result :>>)
+            (if (empty? remaining)
+              (syntax-error result "condp :>> requires a function expression")
+              (let [function (first remaining)
+                    tail (rest remaining)
+                    predicate-result
+                    (gensym "condp-result")]
+                `(let [~predicate-result (~predicate ~test ~value)]
+                   (if (osiris.kernel/truthy* ~predicate-result)
+                     (~function (osiris.kernel/present* ~predicate-result))
+                     ~(osiris.kernel/condp-form call predicate value tail)))))
+            `(if (osiris.kernel/truthy* (~predicate ~test ~value))
+               ~result
+               ~(osiris.kernel/condp-form call predicate value remaining))))))))
+
+^{:doc
+  {:default "Select a clause by applying one predicate to each test and one dispatch value."
+   "zh-CN" "用同一个谓词比较各测试项与单次求值的分派值。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro condp [predicate value & clauses]
+  (let [value* (gensym "condp-value")]
+    (if (osiris.kernel/condp-operator? predicate)
+      `(let [~value* ~value]
+         ~(osiris.kernel/condp-form &form predicate value* clauses))
+      (let [predicate* (gensym "condp-predicate")]
+        `(let [~predicate* ~predicate
+               ~value* ~value]
+           ~(osiris.kernel/condp-form &form predicate* value* clauses))))))
+
+(defn-for-syntax osiris.kernel/case-register-tests [call seen tests]
+  (if (empty? tests)
+    seen
+    (let [test (first tests)]
+      (if (contains? seen test)
+        (syntax-error test "case test constants must be unique")
+        (osiris.kernel/case-register-tests call (conj seen test) (rest tests))))))
+
+(defn-for-syntax osiris.kernel/case-register-test [call seen test]
+  (if (list? test)
+    (if (empty? test)
+      (syntax-error test "case test group cannot be empty")
+      (osiris.kernel/case-register-tests call seen test))
+    (if (symbol? test)
+      (syntax-error test
+                    "case symbol constants are not runtime values; use a keyword or string")
+      (if (vector? test)
+        (syntax-error test "case vector constants are not supported in v0")
+        (if (map? test)
+          (syntax-error test "case map constants are not supported in v0")
+          (osiris.kernel/case-register-tests call seen (list test)))))))
+
+(defn-for-syntax osiris.kernel/validate-case-clauses [call clauses seen]
+  (if (< (count clauses) 2)
+    seen
+    (osiris.kernel/validate-case-clauses call
+                                         (rest (rest clauses))
+                                         (osiris.kernel/case-register-test call seen (first clauses)))))
+
+(defn-for-syntax osiris.kernel/case-group-condition [value tests]
+  (if (empty? (rest tests))
+    `(= ~value ~(first tests))
+    `(if (= ~value ~(first tests))
+       true
+       ~(osiris.kernel/case-group-condition value (rest tests)))))
+
+(defn-for-syntax osiris.kernel/case-condition [value test]
+  (if (list? test)
+    (osiris.kernel/case-group-condition value test)
+    `(= ~value ~test)))
+
+(defn-for-syntax osiris.kernel/case-form [call value clauses]
+  (if (empty? clauses)
+    (syntax-error call "case requires an explicit default expression")
+    (if (empty? (rest clauses))
+      (first clauses)
+      `(if ~(osiris.kernel/case-condition value (first clauses))
+         ~(nth clauses 1)
+         ~(osiris.kernel/case-form call value (rest (rest clauses)))))))
+
+^{:doc
+  {:default "Select a constant branch after evaluating the dispatch value once."
+   "zh-CN" "分派值只求值一次，并选择匹配的常量分支。"}
+  :category "core"
+  :since "0.3.0"
+  :deprecated false}
+(defmacro case [value & clauses]
+  (let [valid (osiris.kernel/validate-case-clauses &form clauses #{})
+        temporary
+        (gensym "case")]
+    `(let [~temporary ~value]
+       ~(osiris.kernel/case-form &form temporary clauses))))

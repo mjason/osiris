@@ -18,7 +18,9 @@ impl LspState {
     }
 
     pub fn set_display_locale(&mut self, locale: impl Into<String>) {
-        self.display_locale = normalize_locale(locale.into());
+        let locale = normalize_locale(locale.into());
+        self.display_locale = locale.clone();
+        self.session_locale = Some(locale);
     }
 
     pub fn set_site_roots(&mut self, roots: impl IntoIterator<Item = PathBuf>) {

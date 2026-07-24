@@ -113,7 +113,7 @@ class SequenceRuntimeTests(unittest.TestCase):
             list(prelude.mapcat(lambda value: None if value == 1 else (value,), (1, 2))),
             [2],
         )
-        self.assertEqual(list(prelude.partition(2, 2, (), (1,))), [[1]])
+        self.assertEqual(list(prelude.partition(2, 2, (), (1,))), [(1,)])
 
     def test_collection_combinators_treat_none_as_an_empty_sequence(self):
         calls = []
@@ -122,10 +122,10 @@ class SequenceRuntimeTests(unittest.TestCase):
             calls.append(value)
 
         self.assertEqual(prelude.mapv(lambda value: value + 1, None), ())
-        self.assertEqual(prelude.map(lambda value: value + 1, (1, 2), None), [])
+        self.assertEqual(list(prelude.map(lambda value: value + 1, (1, 2), None)), [])
         self.assertEqual(prelude.mapcatv(lambda value: (value,), None), ())
         self.assertEqual(prelude.filterv(lambda value: True, None), ())
-        self.assertEqual(prelude.filter(lambda value: True, None), [])
+        self.assertEqual(list(prelude.filter(lambda value: True, None)), [])
         self.assertIsNone(prelude.doseq(visit, None))
         self.assertEqual(calls, [])
         self.assertEqual(prelude.reduce(lambda acc, value: acc + value, 10, None), 10)

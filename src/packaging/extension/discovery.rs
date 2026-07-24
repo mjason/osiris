@@ -148,33 +148,44 @@ fn load_distribution(
             "records and records_hash must be declared together".to_owned(),
         ));
     }
-
     let metadata = read_metadata(&dist_info.join("METADATA"))?;
-    if let Some(distribution) = marker.distribution.as_deref() {
-        if normalize_distribution_name(distribution) != metadata.normalized_name {
-            return Err(ExtensionError::InvalidMarker(
-                marker_path.clone(),
-                format!(
-                    "distribution `{distribution}` does not match METADATA `{}`",
-                    metadata.name
-                ),
-            ));
-        }
+    if normalize_distribution_name(&marker.distribution) != metadata.normalized_name {
+        return Err(ExtensionError::InvalidMarker(
+            marker_path.clone(),
+            format!(
+                "distribution `{}` does not match METADATA `{}`",
+                marker.distribution, metadata.name
+            ),
+        ));
     }
-    if let Some(version) = marker.version.as_deref() {
-        if version != metadata.version {
-            return Err(ExtensionError::InvalidMarker(
-                marker_path.clone(),
-                format!(
-                    "version `{version}` does not match METADATA `{}`",
-                    metadata.version
-                ),
-            ));
-        }
+    if marker.version != metadata.version {
+        return Err(ExtensionError::InvalidMarker(
+            marker_path.clone(),
+            format!(
+                "version `{}` does not match METADATA `{}`",
+                marker.version, metadata.version
+            ),
+        ));
     }
-    if let Some(source_hash) = marker.source_hash.as_deref() {
-        validate_sha256(source_hash)
-            .map_err(|message| ExtensionError::InvalidMarker(marker_path.clone(), message))?;
+    marker
+        .python_target
+        .parse::<crate::project::PythonVersion>()
+        .map_err(|error| ExtensionError::InvalidMarker(marker_path.clone(), error.to_string()))?;
+    let mut declared = marker.dependencies.clone();
+    declared.sort();
+    if declared.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(ExtensionError::InvalidMarker(
+            marker_path.clone(),
+            "dependencies must be unique".to_owned(),
+        ));
+    }
+    let mut metadata_requirements = metadata.requires_dist.clone();
+    metadata_requirements.sort();
+    if declared != metadata_requirements {
+        return Err(ExtensionError::InvalidMarker(
+            marker_path.clone(),
+            "marker dependencies do not match METADATA Requires-Dist".to_owned(),
+        ));
     }
     let mut ids = BTreeSet::new();
     let mut extensions = Vec::new();
@@ -189,9 +200,62 @@ fn load_distribution(
             ));
         }
         let interface = resolve_resource(site_root, &extension.interface)?;
+        let (source, source_map) = {
+            let interface_hash = &extension.interface_hash;
+            validate_sha256(interface_hash)
+                .map_err(|message| ExtensionError::InvalidMarker(marker_path.clone(), message))?;
+            let interface_source = fs::read_to_string(&interface)
+                .map_err(|error| ExtensionError::Io(interface.clone(), error))?;
+            let parsed = crate::interface::read(&interface_source).map_err(|error| {
+                ExtensionError::InvalidMarker(marker_path.clone(), error.to_string())
+            })?;
+            if parsed.semantic_interface_hash() != interface_hash {
+                return Err(ExtensionError::HashMismatch {
+                    path: interface.clone(),
+                    expected: interface_hash.to_owned(),
+                    actual: parsed.semantic_interface_hash().to_owned(),
+                });
+            }
+            let interface_target = parsed.python_target.to_string();
+            if marker.python_target != interface_target {
+                return Err(ExtensionError::InvalidMarker(
+                    marker_path.clone(),
+                    format!("extension `{}` target does not match its interface", extension.id),
+                ));
+            }
+            let source_name = &extension.source;
+            let source_hash = &extension.source_hash;
+            let source = validate_hashed_resource(site_root, source_name, source_hash)?;
+            let map_name = &extension.source_map;
+            let map_hash = &extension.source_map_hash;
+            let source_map = validate_hashed_resource(site_root, map_name, map_hash)?;
+            let map_bytes = fs::read(&source_map)
+                .map_err(|error| ExtensionError::Io(source_map.clone(), error))?;
+            let parsed_map: serde_json::Value = serde_json::from_slice(&map_bytes).map_err(|error| {
+                ExtensionError::InvalidMarker(marker_path.clone(), format!("invalid source map: {error}"))
+            })?;
+            if parsed_map.get("version").and_then(serde_json::Value::as_u64) != Some(3)
+                || parsed_map
+                    .get("language_version")
+                    .and_then(serde_json::Value::as_str)
+                    != Some(crate::LANGUAGE_VERSION)
+                || parsed_map.get("source").and_then(serde_json::Value::as_str) != Some(source_name)
+                || parsed_map.get("source_hash").and_then(serde_json::Value::as_str) != Some(source_hash)
+                || parsed_map.get("python_target").and_then(serde_json::Value::as_str)
+                    != Some(marker.python_target.as_str())
+            {
+                return Err(ExtensionError::InvalidMarker(
+                    marker_path.clone(),
+                    format!("extension `{}` source map does not identify its source", extension.id),
+                ));
+            }
+            (Some(source), Some(source_map))
+        };
         extensions.push(ExtensionResource {
             id: extension.id,
             interface,
+            source,
+            source_map,
         });
     }
     extensions.sort_by(|left, right| left.id.cmp(&right.id));
@@ -215,6 +279,25 @@ fn load_distribution(
             });
         }
     }
+    for support in &marker.linked_support {
+        let manifest = validate_hashed_resource(
+            site_root,
+            &support.manifest,
+            &support.manifest_hash,
+        )?;
+        let bytes = fs::read(&manifest)
+            .map_err(|error| ExtensionError::Io(manifest.clone(), error))?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+            ExtensionError::InvalidMarker(marker_path.clone(), format!("invalid linked support manifest: {error}"))
+        })?;
+        validate_linked_support_manifest(
+            site_root,
+            &manifest,
+            &marker_path,
+            Some(marker.python_target.as_str()),
+            value,
+        )?;
+    }
 
     Ok(ExtensionDistribution {
         metadata,
@@ -223,8 +306,26 @@ fn load_distribution(
         extensions,
         records,
         records_hash: marker.records_hash,
-        marker_distribution: marker.distribution,
-        marker_version: marker.version,
-        marker_source_hash: marker.source_hash,
+        language_version: marker.language_version,
     })
+}
+
+fn validate_hashed_resource(
+    site_root: &Path,
+    relative: &str,
+    expected: &str,
+) -> Result<PathBuf, ExtensionError> {
+    validate_sha256(expected)
+        .map_err(|message| ExtensionError::InvalidMarker(site_root.to_path_buf(), message))?;
+    let path = resolve_resource(site_root, relative)?;
+    let bytes = fs::read(&path).map_err(|error| ExtensionError::Io(path.clone(), error))?;
+    let actual = sha256(&bytes);
+    if actual != expected {
+        return Err(ExtensionError::HashMismatch {
+            path,
+            expected: expected.to_owned(),
+            actual,
+        });
+    }
+    Ok(path)
 }

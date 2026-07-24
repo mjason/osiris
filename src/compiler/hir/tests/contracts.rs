@@ -23,8 +23,8 @@ fn lower(source: &str) -> super::LowerResult {
 fn dependency_interfaces() -> BTreeMap<String, interface::Interface> {
     let document = read(
         r#"(module dep.core)
-               (defn add [[x Int] ^{:osiris/names {:preferred 值}} [value Int]]
-                 -> Int (+ x value))
+               ^{:doc "Add two integers."}
+               (defn ^Int add [^Int x ^{:type Int :osiris/names {"zh-CN" {:preferred 值}}} value] (+ x value))
                (alias sum add)
                (export [add sum])"#,
     );
@@ -39,11 +39,10 @@ fn dependency_interfaces() -> BTreeMap<String, interface::Interface> {
 fn operator_dependency_interfaces() -> BTreeMap<String, interface::Interface> {
     let document = read(
         r#"(module dep.series)
+               ^{:doc "A generic series fixture."}
                (defstruct (Series T) [values (Vector T)])
-               ^{:osiris/operator :multiply}
-               (defn multiply-series
-                 [[series (Series Float)] [multiplier Float]]
-                 -> (Series Float) series)
+               ^{:doc "Multiply a series fixture." :osiris/operator :multiply}
+               (defn ^{:type (Series Float)} multiply-series [^{:type (Series Float)} series ^Float multiplier] series)
                (export [Series multiply-series])"#,
     );
     let surface = lower_document(&document);
@@ -60,9 +59,10 @@ fn same_named_operator_interfaces() -> BTreeMap<String, interface::Interface> {
         .map(|(module, function)| {
             let source = format!(
                 "(module {module})\n\
+                 ^{{:doc \"A nominal fixture.\"}}\n\
                  (defstruct X [value Int])\n\
-                 ^{{:osiris/operator :add}}\n\
-                 (defn {function} [[left X] [right X]] -> X left)\n\
+                 ^{{:doc \"Add nominal fixtures.\" :osiris/operator :add}}\n\
+                 (defn ^X {function} [^X left ^X right] left)\n\
                  (export [X {function}])"
             );
             let surface = lower_document(&read(&source));
@@ -80,7 +80,8 @@ fn contract_dependency_interface(future: u64) -> interface::Interface {
     let source = format!(
         r#"(module dep.causal)
                (extern python "host.series"
-                 (defn rolling [[value Int]] -> Int
+                 ^{{:doc "Apply the rolling operation."}}
+                 (defn ^Int rolling [^Int value]
                    :contract
                    {{:id "host.series/rolling-v1"
                     :effects :pure
@@ -102,7 +103,7 @@ fn causal_caller(
     let source = r#"(module app)
             (import dep.causal :as dep)
             ^{:osiris/causal {:decision-point :published}}
-            (defn pipeline [[value Int]] -> Int (dep/rolling value))"#;
+            (defn ^Int pipeline [^Int value] (dep/rolling value))"#;
     let surface = lower_document(&read(source));
     assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
     let interfaces = BTreeMap::from([(dependency.module.clone(), dependency.clone())]);
@@ -158,6 +159,21 @@ fn exported_functions_require_explicit_parameter_and_return_types() {
 }
 
 #[test]
+fn strict_exported_values_and_extern_values_require_explicit_types() {
+    let exported = lower("(export [answer]) (def answer 42)");
+    assert!(exported.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "OSR-T0017"
+            && diagnostic.message == "exported value `answer` requires an explicit type"
+    }));
+
+    let external = lower("(extern python \"host\" (def answer))");
+    assert!(external.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "OSR-T0017"
+            && diagnostic.message == "extern value `answer` requires an explicit type"
+    }));
+}
+
+#[test]
 fn private_functions_may_keep_locally_inferred_signatures() {
     let result = lower("(defn private [value] value)");
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -185,7 +201,7 @@ fn extern_functions_are_explicit_declared_type_boundaries() {
 
 #[test]
 fn resolves_aliases_to_one_binding_identity() {
-    let result = lower("(defn mean [[x Float]] -> Float x) (alias 均值 mean) (均值 1.0)");
+    let result = lower("(defn ^Float mean [^Float x] x) (alias 均值 mean) (均值 1.0)");
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     assert_eq!(result.module.aliases.len(), 1);
     assert_eq!(
@@ -203,7 +219,7 @@ fn resolves_aliases_to_one_binding_identity() {
 
 #[test]
 fn infers_scalar_operator_types() {
-    let result = lower("(defn add [[x Int] [y Float]] -> Float (+ x y))");
+    let result = lower("(defn ^Float add [^Int x ^Float y] (+ x y))");
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let ItemKind::Function(function) = &result.module.items[0].kind else {
         panic!("expected function");
@@ -213,7 +229,7 @@ fn infers_scalar_operator_types() {
 
 #[test]
 fn rejects_non_boolean_conditions() {
-    let result = lower("(defn bad [[x Int]] -> Int (if x 1 2))");
+    let result = lower("(defn ^Int bad [^Int x] (if x 1 2))");
     assert!(
         result
             .diagnostics
@@ -258,7 +274,7 @@ fn dynamic_python_attribute_reads_remain_any_and_unknown() {
 #[test]
 fn dynamic_python_index_reads_remain_unknown_at_any_boundary() {
     let result = lower(
-        "(def value Any)
+        "(def ^Any value)
              (def item (index value 0))",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -279,8 +295,8 @@ fn dynamic_python_index_reads_remain_unknown_at_any_boundary() {
 fn extern_calls_remain_unknown_without_a_contract() {
     let result = lower(
         r#"(extern python "host.ops"
-                  (defn transform [[value Int]] -> Int))
-               (defn call [[value Int]] -> Int (transform value))"#,
+                  (defn ^Int transform [^Int value]))
+               (defn ^Int call [^Int value] (transform value))"#,
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let function = result
@@ -310,13 +326,13 @@ fn extern_calls_remain_unknown_without_a_contract() {
 fn extern_contract_summaries_are_applied_to_calls() {
     let result = lower(
         r#"(extern python "host.ops"
-                  (defn rolling [[value Int]] -> Int
+                  (defn ^Int rolling [^Int value]
                     :contract
                     {:id "host.ops/rolling-v1"
                      :effects :pure
                      :temporal {:past window :future 0 :availability :published}
                      :data {:alignment :labelled :preserves-length true}}))
-               (defn call [[value Int]] -> Int (rolling value))"#,
+               (defn ^Int call [^Int value] (rolling value))"#,
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let function = result
@@ -349,12 +365,12 @@ fn extern_contract_summaries_are_applied_to_calls() {
 fn source_function_types_accept_and_propagate_rich_callback_summaries() {
     let result = lower(
         r#"(extern python "host.ops"
-                  (defn invoke [[callback (Fn [] -> Int)]] -> Int
+                  (defn ^Int invoke [^{:type (Fn [] -> Int)} callback]
                     :contract
                     {:id "host.ops/invoke-v1"
                      :effects :pure
                      :temporal {:past 0 :future 0 :availability :published}})
-                  (defn lead [] -> Int
+                  (defn ^Int lead []
                     :contract
                     {:id "host.ops/lead-v1"
                      :effects [:mutation]
@@ -363,7 +379,7 @@ fn source_function_types_accept_and_propagate_rich_callback_summaries() {
                             :alignment :labelled
                             :preserves-length true}}))
                ^{:osiris/causal {:decision-point :published}}
-               (defn call [] -> Int
+               (defn ^Int call []
                  (invoke (fn [] (lead))))"#,
     );
     assert!(

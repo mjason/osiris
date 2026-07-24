@@ -1,0 +1,47 @@
+;; Internal typed Kernel contracts for osiris.string.
+^{:osiris/internal true}
+(module osiris.string.kernel)
+
+(export
+  [kernel-leaf-trim kernel-leaf-trim-left kernel-leaf-trim-right
+   kernel-leaf-split kernel-leaf-split-lines kernel-leaf-join
+   kernel-leaf-replace kernel-leaf-starts-with? kernel-leaf-ends-with?
+   kernel-leaf-includes? kernel-leaf-lower kernel-leaf-upper
+   kernel-leaf-capitalize kernel-leaf-blank?])
+
+(extern python "osiris.kernel"
+  ^{:python/name "trim"}
+  (defn ^{:type Str} kernel-leaf-trim [^{:type Str} text])
+  ^{:python/name "trim_left"}
+  (defn ^{:type Str} kernel-leaf-trim-left [^{:type Str} text])
+  ^{:python/name "trim_right"}
+  (defn ^{:type Str} kernel-leaf-trim-right [^{:type Str} text])
+  ^{:python/name "split"}
+  (defn ^{:type (Vector Str)} kernel-leaf-split
+    [^{:type Str} text ^{:type Str} separator [^{:type (Option Int)} limit = none]])
+  ^{:python/name "split_lines"}
+  (defn ^{:type (Vector Str)} kernel-leaf-split-lines
+    [^{:type Str} text [^{:type (Option Bool)} keep-ends? = none]])
+  ^{:python/name "join"}
+  (defn ^{:type Str} kernel-leaf-join
+    [^{:type Str} separator ^{:type (List Str)} strings])
+  ^{:python/name "replace"}
+  (defn ^{:type Str} kernel-leaf-replace
+    [^{:type Str} text ^{:type Str} old ^{:type Str} new])
+  ^{:python/name "starts_with_p"}
+  (defn ^{:type Bool} kernel-leaf-starts-with?
+    [^{:type Str} text ^{:type Str} fragment])
+  ^{:python/name "ends_with_p"}
+  (defn ^{:type Bool} kernel-leaf-ends-with?
+    [^{:type Str} text ^{:type Str} fragment])
+  ^{:python/name "includes_p"}
+  (defn ^{:type Bool} kernel-leaf-includes?
+    [^{:type Str} text ^{:type Str} fragment])
+  ^{:python/name "lower"}
+  (defn ^{:type Str} kernel-leaf-lower [^{:type Str} text])
+  ^{:python/name "upper"}
+  (defn ^{:type Str} kernel-leaf-upper [^{:type Str} text])
+  ^{:python/name "capitalize"}
+  (defn ^{:type Str} kernel-leaf-capitalize [^{:type Str} text])
+  ^{:python/name "blank_p"}
+  (defn ^{:type Bool} kernel-leaf-blank? [^{:type Str} text]))

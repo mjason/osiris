@@ -9,13 +9,33 @@ use crate::{
 use super::{ExpansionOptions, ImportedPhaseModule, expand, expand_with_imported_phase_modules};
 
 fn expanded(source: &str) -> String {
-    let result = expand(&read(source), ExpansionOptions::default());
+    let result = expand_core(source);
     assert!(
         result.document.diagnostics.is_empty(),
         "{:?}",
         result.document.diagnostics
     );
-    render_document_text(&result.document)
+    let mut document = result.document;
+    document.forms.remove(0);
+    render_document_text(&document)
+}
+
+fn expand_core(source: &str) -> super::ExpansionResult {
+    let source = format!("(import osiris.core :refer :all)\n{source}");
+    expand(&read(&source), ExpansionOptions::default())
+}
+
+fn expanded_concurrent(source: &str) -> String {
+    let source = format!("(import osiris.concurrent :refer :all)\n{source}");
+    let result = expand(&read(&source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.is_empty(),
+        "{:?}",
+        result.document.diagnostics
+    );
+    let mut document = result.document;
+    document.forms.remove(0);
+    render_document_text(&document)
 }
 
 fn imported_module(
@@ -311,7 +331,7 @@ fn declaration_macros_can_generate_ordered_declaration_sequences() {
               '(do
                  (def generated 1)
                  (do
-                   (defn generated-fn [] -> Int generated)
+                   (defn ^Int generated-fn [] generated)
                    (static-record Schema generated {:id "generated"}))))
             (emit)
         "#;

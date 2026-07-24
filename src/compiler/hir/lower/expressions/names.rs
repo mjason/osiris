@@ -20,7 +20,7 @@ impl<'a> Lowerer<'a> {
         if let Some(id) = self.qualified_imports.get(&name.canonical).cloned() {
             return self.lower_global_binding_read(id, span);
         }
-        if name.canonical == "osiris.prelude/mapv" {
+        if name.canonical == "osiris.kernel/mapv" {
             let binding = self.ensure_core_mapv_binding(span);
             return Expr::pure(
                 span,

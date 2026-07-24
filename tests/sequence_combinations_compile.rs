@@ -24,25 +24,47 @@ fn temporary_directory() -> std::path::PathBuf {
 fn sequence_combinations_compile_and_run_through_typed_hir() {
     let source = r#"
 (module sequence_combinations_compile)
-(defn windowed [[values (Vector Int)]] -> (List (List Int))
+(import osiris.core :refer [dedupe drop-last interleave interpose nth partition partition-all partition-by take-last])
+^{:doc "Partition values into windows."}
+(defn ^{:type (List (List Int))} windowed [^{:type (Vector Int)} values]
   (partition 3 2 [9] values))
-(defn all-windowed [[values (Vector Int)]] -> (List (List Int))
+^{:doc "Partition values with the default step."}
+(defn ^{:type (List (List Int))} default-windowed [^{:type (Vector Int)} values]
+  (partition 2 values))
+^{:doc "Partition all values into windows."}
+(defn ^{:type (List (List Int))} all-windowed [^{:type (Vector Int)} values]
   (partition-all 3 2 values))
-(defn grouped [[values (Vector Int)]] -> (List (List Int))
+^{:doc "Partition all values with the default step."}
+(defn ^{:type (List (List Int))} default-all-windowed [^{:type (Vector Int)} values]
+  (partition-all 3 values))
+^{:doc "Partition values by a key."}
+(defn ^{:type (List (List Int))} grouped [^{:type (Vector Int)} values]
   (partition-by (fn [value] (>= value 0)) values))
-(defn adjacent-unique [[values (Vector Int)]] -> (List Int)
+^{:doc "Remove adjacent duplicate values."}
+(defn ^{:type (List Int)} adjacent-unique [^{:type (Vector Int)} values]
   (dedupe values))
-(defn woven [[values (Vector Int)]] -> (List Int)
+^{:doc "Interleave values."}
+(defn ^{:type (List Int)} woven [^{:type (Vector Int)} values]
   (interleave values [10 20]))
-(defn separated [[values (Vector Int)]] -> (List Int)
+^{:doc "Interpose a separator."}
+(defn ^{:type (List Int)} separated [^{:type (Vector Int)} values]
   (interpose 0 values))
-(defn tail [[values (Vector Int)]] -> (List Int)
+^{:doc "Take the final values."}
+(defn ^{:type (List Int)} tail [^{:type (Vector Int)} values]
   (take-last 2 values))
-(defn initial [[values (Vector Int)]] -> (List Int)
+^{:doc "Drop final values."}
+(defn ^{:type (List Int)} initial [^{:type (Vector Int)} values]
   (drop-last 2 values))
-(defn initial-one [[values (Vector Int)]] -> (List Int)
+^{:doc "Drop one final value."}
+(defn ^{:type (List Int)} initial-one [^{:type (Vector Int)} values]
   (drop-last values))
-(export [windowed all-windowed grouped adjacent-unique woven separated tail initial initial-one])
+^{:doc "Return an indexed value or an explicit fallback."}
+(defn ^Any indexed-or [^{:type (Vector Int)} values ^Int index ^Any fallback]
+  (nth values index fallback))
+^{:doc "Return an indexed value or raise when it is absent."}
+(defn ^Any indexed [^{:type (Vector Int)} values ^Int index]
+  (nth values index))
+(export [windowed default-windowed all-windowed default-all-windowed grouped adjacent-unique woven separated tail initial initial-one indexed-or indexed])
 "#;
     let result = compile(source, &options());
     assert!(
@@ -50,7 +72,7 @@ fn sequence_combinations_compile_and_run_through_typed_hir() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
+    let generated = result.python.expect("generated Python");
     for runtime_name in [
         "partition",
         "partition_all",
@@ -62,39 +84,62 @@ fn sequence_combinations_compile_and_run_through_typed_hir() {
         "drop_last",
     ] {
         assert!(
-            generated.contains(runtime_name),
-            "{runtime_name}:\n{generated}"
+            generated.source.contains(runtime_name),
+            "{runtime_name}:\n{}",
+            generated.source
         );
     }
 
     let root = temporary_directory();
-    fs::write(root.join("sequence_combinations_compile.py"), &generated)
-        .expect("write generated module");
+    fs::write(
+        root.join("sequence_combinations_compile.py"),
+        &generated.source,
+    )
+    .expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("sequence functions should link private runtime support");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
-        r#"from sequence_combinations_compile import adjacent_unique, all_windowed, grouped, initial, initial_one, separated, tail, windowed, woven
+        r#"from sequence_combinations_compile import adjacent_unique, all_windowed, default_all_windowed, default_windowed, grouped, indexed, indexed_or, initial, initial_one, separated, tail, windowed, woven
 
 assert list(adjacent_unique((1, 1, 2, 1, 1))) == [1, 2, 1]
 assert [list(group) for group in windowed((1, 2, 3, 4))] == [[1, 2, 3], [3, 4, 9]]
+assert [list(group) for group in default_windowed((1, 2, 3, 4))] == [[1, 2], [3, 4]]
 assert [list(group) for group in all_windowed((1, 2, 3, 4))] == [[1, 2, 3], [3, 4]]
+assert [list(group) for group in default_all_windowed((1, 2, 3, 4))] == [[1, 2, 3], [4]]
 assert [list(group) for group in grouped((-2, -1, 0, 1, -1))] == [[-2, -1], [0, 1], [-1]]
 assert list(woven((1, 2, 3))) == [1, 10, 2, 20]
 assert list(separated((1, 2, 3))) == [1, 0, 2, 0, 3]
 assert list(tail((1, 2, 3, 4))) == [3, 4]
 assert list(initial((1, 2, 3, 4))) == [1, 2]
 assert list(initial_one((1, 2, 3, 4))) == [1, 2, 3]
+assert indexed_or((), 0, None) is None
+try:
+    indexed((), 0)
+except IndexError:
+    pass
+else:
+    raise AssertionError("two-argument nth must not synthesize a none fallback")
 print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -102,7 +147,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -112,11 +157,12 @@ print("ok")
 fn sequence_combinations_report_arity_count_and_callback_errors() {
     let source = r#"
 (module sequence_combinations_compile)
-(defn bad-count [[values (Vector Int)]] -> Any
+(import osiris.core :refer [interleave partition partition-by])
+(defn ^Any bad-count [^{:type (Vector Int)} values]
   (partition "three" values))
-(defn bad-callback [[values (Vector Int)]] -> Any
+(defn ^Any bad-callback [^{:type (Vector Int)} values]
   (partition-by (fn [] 1) values))
-(defn bad-arity [[values (Vector Int)]] -> Any
+(defn ^Any bad-arity [^{:type (Vector Int)} values]
   (interleave values))
 "#;
     let result = compile(source, &options());

@@ -171,7 +171,11 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
     Ok(Interface {
         format_version: FORMAT_VERSION,
         compiler_abi: COMPILER_ABI.to_owned(),
+        language_version: crate::LANGUAGE_VERSION.to_owned(),
         language_abi: LANGUAGE_ABI.to_owned(),
+        standard_library_abi: crate::STANDARD_LIBRARY_ABI,
+        linkable_helper_format: crate::LINKABLE_HELPER_FORMAT,
+        python_target: crate::project::PythonVersion::DEFAULT_TARGET,
         module: module.clone(),
         metadata: surface.metadata.clone(),
         bindings,

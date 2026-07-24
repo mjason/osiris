@@ -1,0 +1,136 @@
+;; Source-distributed Osiris standard module. Kernel leaves are linked privately.
+(module osiris.string)
+
+(export
+  [trim trim-left trim-right split split-lines join replace starts-with?
+   ends-with? includes? lower upper capitalize blank?])
+
+(import osiris.string.kernel :refer :all)
+
+^{:doc
+  {:default "Remove Unicode whitespace from both ends of a string."
+   "zh-CN" "移除字符串两端的 Unicode 空白。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} trim [^{:type Str} text]
+  (kernel-leaf-trim text))
+
+^{:doc
+  {:default "Remove Unicode whitespace from the start of a string."
+   "zh-CN" "移除字符串开头的 Unicode 空白。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} trim-left [^{:type Str} text]
+  (kernel-leaf-trim-left text))
+
+^{:doc
+  {:default "Remove Unicode whitespace from the end of a string."
+   "zh-CN" "移除字符串末尾的 Unicode 空白。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} trim-right [^{:type Str} text]
+  (kernel-leaf-trim-right text))
+
+^{:doc
+  {:default "Split on a non-empty literal string, preserving empty fields and honoring an optional result limit."
+   "zh-CN" "按非空字面字符串拆分，保留空字段并遵守可选结果数量限制。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type (Vector Str)} split
+  [^{:type Str} text ^{:type Str} separator [^{:type (Option Int)} limit = none]]
+  (kernel-leaf-split text separator limit))
+
+^{:doc
+  {:default "Split at Unicode line boundaries and optionally retain line endings."
+   "zh-CN" "按 Unicode 行边界拆分，并可选保留行结束符。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type (Vector Str)} split-lines
+  [^{:type Str} text [^{:type (Option Bool)} keep-ends? = none]]
+  (kernel-leaf-split-lines text keep-ends?))
+
+^{:doc
+  {:default "Join string items in input order with one string separator."
+   "zh-CN" "用一个字符串分隔符按输入顺序连接字符串元素。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} join [^{:type Str} separator ^{:type (List Str)} strings]
+  (kernel-leaf-join separator strings))
+
+^{:doc
+  {:default "Replace every literal substring occurrence without regular-expression interpretation."
+   "zh-CN" "替换所有字面子串，不进行正则表达式解释。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} replace [^{:type Str} text ^{:type Str} old ^{:type Str} new]
+  (kernel-leaf-replace text old new))
+
+^{:doc
+  {:default "Test whether a string starts with an exact code-point substring."
+   "zh-CN" "测试字符串是否以精确码点子串开头。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} starts-with? [^{:type Str} text ^{:type Str} fragment]
+  (kernel-leaf-starts-with? text fragment))
+
+^{:doc
+  {:default "Test whether a string ends with an exact code-point substring."
+   "zh-CN" "测试字符串是否以精确码点子串结尾。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} ends-with? [^{:type Str} text ^{:type Str} fragment]
+  (kernel-leaf-ends-with? text fragment))
+
+^{:doc
+  {:default "Test whether a string contains an exact code-point substring."
+   "zh-CN" "测试字符串是否包含精确码点子串。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} includes? [^{:type Str} text ^{:type Str} fragment]
+  (kernel-leaf-includes? text fragment))
+
+^{:doc
+  {:default "Apply locale-independent Unicode lowercase conversion."
+   "zh-CN" "应用与 locale 无关的 Unicode 小写转换。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} lower [^{:type Str} text]
+  (kernel-leaf-lower text))
+
+^{:doc
+  {:default "Apply locale-independent Unicode uppercase conversion."
+   "zh-CN" "应用与 locale 无关的 Unicode 大写转换。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} upper [^{:type Str} text]
+  (kernel-leaf-upper text))
+
+^{:doc
+  {:default "Apply locale-independent Unicode capitalization."
+   "zh-CN" "应用与 locale 无关的 Unicode 首字母大写转换。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Str} capitalize [^{:type Str} text]
+  (kernel-leaf-capitalize text))
+
+^{:doc
+  {:default "Test whether a string is empty or contains only Unicode whitespace."
+   "zh-CN" "测试字符串是否为空或仅包含 Unicode 空白。"}
+  :category "string"
+  :since "0.3.0"
+  :deprecated false}
+(defn ^{:type Bool} blank? [^{:type Str} text]
+  (kernel-leaf-blank? text))

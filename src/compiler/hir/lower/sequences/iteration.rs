@@ -17,7 +17,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0027",
-                "osiris.prelude/doseq* expects a callback and one collection",
+                "osiris.kernel/doseq* expects a callback and one collection",
                 span,
             );
             return Expr::error(span);
@@ -102,7 +102,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0027",
-                "osiris.prelude/for-stop* does not accept arguments",
+                "osiris.kernel/for-stop* does not accept arguments",
                 span,
             );
             return Expr::error(span);

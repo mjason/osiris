@@ -19,7 +19,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0035",
-                "osiris.prelude/future-call* expects one zero-argument function",
+                "osiris.kernel/future-call* expects one zero-argument function",
                 span,
             );
             return Expr::error(span);
@@ -88,7 +88,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0036",
-                format!("osiris.prelude/{runtime_name} expects one argument"),
+                format!("osiris.kernel/{runtime_name} expects one argument"),
                 span,
             );
             return Expr::error(span);
@@ -130,7 +130,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0037",
-                "osiris.prelude/promise* does not accept arguments",
+                "osiris.kernel/promise* does not accept arguments",
                 span,
             );
             return Expr::error(span);
@@ -169,7 +169,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0038",
-                "osiris.prelude/deliver* expects a promise and a value",
+                "osiris.kernel/deliver* expects a promise and a value",
                 span,
             );
             return Expr::error(span);
@@ -240,7 +240,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0039",
-                "osiris.prelude/lock* does not accept arguments",
+                "osiris.kernel/lock* does not accept arguments",
                 span,
             );
             return Expr::error(span);
@@ -280,7 +280,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0040",
-                "osiris.prelude/locking* expects a lock and zero-argument function",
+                "osiris.kernel/locking* expects a lock and zero-argument function",
                 span,
             );
             return Expr::error(span);

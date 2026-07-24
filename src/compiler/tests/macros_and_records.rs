@@ -4,6 +4,7 @@ fn workspace_replays_exported_macro_and_private_helper() {
             (module sample.macros)
             (defn-for-syntax make-add [value]
               (list '+ value 1))
+            ^{:doc "Increment a syntax value."}
             (defmacro add-one [value]
               (make-add value))
             (export [add-one])
@@ -12,7 +13,8 @@ fn workspace_replays_exported_macro_and_private_helper() {
             (module sample.app)
             (import sample.macros :as macros)
             (export [increment])
-            (defn increment [[value Int]] -> Int
+            ^{:doc "Increment an integer."}
+            (defn ^Int increment [^Int value]
               (macros/add-one value))
         "#;
     let app_options = CompileOptions::new("sample.app", PythonVersion::MINIMUM);
@@ -46,12 +48,14 @@ fn workspace_validates_records_against_an_imported_schema() {
             (module sample.producer)
             (import sample.schema :as schema)
             (export [owner])
-            (def owner none)
+            ^{:doc "Record owner."}
+            (def ^Any owner none)
             (static-record schema/Descriptor owner {:id "example.normalize"})
         "#;
     let schema = r#"
             (module sample.schema)
             (export [Descriptor])
+            ^{:doc "Descriptor schema."}
             (defstatic-schema Descriptor
               :schema-id "sample/descriptor"
               :version 1
@@ -86,18 +90,20 @@ fn workspace_isolates_same_named_macros_and_private_helpers() {
             (module sample.app)
             (import sample.alpha :as alpha)
             (import sample.beta :as beta)
-            (defn calculate [[value Int]] -> Int
+            (defn ^Int calculate [^Int value]
               (+ (alpha/wrap value) (beta/wrap value)))
         "#;
     let alpha = r#"
             (module sample.alpha)
             (defn-for-syntax helper [value] (list '+ value 1))
+            ^{:doc "Wrap a syntax value."}
             (defmacro wrap [value] (helper value))
             (export [wrap])
         "#;
     let beta = r#"
             (module sample.beta)
             (defn-for-syntax helper [value] (list '* value 2))
+            ^{:doc "Wrap a syntax value."}
             (defmacro wrap [value] (helper value))
             (export [wrap])
         "#;

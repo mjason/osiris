@@ -1,0 +1,67 @@
+;; Internal typed Kernel contracts for osiris.collection.
+^{:osiris/internal true}
+(module osiris.collection.kernel)
+
+(export
+  [kernel-leaf-apply kernel-leaf-merge kernel-leaf-merge-with
+   kernel-leaf-group-by kernel-leaf-frequencies kernel-leaf-index-by
+   kernel-leaf-select-keys kernel-leaf-rename-keys kernel-leaf-update-keys
+   kernel-leaf-update-vals kernel-leaf-zipmap kernel-leaf-invert
+   kernel-leaf-get kernel-leaf-assoc kernel-leaf-dissoc kernel-leaf-update
+   kernel-leaf-get-in kernel-leaf-assoc-in kernel-leaf-update-in])
+
+(extern python "osiris.kernel"
+  ^{:python/name "apply" :type-params [A F P R]}
+  (defn ^{:type R} kernel-leaf-apply
+    [^{:type F} function ^{:type P} prefix ^{:type A} arguments])
+  ^{:python/name "merge" :type-params [K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-merge [& ^{:type (Map K V)} collections])
+  ^{:python/name "merge_with" :type-params [K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-merge-with
+    [^{:type (Fn [V V] -> V)} function & ^{:type (Map K V)} collections])
+  ^{:python/name "group_by" :type-params [A B K]}
+  (defn ^{:type (Map K (Vector A))} kernel-leaf-group-by
+    [^{:type (Fn [A] -> K)} function ^{:type B} collection])
+  ^{:python/name "frequencies" :type-params [A B]}
+  (defn ^{:type (Map A Int)} kernel-leaf-frequencies [^{:type B} collection])
+  ^{:python/name "index_by" :type-params [A B K]}
+  (defn ^{:type (Map K A)} kernel-leaf-index-by
+    [^{:type (Fn [A] -> K)} function ^{:type B} collection])
+  ^{:python/name "select_keys" :type-params [A C K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-select-keys
+    [^{:type C} collection ^{:type (List A)} keys])
+  ^{:python/name "rename_keys" :type-params [K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-rename-keys
+    [^{:type (Map K V)} collection ^{:type (Map K K)} renames])
+  ^{:python/name "update_keys" :type-params [B K V]}
+  (defn ^{:type (Map B V)} kernel-leaf-update-keys
+    [^{:type (Fn [K] -> B)} function ^{:type (Map K V)} collection])
+  ^{:python/name "update_vals" :type-params [B K V]}
+  (defn ^{:type (Map K B)} kernel-leaf-update-vals
+    [^{:type (Fn [V] -> B)} function ^{:type (Map K V)} collection])
+  ^{:python/name "zipmap" :type-params [A B K V]}
+  (defn ^{:type (Map K V)} kernel-leaf-zipmap [^{:type A} keys ^{:type B} values])
+  ^{:python/name "invert" :type-params [K V]}
+  (defn ^{:type (Map V K)} kernel-leaf-invert [^{:type (Map K V)} collection])
+  ^{:python/name "get" :type-params [B C K R]}
+  (defn ^{:type R} kernel-leaf-get
+    [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]])
+  ^{:python/name "assoc" :type-params [A C]}
+  (defn ^{:type C} kernel-leaf-assoc [^{:type C} collection & ^{:type A} entries])
+  ^{:python/name "dissoc" :type-params [C K]}
+  (defn ^{:type C} kernel-leaf-dissoc [^{:type C} collection & ^{:type K} keys])
+  ^{:python/name "update" :type-params [A B C K]}
+  (defn ^{:type C} kernel-leaf-update
+    [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+     ^{:type A} arguments])
+  ^{:python/name "get_in" :type-params [A B C R]}
+  (defn ^{:type R} kernel-leaf-get-in
+    [^{:type C} collection ^{:type (List A)} keys
+     [^{:type (Option B)} not-found = none]])
+  ^{:python/name "assoc_in" :type-params [A C V]}
+  (defn ^{:type C} kernel-leaf-assoc-in
+    [^{:type C} collection ^{:type (List A)} keys ^{:type V} value])
+  ^{:python/name "update_in" :type-params [A B C K]}
+  (defn ^{:type C} kernel-leaf-update-in
+    [^{:type C} collection ^{:type K} key ^{:type (Fn [A] -> B)} function &
+     ^{:type A} arguments]))

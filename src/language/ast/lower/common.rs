@@ -65,6 +65,57 @@ impl Lowerer {
         }
     }
 
+    pub(super) fn lower_type_parameters(
+        &mut self,
+        metadata: &[MetadataEntry],
+        context: &str,
+    ) -> Vec<Name> {
+        let entries = metadata
+            .iter()
+            .filter(|entry| metadata_key(&entry.key) == Some("type-params"))
+            .collect::<Vec<_>>();
+        let Some(entry) = entries.first() else {
+            return Vec::new();
+        };
+        if entries.len() > 1 {
+            self.error(
+                AST_INVALID_TYPE_METADATA,
+                format!("{context} repeats `:type-params` metadata"),
+                entry.key.span,
+            );
+        }
+        let FormKind::Vector(values) = &entry.value.kind else {
+            self.error(
+                AST_INVALID_TYPE_METADATA,
+                format!("{context} `:type-params` must be a vector of symbols"),
+                entry.value.span,
+            );
+            return Vec::new();
+        };
+        let mut names = Vec::new();
+        let mut seen = BTreeSet::new();
+        for value in values {
+            let Some(name) = symbol_name(value) else {
+                self.error(
+                    AST_INVALID_TYPE_METADATA,
+                    format!("{context} type parameters must be symbols"),
+                    value.span,
+                );
+                continue;
+            };
+            if !seen.insert(name.canonical.clone()) {
+                self.error(
+                    AST_INVALID_TYPE_METADATA,
+                    format!("{context} repeats type parameter `{}`", name.spelling),
+                    value.span,
+                );
+                continue;
+            }
+            names.push(name);
+        }
+        names
+    }
+
     pub(super) fn lower_metadata_type_form(&mut self, form: &Form) -> TypeExpr {
         let FormKind::Symbol(name) = &form.kind else {
             return self.lower_type(form);
@@ -90,16 +141,6 @@ impl Lowerer {
                 args: vec![any; arity],
             },
         }
-    }
-
-    pub(super) fn report_type_annotation_conflict(&mut self, context: &str, span: Span) {
-        self.error(
-            AST_CONFLICTING_TYPE_ANNOTATION,
-            format!(
-                "{context} has both explicit and metadata type annotations; the explicit annotation takes precedence"
-            ),
-            span,
-        );
     }
 
     pub(super) fn is_head(&self, form: &Form, expected: &str) -> bool {

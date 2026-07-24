@@ -24,9 +24,9 @@ impl<'a> Lowerer<'a> {
             self.error(
                 "OSR-T0020",
                 if named_fold {
-                    "osiris.prelude/fold expects a function, initial value, and collection"
+                    "osiris.kernel/fold expects a function, initial value, and collection"
                 } else {
-                    "osiris.prelude/reduce expects a function, collection, and optional initial value"
+                    "osiris.kernel/reduce expects a function, collection, and optional initial value"
                 },
                 span,
             );
@@ -143,7 +143,7 @@ impl<'a> Lowerer<'a> {
             };
             self.error(
                 "OSR-T0020",
-                format!("osiris.prelude/{source_name} expects exactly one argument"),
+                format!("osiris.kernel/{source_name} expects exactly one argument"),
                 span,
             );
             return Expr::error(span);

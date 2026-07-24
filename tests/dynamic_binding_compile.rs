@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
@@ -36,27 +36,49 @@ fn dynamic_metadata(binding: &interface::PublicBinding) -> bool {
     })
 }
 
+fn write_runtime_support(root: &std::path::Path, generated: &osiris::backend::GeneratedPython) {
+    let Some(support) = &generated.runtime_support else {
+        return;
+    };
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
+}
+
 #[test]
 fn dynamic_binding_is_typed_nested_restored_and_propagated_to_futures() {
     let source = r#"
 (module dynamic_binding_compile)
+(import osiris.core :refer [assert binding])
+(import osiris.concurrent :refer :all)
 (extern python "dynamic_support"
-  (defn record [[value Int]] -> Int))
+  (defn ^Int record [^Int value]))
 
-(def ^:dynamic *named* Int 1)
-^:dynamic (def *outer* Int 10)
+(def ^{:dynamic true :type Int :doc "Named dynamic value."} *named* 1)
+^{:dynamic true :doc "Outer dynamic value."} (def ^Int *outer* 10)
 
-(defn roots [] -> (Vector Int)
+^{:doc "Return dynamic roots."}
+(defn ^{:type (Vector Int)} roots []
   [*named* *outer*])
 
-(defn nested [] -> Any
+^{:doc "Exercise nested dynamic bindings."}
+(defn ^Any nested []
   [*named*
    (binding [*named* (record 2)
              *outer* (record *named*)]
      [*named* *outer* (binding [*named* 3] *named*)])
    *named*])
 
-(defn restored-after-throw [] -> Int
+^{:doc "Return the restored value after an exception."}
+(defn ^Int restored-after-throw []
   (do
     (try
       (binding [*named* 9]
@@ -64,7 +86,8 @@ fn dynamic_binding_is_typed_nested_restored_and_propagated_to_futures() {
       (catch AssertionError error none))
     *named*))
 
-(defn future-context [] -> Int
+^{:doc "Capture a dynamic value in a future."}
+(defn ^Int future-context []
   (let [gate (promise)
         task (binding [*named* 11]
                (future (do (deref gate) *named*)))]
@@ -92,12 +115,22 @@ fn dynamic_binding_is_typed_nested_restored_and_propagated_to_futures() {
         assert!(dynamic_metadata(binding), "{name} lost :dynamic metadata");
     }
 
-    let generated = result.python.expect("generated Python").source;
-    assert!(generated.contains("dynamic_get as"), "{generated}");
-    assert!(generated.contains("binding_values as"), "{generated}");
+    let generated = result.python.expect("generated Python");
+    assert!(
+        generated.source.contains("dynamic_get"),
+        "{}",
+        generated.source
+    );
+    assert!(
+        generated.source.contains("binding_values"),
+        "{}",
+        generated.source
+    );
 
     let root = temporary_directory();
-    fs::write(root.join("dynamic_binding_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("dynamic_binding_compile.py"), &generated.source)
+        .expect("write generated module");
+    write_runtime_support(&root, &generated);
     fs::write(
         root.join("dynamic_support.py"),
         "events = []\ndef record(value):\n    events.append(value)\n    return value\n",
@@ -119,13 +152,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -133,7 +162,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");
@@ -143,14 +172,15 @@ print("ok")
 fn binding_rejects_non_dynamic_local_and_wrong_typed_values() {
     let source = r#"
 (module dynamic_binding_compile)
-(def ^:dynamic *value* Int 1)
-(def ordinary Int 2)
-(defn wrong-target [] -> Int
+(import osiris.core :refer [binding])
+(def ^{:dynamic true :type Int} *value* 1)
+(def ^Int ordinary 2)
+(defn ^Int wrong-target []
   (binding [ordinary 3] ordinary))
-(defn wrong-local [] -> Int
+(defn ^Int wrong-local []
   (let [*value* 2]
     (binding [*value* 3] *value*)))
-(defn wrong-type [] -> Int
+(defn ^Int wrong-type []
   (binding [*value* "bad"] *value*))
 "#;
     let result = compile(source, &options());
@@ -187,7 +217,7 @@ fn binding_rejects_non_dynamic_local_and_wrong_typed_values() {
 #[test]
 fn dynamic_vars_require_root_values() {
     let result = compile(
-        "(module dynamic_binding_compile) (def ^:dynamic *missing* Int)",
+        "(module dynamic_binding_compile) (def ^{:dynamic true :type Int} *missing*)",
         &options(),
     );
     assert!(result.analysis.diagnostics.iter().any(|diagnostic| {
@@ -199,14 +229,17 @@ fn dynamic_vars_require_root_values() {
 fn imported_dynamic_vars_keep_their_binding_identity() {
     let provider = r#"
 (module dynamic.provider)
-(def ^:dynamic *scale* Int 2)
-(defn scaled [[value Int]] -> Int (* value *scale*))
+(def ^{:dynamic true :type Int :doc "Dynamic scale."} *scale* 2)
+^{:doc "Scale an integer."}
+(defn ^Int scaled [^Int value] (* value *scale*))
 (export [*scale* scaled])
 "#;
     let consumer = r#"
 (module dynamic.consumer)
+(import osiris.core :refer [binding])
 (import dynamic.provider :as provider)
-(defn roots [] -> (Vector Int)
+^{:doc "Return values under several dynamic bindings."}
+(defn ^{:type (Vector Int)} roots []
   [(provider/scaled 3)
    (binding [provider/*scale* 5]
      (provider/scaled 3))
@@ -228,6 +261,8 @@ fn imported_dynamic_vars_keep_their_binding_identity() {
     let package = root.join("dynamic");
     fs::create_dir_all(&package).expect("create generated package");
     fs::write(package.join("__init__.py"), "").expect("write package marker");
+    let mut runtime_package = None;
+    let mut runtime_helpers = BTreeSet::new();
     for unit in &workspace.units {
         let module = unit
             .analysis
@@ -236,11 +271,27 @@ fn imported_dynamic_vars_keep_their_binding_identity() {
             .rsplit('.')
             .next()
             .expect("module leaf");
-        fs::write(
-            package.join(format!("{module}.py")),
-            &unit.python.as_ref().expect("generated Python").source,
-        )
-        .expect("write generated module");
+        let generated = unit.python.as_ref().expect("generated Python");
+        fs::write(package.join(format!("{module}.py")), &generated.source)
+            .expect("write generated module");
+        if let Some(support) = &generated.runtime_support {
+            if let Some(package) = &runtime_package {
+                assert_eq!(package, &support.package);
+            } else {
+                runtime_package = Some(support.package.clone());
+            }
+            runtime_helpers.extend(support.helpers.iter().cloned());
+        }
+    }
+    if let Some(runtime_package) = runtime_package {
+        for (path, source) in
+            osiris::backend::runtime_support_files(&runtime_package, &runtime_helpers)
+        {
+            let destination = root.join(path);
+            fs::create_dir_all(destination.parent().expect("support parent"))
+                .expect("create support directory");
+            fs::write(destination, source).expect("write support file");
+        }
     }
     let smoke = root.join("smoke.py");
     fs::write(
@@ -248,13 +299,9 @@ fn imported_dynamic_vars_keep_their_binding_identity() {
         "from dynamic.consumer import roots\nassert roots() == (6, 15, 6)\nprint('ok')\n",
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(

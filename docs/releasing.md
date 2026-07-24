@@ -6,8 +6,9 @@ rejects a tag that does not match its own package version.
 
 ## PyPI Trusted Publisher
 
-The Python distribution is `osiris-lang`. It installs the `osiris` Python
-package and the `osr` command.
+The Python distribution is `osiris-lang`. It installs the native `osr` command
+and the `osiris_build` build-backend package; generated applications do not
+depend on a shared Osiris runtime.
 
 Configure the pending Trusted Publisher on PyPI with these exact values:
 
@@ -26,13 +27,13 @@ with `id-token: write`.
 After the version is committed and pushed, publish with:
 
 ```console
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 The tag triggers `.github/workflows/publish-pypi.yml`, which checks the version,
-runs the Rust tests, builds native CLI wheels and an sdist, then publishes through the
-`pypi` environment.
+runs the Rust tests, builds native CLI wheels and an sdist, then publishes
+through the `pypi` environment.
 
 ## VS Code VSIX
 
@@ -40,11 +41,11 @@ The VS Code extension is not published to Marketplace yet. A dedicated tag
 builds the VSIX and creates a GitHub Release containing it:
 
 ```console
-git tag vscode-v0.1.0
-git push origin vscode-v0.1.0
+git tag vscode-v0.2.0
+git push origin vscode-v0.2.0
 ```
 
 The tag must equal `vscode-v` plus the version in
 `editors/vscode/package.json`. The workflow attaches
-`osiris-vscode-0.1.0.vsix` to the generated GitHub Release. It needs only the
+`osiris-vscode-0.2.0.vsix` to the generated GitHub Release. It needs only the
 repository-provided `GITHUB_TOKEN`; no Marketplace token is involved.

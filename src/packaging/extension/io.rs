@@ -1,6 +1,11 @@
 fn validate_abi(path: &Path, marker: &RawMarker) -> Result<(), ExtensionError> {
+    if marker.schema != MARKER_SCHEMA {
+        return Err(ExtensionError::InvalidMarker(
+            path.to_path_buf(),
+            format!("unsupported schema {}; expected {MARKER_SCHEMA}", marker.schema),
+        ));
+    }
     for (label, actual, expected) in [
-        ("schema", marker.schema, MARKER_SCHEMA),
         ("compiler_abi", marker.compiler_abi, COMPILER_ABI),
         ("language_abi", marker.language_abi, LANGUAGE_ABI),
     ] {
@@ -10,6 +15,24 @@ fn validate_abi(path: &Path, marker: &RawMarker) -> Result<(), ExtensionError> {
                 format!("unsupported {label} {actual}; expected {expected}"),
             ));
         }
+    }
+    if marker.language_version != crate::LANGUAGE_VERSION {
+        return Err(ExtensionError::InvalidMarker(
+            path.to_path_buf(),
+            format!(
+                "unsupported language_version {}; expected {}",
+                marker.language_version,
+                crate::LANGUAGE_VERSION
+            ),
+        ));
+    }
+    if marker.standard_library_abi != crate::STANDARD_LIBRARY_ABI
+        || marker.linkable_helper_format != crate::LINKABLE_HELPER_FORMAT
+    {
+        return Err(ExtensionError::InvalidMarker(
+            path.to_path_buf(),
+            "incompatible standard-library ABI or Linkable-helper format".to_owned(),
+        ));
     }
     Ok(())
 }

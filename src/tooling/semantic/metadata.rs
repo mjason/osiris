@@ -29,7 +29,7 @@ pub(super) fn aliases_by_target(module: &hir::Module) -> BTreeMap<String, Vec<Se
                 public: alias.public,
                 preferred: false,
                 span: alias.span,
-                labels: labels_for_name(target_canonical, Some(alias.spelling.clone())),
+                labels: labels_for_name(target_canonical, &BTreeMap::new()),
             });
     }
     for values in aliases.values_mut() {
@@ -47,67 +47,123 @@ pub(super) fn aliases_by_target(module: &hir::Module) -> BTreeMap<String, Vec<Se
     aliases
 }
 
-pub(super) fn labels_for_name(canonical: &str, preferred: Option<String>) -> LocalizedLabel {
-    let chinese = preferred.filter(|value| contains_cjk(value));
-    LocalizedLabel::new(canonical.to_owned(), chinese)
+pub(super) fn labels_for_name(
+    canonical: &str,
+    localized: &BTreeMap<String, LocalizedNameEntry>,
+) -> LocalizedLabel {
+    LocalizedLabel::new(
+        canonical.to_owned(),
+        localized
+            .iter()
+            .map(|(locale, entry)| (locale.clone(), entry.preferred.clone()))
+            .collect(),
+    )
 }
 
-pub(super) fn preferred_alias(
-    aliases: &[SemanticAlias],
-    metadata: &[MetadataEntry],
-) -> Option<String> {
-    aliases
-        .iter()
-        .find(|alias| alias.public && contains_cjk(&alias.spelling))
-        .or_else(|| aliases.iter().find(|alias| contains_cjk(&alias.spelling)))
-        .map(|alias| alias.spelling.clone())
-        .or_else(|| metadata_preferred_name(metadata))
-}
-
-pub(super) fn metadata_preferred_name(metadata: &[MetadataEntry]) -> Option<String> {
-    for entry in metadata {
-        let key = form_name(&entry.key).unwrap_or_default();
-        let key = key.trim_start_matches(':').to_ascii_lowercase();
-        if matches!(key.as_str(), "preferred" | "name" | "zh-cn" | "zh_cn") {
-            if let Some(value) = form_name(&entry.value) {
-                return Some(value);
+pub fn localized_names(metadata: &[MetadataEntry]) -> BTreeMap<String, LocalizedNameEntry> {
+    let Some(names) = metadata.iter().find_map(|entry| {
+        (form_name(&entry.key)
+            .as_deref()
+            .map(|value| value.trim_start_matches(':'))
+            == Some("osiris/names"))
+        .then_some(&entry.value)
+    }) else {
+        return BTreeMap::new();
+    };
+    let FormKind::Map(entries) = &names.kind else {
+        return BTreeMap::new();
+    };
+    let mut result = BTreeMap::new();
+    for pair in entries.chunks_exact(2) {
+        let FormKind::String(raw_locale) = &pair[0].kind else {
+            continue;
+        };
+        let Ok(locale) = oxilangtag::LanguageTag::parse_and_normalize(raw_locale) else {
+            continue;
+        };
+        let FormKind::Map(values) = &pair[1].kind else {
+            continue;
+        };
+        let mut preferred = None;
+        let mut aliases = Vec::new();
+        for entry in values.chunks_exact(2) {
+            match form_name(&entry[0])
+                .as_deref()
+                .map(|value| value.trim_start_matches(':'))
+            {
+                Some("preferred") => preferred = form_name(&entry[1]),
+                Some("aliases") => {
+                    if let FormKind::Vector(items) = &entry[1].kind {
+                        aliases.extend(items.iter().filter_map(form_name));
+                    }
+                }
+                _ => {}
             }
         }
-        if key == "osiris/names" || key == "names" {
-            if let Some(value) = metadata_preferred_name_from_form(&entry.value) {
-                return Some(value);
-            }
+        if let Some(preferred) = preferred {
+            aliases.sort();
+            aliases.dedup();
+            result.insert(
+                locale.to_string(),
+                LocalizedNameEntry { preferred, aliases },
+            );
         }
     }
-    None
+    result
 }
 
-pub(super) fn metadata_preferred_name_from_form(form: &Form) -> Option<String> {
-    let FormKind::Map(entries) = &form.kind else {
-        return form_name(form);
+pub fn documentation(metadata: &[MetadataEntry]) -> SemanticDocumentation {
+    let Some(value) = metadata.iter().find_map(|entry| {
+        (form_name(&entry.key)
+            .as_deref()
+            .map(|value| value.trim_start_matches(':'))
+            == Some("doc"))
+        .then_some(&entry.value)
+    }) else {
+        return SemanticDocumentation::default();
     };
+    if let FormKind::String(default) = &value.kind {
+        return SemanticDocumentation {
+            default: Some(default.clone()),
+            translations: BTreeMap::new(),
+        };
+    }
+    let FormKind::Map(entries) = &value.kind else {
+        return SemanticDocumentation::default();
+    };
+    let mut result = SemanticDocumentation::default();
     for pair in entries.chunks_exact(2) {
-        let key = form_name(&pair[0])?
-            .trim_start_matches(':')
-            .to_ascii_lowercase();
-        if matches!(key.as_str(), "preferred" | "zh-cn" | "zh_cn") {
-            if let Some(name) = form_name(&pair[1]) {
-                return Some(name);
+        let FormKind::String(text) = &pair[1].kind else {
+            continue;
+        };
+        match &pair[0].kind {
+            FormKind::Keyword(name) if name.canonical.trim_start_matches(':') == "default" => {
+                result.default = Some(text.clone());
             }
-        }
-        if key == "aliases" {
-            if let FormKind::Vector(values) = &pair[1].kind {
-                if let Some(name) = values
-                    .iter()
-                    .filter_map(form_name)
-                    .find(|name| contains_cjk(name))
-                {
-                    return Some(name);
+            FormKind::String(raw_locale) => {
+                if let Ok(locale) = oxilangtag::LanguageTag::parse_and_normalize(raw_locale) {
+                    result.translations.insert(locale.to_string(), text.clone());
                 }
             }
+            _ => {}
         }
     }
-    None
+    result
+}
+
+pub fn localized_name_for<'a>(
+    localized: &'a BTreeMap<String, LocalizedNameEntry>,
+    locale: Option<&str>,
+) -> Option<&'a LocalizedNameEntry> {
+    let tag = oxilangtag::LanguageTag::parse_and_normalize(locale?).ok()?;
+    let mut candidate = tag.to_string();
+    loop {
+        if let Some(value) = localized.get(&candidate) {
+            return Some(value);
+        }
+        let (parent, _) = candidate.rsplit_once('-')?;
+        candidate.truncate(parent.len());
+    }
 }
 
 pub(super) fn form_name(form: &Form) -> Option<String> {

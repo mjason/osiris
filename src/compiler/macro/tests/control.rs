@@ -41,11 +41,11 @@ fn cond_thread_uses_generated_let_bindings() {
     assert!(output.contains("thread__osr_g0"));
     assert!(output.contains("thread__osr_g1"));
     assert!(output.contains(
-        "(if (osiris.prelude/truthy* ready?) (normalize thread__osr_g0 1) thread__osr_g0)"
+        "(if (osiris.kernel/truthy* ready?) (normalize thread__osr_g0 1) thread__osr_g0)"
     ));
     assert!(
         output.contains(
-            "(if (osiris.prelude/truthy* final?) (finish thread__osr_g1) thread__osr_g1)"
+            "(if (osiris.kernel/truthy* final?) (finish thread__osr_g1) thread__osr_g1)"
         )
     );
 }
@@ -80,23 +80,23 @@ fn defn_dash_lowers_to_defn_with_private_authored_metadata() {
 fn negative_and_presence_binding_macros_expand_structurally() {
     assert_eq!(
         expanded("(if-not ready? (wait) (run))"),
-        "(if (not (osiris.prelude/truthy* ready?)) (wait) (run))\n"
+        "(if (not (osiris.kernel/truthy* ready?)) (wait) (run))\n"
     );
     assert_eq!(
         expanded("(when-not ready? (prepare) (wait))"),
-        "(if (not (osiris.prelude/truthy* ready?)) (do (prepare) (wait)) none)\n"
+        "(if (not (osiris.kernel/truthy* ready?)) (do (prepare) (wait)) none)\n"
     );
 
     let if_some = expanded("(if-some [value (lookup)] (consume value) :missing)");
     assert_eq!(if_some.matches("(lookup)").count(), 1);
-    assert!(if_some.contains("(osiris.prelude/nil* if-some__osr_g0)"));
+    assert!(if_some.contains("(osiris.kernel/nil* if-some__osr_g0)"));
     assert!(
-        if_some.contains("(let [value (osiris.prelude/present* if-some__osr_g0)] (consume value))")
+        if_some.contains("(let [value (osiris.kernel/present* if-some__osr_g0)] (consume value))")
     );
 
     let when_some = expanded("(when-some [{:keys [id]} (lookup)] (consume id))");
-    assert!(when_some.contains("(osiris.prelude/nil* if-some__osr_g0)"));
-    assert!(when_some.contains("(let [{:keys [id]} (osiris.prelude/present* if-some__osr_g0)]"));
+    assert!(when_some.contains("(osiris.kernel/nil* if-some__osr_g0)"));
+    assert!(when_some.contains("(let [{:keys [id]} (osiris.kernel/present* if-some__osr_g0)]"));
 }
 
 #[test]
@@ -109,25 +109,25 @@ fn throw_and_comment_lower_to_existing_core_forms() {
 fn control_prelude_forms_expand_to_the_small_runtime_core() {
     assert_eq!(
         expanded("(when ready? (prepare) (run))"),
-        "(if (osiris.prelude/truthy* ready?) (do (prepare) (run)) none)\n"
+        "(if (osiris.kernel/truthy* ready?) (do (prepare) (run)) none)\n"
     );
     assert_eq!(
         expanded("(cond first? 1 second? 2 :else 3)"),
-        "(if (osiris.prelude/truthy* first?) 1 (if (osiris.prelude/truthy* second?) 2 3))\n"
+        "(if (osiris.kernel/truthy* first?) 1 (if (osiris.kernel/truthy* second?) 2 3))\n"
     );
     let condp = expanded("(condp = (classify) 1 :one 2 :two :else :other)");
     assert_eq!(condp.matches("(classify)").count(), 1);
-    assert!(condp.contains("osiris.prelude/truthy*"));
+    assert!(condp.contains("osiris.kernel/truthy*"));
     assert!(condp.contains("(= 1 condp-value__osr_g0)"));
     let condp_handler = expanded("(condp = value 1 :>> render :else :missing)");
     assert_eq!(
         condp_handler.matches("(= 1 condp-value__osr_g0)").count(),
         1
     );
-    assert!(condp_handler.contains("(render (osiris.prelude/present* condp-result__osr_g1))"));
+    assert!(condp_handler.contains("(render (osiris.kernel/present* condp-result__osr_g1))"));
     assert_eq!(
         expanded("(for [item items] (normalize item))"),
-        "(osiris.prelude/mapv (fn [item] (do (normalize item))) items)\n"
+        "(osiris.kernel/map (fn [item] (do (normalize item))) items)\n"
     );
     let destructured = expanded("(for [{:keys [value]} items] value)");
     assert!(destructured.contains("(fn [item__osr_g0]"));
@@ -138,29 +138,29 @@ fn control_prelude_forms_expand_to_the_small_runtime_core() {
 fn binding_and_nil_thread_macros_are_hygienic_and_short_circuiting() {
     let if_let = expanded("(if-let [{:keys [value]} (lookup)] value :missing)");
     assert_eq!(if_let.matches("(lookup)").count(), 1);
-    assert!(if_let.contains("(osiris.prelude/truthy* if-let__osr_g0)"));
+    assert!(if_let.contains("(osiris.kernel/truthy* if-let__osr_g0)"));
     assert!(
-        if_let.contains("(let [{:keys [value]} (osiris.prelude/present* if-let__osr_g0)] value)")
+        if_let.contains("(let [{:keys [value]} (osiris.kernel/present* if-let__osr_g0)] value)")
     );
 
     let when_let = expanded("(when-let [value (lookup)] (consume value))");
     assert_eq!(when_let.matches("(lookup)").count(), 1);
     assert!(
         when_let.contains(
-            "(let [value (osiris.prelude/present* if-let__osr_g0)] (do (consume value)))"
+            "(let [value (osiris.kernel/present* if-let__osr_g0)] (do (consume value)))"
         )
     );
 
     let first = expanded("(some-> (lookup) (normalize 1) finish)");
     assert_eq!(first.matches("(lookup)").count(), 1);
-    assert_eq!(first.matches("osiris.prelude/nil*").count(), 2);
-    assert!(first.contains("(normalize (osiris.prelude/present* some-thread__osr_g0) 1)"));
-    assert!(first.contains("(finish (osiris.prelude/present* some-thread__osr_g1))"));
+    assert_eq!(first.matches("osiris.kernel/nil*").count(), 2);
+    assert!(first.contains("(normalize (osiris.kernel/present* some-thread__osr_g0) 1)"));
+    assert!(first.contains("(finish (osiris.kernel/present* some-thread__osr_g1))"));
 
     let last = expanded("(some->> (lookup) (map normalize) (reduce combine))");
     assert_eq!(last.matches("(lookup)").count(), 1);
-    assert!(last.contains("(map normalize (osiris.prelude/present* some-thread__osr_g0))"));
-    assert!(last.contains("(reduce combine (osiris.prelude/present* some-thread__osr_g1))"));
+    assert!(last.contains("(map normalize (osiris.kernel/present* some-thread__osr_g0))"));
+    assert!(last.contains("(reduce combine (osiris.kernel/present* some-thread__osr_g1))"));
 }
 
 #[test]
@@ -175,60 +175,54 @@ fn case_evaluates_the_dispatch_once_and_supports_constant_groups() {
 #[test]
 fn statement_loops_expand_through_existing_for_and_loop_primitives() {
     let doseq = expanded("(doseq [value values :when (positive? value)] (emit value))");
-    assert!(doseq.contains("osiris.prelude/doseq*"));
-    assert!(doseq.contains("(if (osiris.prelude/truthy* (positive? value))"));
-    assert!(!doseq.contains("osiris.prelude/mapv"));
-    assert!(!doseq.contains("osiris.prelude/mapcatv"));
+    assert!(doseq.contains("osiris.kernel/doseq*"));
+    assert!(doseq.contains("(if (osiris.kernel/truthy* (positive? value))"));
+    assert!(!doseq.contains("osiris.kernel/mapv"));
+    assert!(!doseq.contains("osiris.kernel/mapcatv"));
 
     let when_first = expanded("(when-first [[left right] pairs] (+ left right))");
-    assert!(when_first.contains("(seq pairs)"));
-    assert!(when_first.contains("osiris.prelude/nil*"));
+    assert!(when_first.contains("(osiris.core/seq pairs)"));
+    assert!(when_first.contains("osiris.kernel/nil*"));
     assert!(
         when_first
-            .contains("(let [[left right] (nth (osiris.prelude/present* when-first__osr_g0) 0)]")
+            .contains("(let [[left right] (osiris.core/nth (osiris.kernel/present* when-first__osr_g0) 0)]")
     );
 
     let dotimes = expanded("(dotimes [index (limit)] (emit index))");
     assert_eq!(dotimes.matches("(limit)").count(), 1);
-    assert!(dotimes.contains("osiris.prelude/loop*"));
-    assert!(dotimes.contains("osiris.prelude/recur*"));
+    assert!(dotimes.contains("osiris.kernel/loop*"));
+    assert!(dotimes.contains("osiris.kernel/recur*"));
 
     let while_loop = expanded("(while (ready?) (step))");
-    assert!(while_loop.contains("osiris.prelude/loop*"));
-    assert!(while_loop.contains("osiris.prelude/recur*"));
-    assert!(while_loop.contains("(osiris.prelude/truthy* (ready?))"));
+    assert!(while_loop.contains("osiris.kernel/loop*"));
+    assert!(while_loop.contains("osiris.kernel/recur*"));
+    assert!(while_loop.contains("(osiris.kernel/truthy* (ready?))"));
     assert_eq!(while_loop.matches("(ready?)").count(), 1);
 }
 
 #[test]
-fn parallel_forms_expand_through_future_and_ordered_deref() {
-    let pmap = expanded("(pmap normalize values)");
-    assert!(pmap.contains("osiris.prelude/future-call*"), "{pmap}");
-    assert!(pmap.contains("osiris.prelude/deref*"), "{pmap}");
-    assert_eq!(pmap.matches("normalize").count(), 1, "{pmap}");
-
-    let multi = expanded("(pmap combine left right)");
-    assert!(multi.contains("(fn [pmap-item__osr_g"), "{multi}");
-    assert!(multi.contains("(pmap-function__osr_g"), "{multi}");
-
-    let calls = expanded("(pcalls first second)");
+fn concurrent_forms_expand_through_future_and_ordered_deref() {
+    let calls = expanded_concurrent("(pcalls first second)");
     assert!(calls.contains("pcall-function__osr_g"), "{calls}");
-    assert!(calls.contains("osiris.prelude/deref*"), "{calls}");
+    assert!(
+        calls.contains("(osiris.concurrent/deref pcall-future__osr_g"),
+        "{calls}"
+    );
     assert_eq!(calls.matches("first").count(), 1, "{calls}");
 
-    let values = expanded("(pvalues (slow-one) (slow-two))");
+    let values = expanded_concurrent("(pvalues (slow-one) (slow-two))");
     assert!(values.contains("pvalues-future__osr_g"), "{values}");
     assert_eq!(values.matches("(slow-one)").count(), 1, "{values}");
     assert_eq!(values.matches("(slow-two)").count(), 1, "{values}");
-    assert_eq!(expanded("(pvalues)"), "[]\n");
-    assert_eq!(expanded("(pcalls)"), "[]\n");
+    assert_eq!(expanded_concurrent("(pvalues)"), "[]\n");
+    assert_eq!(expanded_concurrent("(pcalls)"), "[]\n");
 }
 
 #[test]
 fn dynamic_binding_expands_to_the_context_runtime_boundary() {
     let binding = expanded("(binding [*value* (next-value)] (consume *value*))");
     assert_eq!(binding.matches("(next-value)").count(), 1);
-    assert!(binding.contains("osiris.prelude/binding*"));
+    assert!(binding.contains("osiris.kernel/binding*"));
     assert!(binding.contains("[*value* (next-value)]"));
     assert!(binding.contains("(fn [] (do (consume *value*)))"));
 }
@@ -236,15 +230,15 @@ fn dynamic_binding_expands_to_the_context_runtime_boundary() {
 #[test]
 fn collection_while_clauses_stop_the_nearest_runtime_loop() {
     let comprehension = expanded("(for [value values :while (< value 3)] value)");
-    assert!(comprehension.contains("osiris.prelude/mapcatv"));
-    assert!(comprehension.contains("(osiris.prelude/for-stop*)"));
+    assert!(comprehension.contains("osiris.kernel/mapcat"));
+    assert!(comprehension.contains("(osiris.kernel/for-stop*)"));
     assert_eq!(comprehension.matches("(< value 3)").count(), 1);
 
     let nested =
         expanded("(doseq [left lefts right rights :while (< right left)] (emit left right))");
-    assert_eq!(nested.matches("osiris.prelude/doseq*").count(), 2);
-    assert_eq!(nested.matches("osiris.prelude/for-stop*").count(), 1);
-    assert!(nested.contains("(if (osiris.prelude/truthy* (< right left))"));
+    assert_eq!(nested.matches("osiris.kernel/doseq*").count(), 2);
+    assert_eq!(nested.matches("osiris.kernel/for-stop*").count(), 1);
+    assert!(nested.contains("(if (osiris.kernel/truthy* (< right left))"));
 }
 
 #[test]
@@ -296,7 +290,7 @@ fn malformed_binding_and_case_macros_report_specific_diagnostics() {
             "if-some accepts at most one else expression",
         ),
     ] {
-        let result = expand(&read(source), ExpansionOptions::default());
+        let result = expand_core(source);
         assert!(
             result.document.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code == "OSR-M0007" && diagnostic.message == expected

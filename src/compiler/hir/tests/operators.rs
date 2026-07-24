@@ -3,9 +3,7 @@ fn imported_operator_instance_is_selected_across_an_osri_interface() {
     let result = lower_with_operator_dependency(
         r#"(module app)
                (import dep.series :as dep)
-               (defn scale
-                 [[series (Series Float)] [multiplier Float]]
-                 -> (Series Float)
+               (defn ^{:type (Series Float)} scale [^{:type (Series Float)} series ^Float multiplier]
                  (* series multiplier))"#,
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -41,9 +39,9 @@ fn same_named_nominals_keep_alias_identity_and_select_their_own_operator() {
                (import dep.alpha :as alpha)
                (import dep.beta :as beta)
                (alias AlphaX alpha/X)
-               (defn alpha-id [[value AlphaX]] -> alpha/X value)
-               (defn add-alpha [[left alpha/X] [right AlphaX]] -> alpha/X (+ left right))
-               (defn add-beta [[left beta/X] [right beta/X]] -> beta/X (+ left right))"#,
+               (defn ^alpha/X alpha-id [^AlphaX value] value)
+               (defn ^alpha/X add-alpha [^alpha/X left ^AlphaX right] (+ left right))
+               (defn ^beta/X add-beta [^beta/X left ^beta/X right] (+ left right))"#,
     );
     let surface = lower_document(&source);
     assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
@@ -103,15 +101,12 @@ fn same_named_nominals_keep_alias_identity_and_select_their_own_operator() {
 fn imported_operator_summary_is_joined_into_expression_summary() {
     let document = read(
         r#"(module dep.summary)
+               ^{:doc "A generic series fixture."}
                (defstruct (Series T) [values (Vector T)])
                (extern python "host.ops"
-                 (defn runtime-multiply
-                   [[series (Series Float)] [multiplier Float]]
-                   -> (Series Float)))
-               ^{:osiris/operator :multiply}
-               (defn multiply-series
-                 [[series (Series Float)] [multiplier Float]]
-                 -> (Series Float)
+                 (defn ^{:type (Series Float)} runtime-multiply [^{:type (Series Float)} series ^Float multiplier]))
+               ^{:doc "Multiply a series fixture." :osiris/operator :multiply}
+               (defn ^{:type (Series Float)} multiply-series [^{:type (Series Float)} series ^Float multiplier]
                  (runtime-multiply series multiplier))
                (export [Series multiply-series])"#,
     );
@@ -125,9 +120,7 @@ fn imported_operator_summary_is_joined_into_expression_summary() {
     let caller = read(
         r#"(module app)
                (import dep.summary)
-               (defn scale
-                 [[series (Series Float)] [multiplier Float]]
-                 -> (Series Float)
+               (defn ^{:type (Series Float)} scale [^{:type (Series Float)} series ^Float multiplier]
                  (* series multiplier))"#,
     );
     let caller_surface = lower_document(&caller);
@@ -146,8 +139,11 @@ fn imported_operator_summary_is_joined_into_expression_summary() {
 }
 
 #[test]
-fn abs_uses_a_static_core_call_without_an_operator_variant() {
-    let result = lower("(defn magnitude [[value Int]] -> Int (abs value))");
+fn abs_uses_the_static_math_facade_without_an_operator_variant() {
+    let result = lower(
+        "(import osiris.math :refer [abs])\n\
+         (defn ^Int magnitude [^Int value] (abs value))",
+    );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let function = match &result.module.items[0].kind {
         ItemKind::Function(function) => function,
@@ -157,9 +153,9 @@ fn abs_uses_a_static_core_call_without_an_operator_variant() {
         panic!("abs should lower to a normal call")
     };
     let ExprKind::Binding(binding) = &callee.kind else {
-        panic!("abs callee should be a synthetic binding")
+        panic!("abs callee should be a facade binding")
     };
-    assert!(binding.as_str().ends_with("::function::__osiris_abs"));
+    assert_eq!(binding.as_str(), "osiris.math::function::abs");
     assert_eq!(function.body.ty, Type::Int);
 }
 
@@ -180,7 +176,7 @@ fn unknown_qualified_import_member_is_diagnosed() {
 
 #[test]
 fn unary_minus_is_lowered_as_negation() {
-    let result = lower("(defn negate [[x Int]] -> Int (- x))");
+    let result = lower("(defn ^Int negate [^Int x] (- x))");
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let ItemKind::Function(function) = &result.module.items[0].kind else {
         panic!("expected function");

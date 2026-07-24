@@ -11,10 +11,29 @@ use support::*;
 pub(in crate::interface) use support::{reject_duplicate_maps, unwrap};
 pub(in crate::interface) use type_data::normalize_model;
 
-pub(in crate::interface) fn decode_header(form: &Form) -> InterfaceResult<(u32, String, String)> {
+pub(in crate::interface) fn decode_header(
+    form: &Form,
+) -> InterfaceResult<(
+    u32,
+    String,
+    String,
+    String,
+    u32,
+    u32,
+    crate::types::PythonVersion,
+)> {
     let values = strict_map(
         form,
-        &["format", "format-version", "compiler-abi", "language-abi"],
+        &[
+            "format",
+            "format-version",
+            "compiler-abi",
+            "language-version",
+            "language-abi",
+            "standard-library-abi",
+            "linkable-helper-format",
+            "python-target",
+        ],
     )?;
     if expect_string(get(&values, "format")?, "format")? != FORMAT_NAME {
         return Err(InterfaceError::new("OSR-I0030", "unknown interface format"));
@@ -22,7 +41,21 @@ pub(in crate::interface) fn decode_header(form: &Form) -> InterfaceResult<(u32, 
     Ok((
         expect_u32(get(&values, "format-version")?, "format-version")?,
         expect_string(get(&values, "compiler-abi")?, "compiler-abi")?,
+        expect_string(get(&values, "language-version")?, "language-version")?,
         expect_string(get(&values, "language-abi")?, "language-abi")?,
+        expect_u32(
+            get(&values, "standard-library-abi")?,
+            "standard-library-abi",
+        )?,
+        expect_u32(
+            get(&values, "linkable-helper-format")?,
+            "linkable-helper-format",
+        )?,
+        expect_string(get(&values, "python-target")?, "python-target")?
+            .parse()
+            .map_err(|error: crate::project::ConfigError| {
+                InterfaceError::new("OSR-I0030", error.to_string())
+            })?,
     ))
 }
 

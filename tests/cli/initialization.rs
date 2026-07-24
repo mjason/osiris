@@ -57,7 +57,7 @@ exit 9
     assert!(osiris.contains("\"displayLocale\": \"zh-CN\""));
     assert_eq!(
         fs::read_to_string(project.join(".uv-add-invocation")).unwrap(),
-        format!("add --dev osiris-lang>={}\n", env!("CARGO_PKG_VERSION"))
+        "add --dev osiris-lang>=0.3,<0.4\n"
     );
     let starter = project.join("src/main.osr");
     assert!(starter.is_file());
@@ -116,10 +116,7 @@ exit 9
     );
     let pyproject = fs::read_to_string(project.join("pyproject.toml")).unwrap();
     assert!(pyproject.contains("[build-system]"));
-    assert!(pyproject.contains(&format!(
-        "requires = [\"osiris-lang=={}\"]",
-        env!("CARGO_PKG_VERSION")
-    )));
+    assert!(pyproject.contains("requires = [\"osiris-lang>=0.3,<0.4\"]"));
     assert!(pyproject.contains("build-backend = \"osiris_build\""));
     let starter = project.join("src/new_ext/core.osr");
     let source = fs::read_to_string(&starter).unwrap();
@@ -166,21 +163,18 @@ fn init_existing_preserves_uv_project_and_is_idempotent() {
     let pyproject = fixture.directory.join("pyproject.toml");
     fs::write(
         &pyproject,
-        format!(
-            r#"# This comment belongs to the application.
+        r#"# This comment belongs to the application.
 [project]
 name = "existing-app"
 version = "2.3.4"
 dependencies = ["requests>=2"]
 
 [dependency-groups]
-dev = ["osiris-lang>={}", "pytest>=8"]
+dev = ["osiris-lang>=0.3,<0.4", "pytest>=8"]
 
 [tool.example]
 keep = "unchanged"
 "#,
-            env!("CARGO_PKG_VERSION")
-        ),
     )
     .unwrap();
 
@@ -206,7 +200,7 @@ fn init_existing_does_not_replace_an_existing_starter() {
     let fixture = SourceFixture::new("none\n");
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        format!("[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n", env!("CARGO_PKG_VERSION")),
+        "[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>=0.3,<0.4\"]\n",
     )
     .unwrap();
     let starter = fixture.write("src/main.osr", "(module main)\n(def answer 42)\n");
@@ -225,7 +219,7 @@ fn init_existing_uses_the_configured_source_root() {
     let fixture = SourceFixture::new("none\n");
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        format!("[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>={}\"]\n", env!("CARGO_PKG_VERSION")),
+        "[project]\nname = \"demo\"\nversion = \"1\"\n\n[dependency-groups]\ndev = [\"osiris-lang>=0.3,<0.4\"]\n",
     )
     .unwrap();
     fs::write(

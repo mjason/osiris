@@ -24,7 +24,9 @@ fn temporary_directory() -> std::path::PathBuf {
 fn sequence_and_concurrency_forms_compile_to_readable_python() {
     let source = r#"
 (module clojure_control_compile)
-(defn sequence-values [[values (Vector Int)]] -> Any
+(import osiris.core :refer :all)
+(import osiris.concurrent :refer :all)
+(defn ^Any sequence-values [^{:type (Vector Int)} values]
   (let [lazy-values (take 3 (iterate (fn [value] (+ value 1)) (nth values 0 0)))]
     [(first (cons 99 values))
      (rest values)
@@ -51,20 +53,20 @@ fn sequence_and_concurrency_forms_compile_to_readable_python() {
      (every? (fn [value] (> value 0)) values)
      (not-every? (fn [value] (> value 0)) values)
      (not-any? (fn [value] (= value 9)) values)]))
-(defn side-effects [[values (Vector Int)]] -> None
+(defn ^None side-effects [^{:type (Vector Int)} values]
   (run! (fn [value] value) values)
   (dorun (doall values)))
-(defn bounded-realize [[values (Vector Int)]] -> (Vector Int)
+(defn ^{:type (Vector Int)} bounded-realize [^{:type (Vector Int)} values]
   (doall 2 values))
-(defn bounded-run [[values (Vector Int)]] -> None
+(defn ^None bounded-run [^{:type (Vector Int)} values]
   (dorun 2 values))
-(defn async-value [] -> Any
+(defn ^Any async-value []
   (let [task (future (+ 40 2))]
     [(future-done? task) (deref task 1000 "timeout")]))
-(defn promise-value [] -> Any
+(defn ^Any promise-value []
   (let [value (promise)]
     [(deliver value 7) (deref value 0 "timeout") (realized? value)]))
-(defn lock-value [] -> Int
+(defn ^Int lock-value []
   (locking (lock) (+ 20 22)))
 "#;
     let result = compile(source, &options());
@@ -73,13 +75,29 @@ fn sequence_and_concurrency_forms_compile_to_readable_python() {
         "{:#?}",
         result.analysis.diagnostics
     );
-    let generated = result.python.expect("generated Python").source;
+    let generated = result.python.expect("generated Python");
     assert!(
-        generated.contains("from osiris.prelude import"),
-        "{generated}"
+        !generated.source.contains("osiris.prelude"),
+        "{}",
+        generated.source
     );
     let root = temporary_directory();
-    fs::write(root.join("clojure_control_compile.py"), &generated).expect("write generated module");
+    fs::write(root.join("clojure_control_compile.py"), &generated.source)
+        .expect("write generated module");
+    let support = generated
+        .runtime_support
+        .expect("runtime support should be linked");
+    for (path, source) in osiris::backend::runtime_distribution_files(
+        &support,
+        osiris::project::PythonVersion::default(),
+    )
+    .expect("link runtime distribution")
+    {
+        let destination = root.join(path);
+        fs::create_dir_all(destination.parent().expect("support file parent"))
+            .expect("create support directory");
+        fs::write(destination, source).expect("write support file");
+    }
     let smoke = root.join("smoke.py");
     fs::write(
         &smoke,
@@ -125,13 +143,9 @@ print("ok")
 "#,
     )
     .expect("write smoke script");
-    let source_root = env!("CARGO_MANIFEST_DIR");
     let output = Command::new("python3")
         .arg(&smoke)
-        .env(
-            "PYTHONPATH",
-            format!("{}:{source_root}/src", root.display()),
-        )
+        .env("PYTHONPATH", &root)
         .output()
         .expect("run generated Python");
     assert!(
@@ -139,7 +153,7 @@ print("ok")
         "stdout:\n{}\nstderr:\n{}\npython:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
-        generated
+        generated.source
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     fs::remove_dir_all(root).expect("remove temporary directory");

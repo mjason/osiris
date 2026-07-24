@@ -17,7 +17,7 @@ impl<'a> Lowerer<'a> {
             }
             self.error(
                 "OSR-T0020",
-                "osiris.prelude/mapv expects a function and at least one collection",
+                "osiris.kernel/mapv expects a function and at least one collection",
                 span,
             );
             return Expr::error(span);
@@ -137,7 +137,7 @@ impl<'a> Lowerer<'a> {
             self.error(
                 "OSR-T0020",
                 format!(
-                    "osiris.prelude/{} expects a function and at least one collection",
+                    "osiris.kernel/{} expects a function and at least one collection",
                     operation.runtime_name()
                 ),
                 span,
@@ -157,7 +157,7 @@ impl<'a> Lowerer<'a> {
             self.error(
                 "OSR-T0020",
                 format!(
-                    "osiris.prelude/{} accepts exactly one collection",
+                    "osiris.kernel/{} accepts exactly one collection",
                     operation.runtime_name()
                 ),
                 span,
@@ -262,7 +262,7 @@ impl<'a> Lowerer<'a> {
             alignment: Alignment::Positional,
             preserves_length: (operation == CollectionOperation::Map && collections.len() == 1)
                 .then_some(true),
-            materializes: Some(true),
+            materializes: Some(operation.result_is_vector()),
             reshapes: Some(matches!(
                 operation,
                 CollectionOperation::Mapcat | CollectionOperation::Mapcatv

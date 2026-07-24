@@ -27,7 +27,7 @@ fn temporary_directory() -> std::path::PathBuf {
 fn body_only_try_lowers_without_an_invalid_python_try_statement() {
     let source = r#"
 (module try_compile)
-(defn value [] -> Int
+(defn ^Int value []
   (try (+ 40 2)))
 "#;
     let result = compile(source, &options());
@@ -51,7 +51,7 @@ fn body_only_try_lowers_without_an_invalid_python_try_statement() {
 fn malformed_catch_reports_a_diagnostic_without_panicking() {
     let source = r#"
 (module try_compile)
-(defn value [] -> Int
+(defn ^Int value []
   (try 1 (catch)))
 "#;
     let result = compile(source, &options());
@@ -70,7 +70,7 @@ fn malformed_catch_reports_a_diagnostic_without_panicking() {
 fn raise_rejects_a_statically_known_non_exception_value() {
     let source = r#"
 (module try_compile)
-(defn value [] -> None
+(defn ^None value []
   (raise 1))
 "#;
     let result = compile(source, &options());
@@ -90,7 +90,7 @@ fn raise_rejects_a_statically_known_non_exception_value() {
 fn catch_after_finally_is_rejected() {
     let source = r#"
 (module try_compile)
-(defn value [] -> Int
+(defn ^Int value []
   (try 1
     (finally 2)
     (catch Exception error 3)))
@@ -112,7 +112,7 @@ fn catch_after_finally_is_rejected() {
 fn empty_finally_reports_a_shape_diagnostic() {
     let source = r#"
 (module try_compile)
-(defn value [] -> Int
+(defn ^Int value []
   (try 1 (finally)))
 "#;
     let result = compile(source, &options());
@@ -131,12 +131,12 @@ fn builtin_exception_types_compile_and_run_through_catch_finally() {
     let source = r#"
 (module try_compile)
 (py/import builtins :as py)
-(defn recover [] -> Int
+(defn ^Int recover []
   (try
     (raise (py.ValueError "boom"))
     (catch Exception error 7)
     (finally (py.len [1]))))
-(defn recover-qualified [] -> Int
+(defn ^Int recover-qualified []
   (try
     (raise (py.TypeError "boom"))
     (catch builtins/TypeError error 9)))
