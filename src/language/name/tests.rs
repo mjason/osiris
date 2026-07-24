@@ -6,7 +6,7 @@ use crate::{reader::read, source::Span};
 
 #[test]
 fn maps_lisp_and_unicode_names_deterministically() {
-    assert_eq!(python_identifier("rolling-mean"), "rolling_mean");
+    assert_eq!(python_identifier("format-message"), "format_message");
     assert_eq!(python_identifier("empty?"), "empty_p");
     assert_eq!(python_identifier("归一化数据"), "归一化数据");
     assert_eq!(python_identifier("class"), "class_");
@@ -18,16 +18,16 @@ fn aliases_share_the_target_binding() {
     let target = allocator
         .declare(
             "example",
-            "rolling-mean",
+            "format-message",
             BindingKind::Function,
             Span::default(),
         )
         .expect("canonical declaration should succeed");
     allocator
-        .alias("时序均值", &target, Span::default())
+        .alias("格式化文本", &target, Span::default())
         .expect("alias should succeed");
 
-    assert_eq!(allocator.resolve("时序均值"), Some(&target.id));
+    assert_eq!(allocator.resolve("格式化文本"), Some(&target.id));
 }
 
 #[test]

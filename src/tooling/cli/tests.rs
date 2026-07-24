@@ -39,13 +39,16 @@ fn lsc_queries_embedded_standard_apis_without_a_workspace() {
 
     assert_eq!(outcome.exit_code, 0, "{}", outcome.stderr);
     let result: serde_json::Value = serde_json::from_str(&outcome.stdout).unwrap();
-    let api = &result["result"][0];
+    let api = &result["result"];
     assert_eq!(api["bindingId"], "osiris.collection::function::frequencies");
-    assert_eq!(api["requestedLocale"], "zh-CN");
-    assert_eq!(api["resolvedLocale"], "zh-CN");
-    assert_eq!(api["evaluation"], "consumer");
+    assert_eq!(
+        api["documentation"]["selection"]["requestedLocale"],
+        "zh-CN"
+    );
+    assert_eq!(api["documentation"]["selection"]["resolvedLocale"], "zh-CN");
+    assert_eq!(api["semantic"]["evaluation"], "consumer");
     assert!(
-        api["selectedDocumentation"]
+        api["documentation"]["selection"]["text"]
             .as_str()
             .unwrap()
             .contains("逻辑相等")
@@ -84,8 +87,14 @@ fn lsc_locales_are_strict_bcp47_and_use_lookup_fallback() {
     ]));
     assert_eq!(fallback.exit_code, 0, "{}", fallback.stderr);
     let value: serde_json::Value = serde_json::from_str(&fallback.stdout).unwrap();
-    assert_eq!(value["result"][0]["requestedLocale"], "zh-CN-x-agent");
-    assert_eq!(value["result"][0]["resolvedLocale"], "zh-CN");
+    assert_eq!(
+        value["result"]["documentation"]["selection"]["requestedLocale"],
+        "zh-CN-x-agent"
+    );
+    assert_eq!(
+        value["result"]["documentation"]["selection"]["resolvedLocale"],
+        "zh-CN"
+    );
 }
 
 #[test]
@@ -99,10 +108,10 @@ fn lsc_uses_authored_default_and_reports_the_embedded_source_location() {
     ]));
     assert_eq!(hover.exit_code, 0, "{}", hover.stderr);
     let hover: serde_json::Value = serde_json::from_str(&hover.stdout).unwrap();
-    assert!(hover["result"][0]["requestedLocale"].is_null());
-    assert!(hover["result"][0]["resolvedLocale"].is_null());
+    assert!(hover["result"]["documentation"]["selection"]["requestedLocale"].is_null());
+    assert!(hover["result"]["documentation"]["selection"]["resolvedLocale"].is_null());
     assert!(
-        hover["result"][0]["selectedDocumentation"]
+        hover["result"]["documentation"]["selection"]["text"]
             .as_str()
             .unwrap()
             .starts_with("Eagerly submit mapped tasks")

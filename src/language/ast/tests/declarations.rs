@@ -164,9 +164,9 @@ fn extern_contains_nested_declarations() {
 fn extern_contract_is_lowered_as_closed_static_data() {
     let lowered = lower_document(&read(
         r#"(extern python "host.data"
-                 (defn ^Series moving-average [^Series values ^Int n]
+                 (defn ^Series transform-values [^Series values ^Int n]
                    :contract
-                   {:id "host.data/moving-average-v1"
+                   {:id "host.data/transform-values-v1"
                     :effects [:io :host/cache]
                     :temporal {:past "2*(n-1)"
                                :future 0
@@ -192,7 +192,7 @@ fn extern_contract_is_lowered_as_closed_static_data() {
         panic!("expected extern function");
     };
     let contract = function.contract.as_ref().expect("contract");
-    assert_eq!(contract.id, "host.data/moving-average-v1");
+    assert_eq!(contract.id, "host.data/transform-values-v1");
     assert!(contract.summaries.effects.effects.contains(&Effect::Io));
     assert!(
         contract

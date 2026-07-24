@@ -217,9 +217,9 @@ fn struct_check_keeps_typed_message_and_throw_summary() {
 #[test]
 fn parameter_aliases_are_canonicalized_and_type_checked() {
     let result = lower(
-        "(defn ^Int f [^{:type Int :osiris/names {\"zh-CN\" {:preferred 周期 :aliases [时长]}}}
-                       window] window)
-             (f :时长 2)",
+        "(defn ^Int f [^{:type Int :osiris/names {\"zh-CN\" {:preferred 次数 :aliases [数量]}}}
+                       count] count)
+             (f :数量 2)",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let ItemKind::Expr(expression) = &result.module.items[1].kind else {
@@ -230,8 +230,13 @@ fn parameter_aliases_are_canonicalized_and_type_checked() {
     };
     assert!(matches!(
         &arguments[0],
-        super::CallArgument::Keyword { name, .. } if name == "window"
+        super::CallArgument::Keyword { name, .. } if name == "count"
     ));
+    assert_eq!(result.migration_advisories.len(), 1);
+    let advisory = &result.migration_advisories[0];
+    assert_eq!(advisory.alias, "数量");
+    assert_eq!(advisory.canonical, "count");
+    assert_eq!(advisory.replacement(Some("zh-CN")), "次数");
 }
 
 #[test]

@@ -93,6 +93,37 @@ impl ContractEvidence {
 pub struct LowerResult {
     pub module: Module,
     pub diagnostics: Vec<Diagnostic>,
+    pub migration_advisories: Vec<MigrationAdvisory>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct MigrationAdvisory {
+    pub span: Span,
+    pub alias: String,
+    pub canonical: String,
+    pub preferred_names: BTreeMap<String, String>,
+}
+
+impl MigrationAdvisory {
+    #[must_use]
+    pub fn replacement(&self, locale: Option<&str>) -> &str {
+        let Some(locale) = locale else {
+            return &self.canonical;
+        };
+        let Ok(tag) = oxilangtag::LanguageTag::parse_and_normalize(locale) else {
+            return &self.canonical;
+        };
+        let mut candidate = tag.to_string();
+        loop {
+            if let Some(value) = self.preferred_names.get(&candidate) {
+                return value;
+            }
+            let Some((parent, _)) = candidate.rsplit_once('-') else {
+                return &self.canonical;
+            };
+            candidate.truncate(parent.len());
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -134,6 +165,15 @@ pub struct Alias {
     pub target: BindingId,
     pub span: Span,
     pub public: bool,
+    pub role: AliasRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AliasRole {
+    Preferred,
+    Migration,
+    LocalRename,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -164,6 +164,51 @@ fn imported_function_signature_and_keyword_alias_are_typed() {
 }
 
 #[test]
+fn imported_alias_roles_survive_the_interface_boundary() {
+    let preferred = lower_with_dependency(
+        "(module app)\n(import dep.core :refer [相加])\n(def value (相加 1 2))",
+    );
+    assert!(preferred.diagnostics.is_empty(), "{:?}", preferred.diagnostics);
+    assert!(preferred.module.aliases.iter().any(|alias| {
+        alias.canonical == "相加" && alias.role == AliasRole::Preferred
+    }));
+    assert!(preferred.migration_advisories.is_empty());
+
+    let migration = lower_with_dependency(
+        "(module app)\n(import dep.core :refer [求和])\n(def value (求和 1 2))",
+    );
+    assert!(migration.diagnostics.is_empty(), "{:?}", migration.diagnostics);
+    assert!(migration.module.aliases.iter().any(|alias| {
+        alias.canonical == "求和" && alias.role == AliasRole::Migration
+    }));
+    assert_eq!(migration.migration_advisories.len(), 1);
+    assert_eq!(
+        migration.migration_advisories[0].replacement(Some("zh-CN")),
+        "相加"
+    );
+}
+
+#[test]
+fn redundant_explicit_alias_does_not_downgrade_a_preferred_name() {
+    let result = lower(
+        r#"^{:osiris/names {"zh-CN" {:preferred 格式化文本}}}
+           (defn format-message [value] value)
+           (alias 格式化文本 format-message)
+           (def value (格式化文本 "hello"))"#,
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let aliases = result
+        .module
+        .aliases
+        .iter()
+        .filter(|alias| alias.canonical == "格式化文本")
+        .collect::<Vec<_>>();
+    assert_eq!(aliases.len(), 1);
+    assert_eq!(aliases[0].role, AliasRole::Preferred);
+    assert!(result.migration_advisories.is_empty());
+}
+
+#[test]
 fn ordinary_import_refer_all_applies_exclusion_and_rename() {
     let result = lower_with_dependency(
         "(module app)\n\
@@ -173,7 +218,9 @@ fn ordinary_import_refer_all_applies_exclusion_and_rename() {
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     assert!(result.module.aliases.iter().any(|alias| {
-        alias.canonical == "plus" && alias.target.as_str() == "dep.core::function::add"
+        alias.canonical == "plus"
+            && alias.target.as_str() == "dep.core::function::add"
+            && alias.role == AliasRole::LocalRename
     }));
     assert!(result.module.items.iter().filter_map(|item| match &item.kind {
         ItemKind::Function(function) => Some(&function.body),

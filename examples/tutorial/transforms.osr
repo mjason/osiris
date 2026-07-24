@@ -9,6 +9,7 @@
   [increment-all sum-values positive-pair-sums])
 
 ;; 返回类型写在函数名的 metadata 上，参数类型写在参数名的 metadata 上。
+;; :preferred 是推荐的本地化拼写；:aliases 中的拼写仅用于旧源码迁移。
 ^{:doc
   {:default "Increment every integer." "zh-CN" "将每个整数加一。"}
   :examples [["(increment-all [3 5 8])" ";; => [4 6 9]"]]

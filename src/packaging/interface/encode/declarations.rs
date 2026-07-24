@@ -31,6 +31,13 @@ pub(super) fn alias_form(alias: &PublicAlias) -> Form {
         ("spelling", string(&alias.spelling)),
         ("canonical", string(&alias.canonical)),
         ("target", string(&alias.target)),
+        (
+            "role",
+            keyword(match alias.role {
+                PublicAliasRole::Preferred => "preferred",
+                PublicAliasRole::Migration => "migration",
+            }),
+        ),
         ("visibility", keyword("public")),
     ])
 }

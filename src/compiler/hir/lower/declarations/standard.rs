@@ -112,12 +112,14 @@ impl<'a> Lowerer<'a> {
             }
             self.globals.insert(local.clone(), id.clone());
             if local != canonical {
+                let role = imported_alias_role(&interface, &public.metadata, &canonical, &local);
                 self.aliases.push(Alias {
                     spelling: local.clone(),
                     canonical: local,
                     target: id,
                     span: import.span,
                     public: false,
+                    role,
                 });
             }
         }

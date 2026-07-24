@@ -104,6 +104,9 @@ fn initialize_result() -> JsonValue {
             "renameProvider": {
                 "prepareProvider": true,
             },
+            "codeActionProvider": {
+                "codeActionKinds": ["quickfix"],
+            },
             "documentFormattingProvider": true,
             "diagnosticProvider": {
                 "interFileDependencies": true,

@@ -41,12 +41,26 @@ pub(super) fn decode_runtime(form: &Form) -> InterfaceResult<RuntimeLocator> {
 }
 
 pub(super) fn decode_alias(form: &Form) -> InterfaceResult<PublicAlias> {
-    let values = strict_map(form, &["spelling", "canonical", "target", "visibility"])?;
+    let values = strict_map(
+        form,
+        &["spelling", "canonical", "target", "role", "visibility"],
+    )?;
     require_public(get(&values, "visibility")?)?;
+    let role = match expect_keyword(get(&values, "role")?, "alias role")? {
+        "preferred" => PublicAliasRole::Preferred,
+        "migration" => PublicAliasRole::Migration,
+        role => {
+            return Err(InterfaceError::new(
+                "OSR-I0071",
+                format!("unknown alias role `{role}`"),
+            ));
+        }
+    };
     Ok(PublicAlias {
         spelling: expect_string(get(&values, "spelling")?, "alias spelling")?,
         canonical: expect_string(get(&values, "canonical")?, "alias canonical")?,
         target: expect_string(get(&values, "target")?, "alias target")?,
+        role,
     })
 }
 

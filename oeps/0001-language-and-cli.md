@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-24
-revision: 9
+revision: 12
 requires: [0]
 replaces: []
 superseded-by: null
@@ -555,18 +555,25 @@ binding identity, overload selection, or semantics.
 strings to maps of this shape:
 
 ```clojure
-{"zh-CN" {:preferred 时序均值
-          :aliases [滚动均值]}
- "ja"    {:preferred 移動平均
-          :aliases [ローリング平均]}
- "fr"    {:preferred moyenne-mobile
-          :aliases [moyenne-glissante]}}
+{"zh-CN" {:preferred 格式化文本
+          :aliases [渲染文本]}
+ "ja"    {:preferred メッセージ整形
+          :aliases [テキスト整形]}
+ "fr"    {:preferred formater-message
+          :aliases [rendre-message]}}
 ```
 
 `:preferred` MUST be one Symbol. `:aliases`, when present, MUST be a Vector of
 Symbols. Locale keys MUST be unique after BCP 47 canonicalization. Names MUST
 be unique after NFC normalization within the declaration's complete name
 table. Unknown keys in a locale entry MUST be diagnosed.
+
+**OEP-0001-R060A:** `:preferred` MUST identify the currently recommended
+localized source spelling. `:aliases` MUST be reserved for older spellings
+retained for source compatibility and migration; it MUST NOT be interpreted as
+an unordered set of equally recommended translations. Interfaces and semantic
+indexes MUST preserve whether a spelling is canonical, preferred, or a
+migration alias rather than exposing only a flattened spelling list.
 
 **OEP-0001-R061:** The canonical declaration spelling is the default binding
 label and identity. A localized preferred name and every localized alias MUST
@@ -581,6 +588,13 @@ MUST be scoped to their owning signature or structure and MUST lower to the
 canonical Python keyword or attribute. They MUST NOT define a global keyword
 translation table.
 
+**OEP-0001-R062A:** A reference authored with a spelling from `:aliases` MUST
+continue to resolve to the canonical identity, but compiler CLI, LSC, and LSP
+diagnostics MUST report a non-failing migration advisory. The replacement MUST
+be the requested display locale's `:preferred` spelling when available and the
+canonical spelling otherwise. References authored with `:preferred` MUST NOT
+receive this advisory. LSP SHOULD provide a code action for the replacement.
+
 **OEP-0001-R063:** `.osri`, semantic queries, LSP, and local CLI queries MUST
 preserve the default documentation, every tagged translation, the canonical
 name, localized preferred names, aliases, and provenance. JSON documentation
@@ -589,18 +603,18 @@ entries MUST expose at least this logical shape:
 ```json
 {
   "documentation": {
-    "default": "Return the mean over the most recent window.",
-    "translations": {"zh-CN": "返回最近窗口的均值。"},
+    "default": "Format a message for display.",
+    "translations": {"zh-CN": "格式化用于显示的文本。"},
     "selection": {
       "requestedLocale": "zh-CN",
       "resolvedLocale": "zh-CN",
-      "text": "返回最近窗口的均值。"
+      "text": "格式化用于显示的文本。"
     }
   },
   "names": {
-    "canonical": "rolling-mean",
+    "canonical": "format-message",
     "localized": {
-      "zh-CN": {"preferred": "时序均值", "aliases": ["滚动均值"]}
+      "zh-CN": {"preferred": "格式化文本", "aliases": ["渲染文本"]}
     }
   }
 }
@@ -611,20 +625,22 @@ MUST follow this form; type annotations remain Rich Metadata on names rather
 than a separate signature syntax:
 
 ```clojure
-(extern python "data_runtime.series"
-  ^{:doc {:default "Return the mean over the most recent window."
-          "zh-CN" "返回最近窗口的均值。"}
+(extern python "text_runtime.format"
+  ^{:doc {:default "Format a message for display."
+          "zh-CN" "格式化用于显示的文本。"}
     :osiris/names
-    {"zh-CN" {:preferred 时序均值
-               :aliases [滚动均值]}}}
-  (defn ^Series rolling-mean
-    [^Series values
-     ^{:type Int
-       :osiris/names {"zh-CN" {:preferred 周期}}}
-     window
-     [^{:type Int
-        :osiris/names {"zh-CN" {:preferred 最小样本}}}
-      min-samples = window]]))
+    {"zh-CN" {:preferred 格式化文本
+               :aliases [渲染文本]}}}
+  (defn ^Str format-message
+    [^Str template
+     ^{:type Str
+       :osiris/names {"zh-CN" {:preferred 名称
+                                :aliases [显示名称]}}}
+     name
+     [^{:type Bool
+        :osiris/names {"zh-CN" {:preferred 转为大写
+                                 :aliases [大写 使用大写]}}}
+      uppercase = false]]))
 ```
 
 OEP translations remain governed by OEP-0000 and are not stored in API Rich
@@ -1013,6 +1029,19 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 12, 2026-07-24: Reserved `:aliases` for source migration,
+  required spelling roles to survive interfaces and semantic indexes, and
+  specified non-failing replacement advisories across compiler CLI, LSC, and
+  LSP.
+- Revision 11, 2026-07-24: Defined localized parameter keyword spellings,
+  signature-local resolution, canonical Python lowering, and duplicate
+  argument behavior.
+- Revision 10, 2026-07-24: Replaced domain-specific localized-name examples
+  with neutral text-formatting examples.
+- Revision 9, 2026-07-24: Defined the compiler kernel, source-distributed
+  self-hosted standard library, and linked `__osiris_runtime__` boundary.
+- Revision 8, 2026-07-24: Defined canonical formatting, LSP/LSC parity, and
+  source navigation requirements for packaged standard-library sources.
 - Revision 7, 2026-07-23: Corrected conformance wording so locale-free LSC
   queries select the authored `:default` slot, which is recommended to be
   English but may be authored in any language.

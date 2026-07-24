@@ -353,6 +353,71 @@ pub(super) fn find_call_form(forms: &[Form], span: Span) -> Option<&Form> {
         .min_by_key(|form| form.span.end.saturating_sub(form.span.start))
 }
 
+pub(super) fn find_source_call_at(forms: &[Form], offset: usize) -> Option<&Form> {
+    forms
+        .iter()
+        .filter_map(|form| find_source_call_in(form, offset))
+        .min_by_key(|form| form.span.end.saturating_sub(form.span.start))
+}
+
+fn find_source_call_in(form: &Form, offset: usize) -> Option<&Form> {
+    if form.span.start > offset || form.span.end < offset {
+        return None;
+    }
+    let children = match &form.kind {
+        FormKind::List(items)
+        | FormKind::Vector(items)
+        | FormKind::Map(items)
+        | FormKind::Set(items) => items.as_slice(),
+        FormKind::ReaderMacro { form, .. } => std::slice::from_ref(form.as_ref()),
+        _ => &[],
+    };
+    children
+        .iter()
+        .filter_map(|child| find_source_call_in(child, offset))
+        .min_by_key(|child| child.span.end.saturating_sub(child.span.start))
+        .or_else(|| matches!(form.kind, FormKind::List(_)).then_some(form))
+}
+
+pub(super) fn callable_signature_help(
+    signature: &CallableSignature,
+    items: &[Form],
+    offset: usize,
+    locale: &str,
+) -> SignatureHelp {
+    let invoked_name = items
+        .first()
+        .and_then(form_name)
+        .unwrap_or(&signature.canonical);
+    let arguments = source_arguments(items);
+    let source_argument = active_source_argument(items, &arguments, offset);
+    let active_parameter = active_parameter(&signature.parameters, &arguments, source_argument)
+        .map(|index| index as u32);
+    let parameter_labels = signature
+        .parameters
+        .iter()
+        .map(|parameter| signature_parameter_label(parameter, Some(locale)))
+        .collect::<Vec<_>>();
+    let label = format!(
+        "{}({}) -> {}",
+        invoked_name,
+        parameter_labels.join(", "),
+        signature.return_type
+    );
+    SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label,
+            parameters: parameter_labels
+                .into_iter()
+                .map(|label| ParameterInformation { label })
+                .collect(),
+            active_parameter,
+        }],
+        active_signature: 0,
+        active_parameter,
+    }
+}
+
 pub(super) fn find_call_form_in(form: &Form, span: Span) -> Option<&Form> {
     if form.span.start > span.start || form.span.end < span.end {
         return None;

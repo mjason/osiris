@@ -30,6 +30,10 @@ impl<'a> Lowerer<'a> {
                     required: parameter.default.is_none() && !parameter.variadic,
                     variadic: parameter.variadic,
                     span: binding.name.span,
+                    migration_aliases: metadata_migration_aliases(&binding.metadata)
+                        .into_keys()
+                        .collect(),
+                    preferred_names: metadata_preferred_names(&binding.metadata),
                 })
             })
             .collect::<Option<Vec<_>>>()?;
@@ -138,6 +142,18 @@ impl<'a> Lowerer<'a> {
                         );
                         continue;
                     };
+                    if parameter.migration_aliases.contains(source_name) {
+                        let alias_span = Span::new(
+                            source_keyword.span.start,
+                            source_keyword.span.start + source_keyword.key.spelling.len(),
+                        );
+                        self.migration_advisories.push(MigrationAdvisory {
+                            span: alias_span,
+                            alias: source_name.to_owned(),
+                            canonical: parameter.canonical.clone(),
+                            preferred_names: parameter.preferred_names.clone(),
+                        });
+                    }
                     if parameter.variadic {
                         self.error(
                             "OSR-T0008",

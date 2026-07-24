@@ -70,6 +70,7 @@ impl SemanticDocument {
                         localized,
                     },
                     documentation: documentation(&binding.metadata),
+                    examples: examples(&binding.metadata),
                     span: binding.name.span,
                     definition,
                     references: occurrences,

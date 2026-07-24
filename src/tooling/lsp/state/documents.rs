@@ -236,7 +236,7 @@ impl LspState {
             .map(|buffer| CompileInput::new(&buffer.source, &buffer.options))
             .collect::<Vec<_>>();
         let external_interfaces = load_project_interfaces(&project, &self.site_roots)?;
-        let workspace = compiler::compile_workspace(&inputs, &external_interfaces);
+        let workspace = compiler::analyze_workspace(&inputs, &external_interfaces);
         let recovering = workspace.has_errors();
         let (analyses, workspace_diagnostics) = if recovering {
             (

@@ -197,8 +197,17 @@ pub struct SemanticAlias {
     pub canonical: String,
     pub public: bool,
     pub preferred: bool,
+    pub role: SemanticAliasRole,
     pub span: Span,
     pub labels: LocalizedLabel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SemanticAliasRole {
+    Preferred,
+    Migration,
+    LocalRename,
 }
 
 /// One resolved binding, including locals and parameters.
@@ -219,6 +228,7 @@ pub struct SemanticSymbol {
     pub labels: LocalizedLabel,
     pub names: SemanticNames,
     pub documentation: SemanticDocumentation,
+    pub examples: Vec<Vec<String>>,
     pub span: Span,
     pub definition: Span,
     pub references: Vec<Span>,

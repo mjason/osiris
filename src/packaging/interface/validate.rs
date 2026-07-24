@@ -1,5 +1,6 @@
 use super::*;
 
+mod aliases;
 mod metadata;
 mod model;
 mod nominal;

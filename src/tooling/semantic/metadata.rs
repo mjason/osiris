@@ -27,7 +27,12 @@ pub(super) fn aliases_by_target(module: &hir::Module) -> BTreeMap<String, Vec<Se
                 spelling: alias.spelling.clone(),
                 canonical: alias.canonical.clone(),
                 public: alias.public,
-                preferred: false,
+                preferred: alias.role == hir::AliasRole::Preferred,
+                role: match alias.role {
+                    hir::AliasRole::Preferred => SemanticAliasRole::Preferred,
+                    hir::AliasRole::Migration => SemanticAliasRole::Migration,
+                    hir::AliasRole::LocalRename => SemanticAliasRole::LocalRename,
+                },
                 span: alias.span,
                 labels: labels_for_name(target_canonical, &BTreeMap::new()),
             });
@@ -40,9 +45,6 @@ pub(super) fn aliases_by_target(module: &hir::Module) -> BTreeMap<String, Vec<Se
                 &right.spelling,
             ))
         });
-        if let Some(first) = values.first_mut() {
-            first.preferred = true;
-        }
     }
     aliases
 }
@@ -110,6 +112,38 @@ pub fn localized_names(metadata: &[MetadataEntry]) -> BTreeMap<String, Localized
         }
     }
     result
+}
+
+pub(super) fn examples(metadata: &[MetadataEntry]) -> Vec<Vec<String>> {
+    let Some(value) = metadata.iter().find_map(|entry| {
+        (form_name(&entry.key)
+            .as_deref()
+            .map(|value| value.trim_start_matches(':'))
+            == Some("examples"))
+        .then_some(&entry.value)
+    }) else {
+        return Vec::new();
+    };
+    let FormKind::Vector(examples) = &value.kind else {
+        return Vec::new();
+    };
+    examples
+        .iter()
+        .filter_map(|example| {
+            let FormKind::Vector(lines) = &example.kind else {
+                return None;
+            };
+            Some(
+                lines
+                    .iter()
+                    .filter_map(|line| match &line.kind {
+                        FormKind::String(line) => Some(line.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
 pub fn documentation(metadata: &[MetadataEntry]) -> SemanticDocumentation {

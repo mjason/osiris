@@ -1,12 +1,27 @@
 use std::collections::BTreeMap;
 
 use super::{
-    CompileInput, CompileOptions, analyze, analyze_workspace_recovering, compile, compile_workspace,
+    CompileInput, CompileOptions, analyze, analyze_workspace, analyze_workspace_recovering,
+    compile, compile_workspace,
 };
 use crate::{hir, interface, project::PythonVersion, types::Type};
 
 fn options() -> CompileOptions {
     CompileOptions::new("example", PythonVersion::MINIMUM)
+}
+
+#[test]
+fn workspace_analysis_skips_every_emitted_artifact() {
+    let options = options();
+    let input = CompileInput::new("(def value 1)", &options);
+    let workspace = analyze_workspace(&[input], &BTreeMap::new());
+
+    assert!(!workspace.has_errors(), "{:?}", workspace.diagnostics);
+    let unit = workspace.units.first().expect("analyzed workspace unit");
+    assert!(unit.python.is_none());
+    assert!(unit.interface.is_none());
+    assert!(unit.source_map.is_none());
+    assert!(unit.records.is_none());
 }
 
 #[test]

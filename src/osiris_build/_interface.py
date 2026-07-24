@@ -19,7 +19,7 @@ from ._sidecar import _validate_sidecar, _validate_sidecar_against_interfaces
 
 
 _INTERFACE_FORMAT = "osiris-interface"
-_INTERFACE_FORMAT_VERSION = 3
+_INTERFACE_FORMAT_VERSION = 4
 _INTERFACE_COMPILER_ABI = "osiris-compiler-v0"
 _LANGUAGE_VERSION = "0.1"
 _INTERFACE_LANGUAGE_ABI = "osiris-language-v1"

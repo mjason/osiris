@@ -60,6 +60,10 @@ impl<'a> Lowerer<'a> {
                 required: parameter.default.is_none() && !parameter.variadic,
                 variadic: parameter.variadic,
                 span: parameter.span,
+                migration_aliases: metadata_migration_aliases(&parameter.metadata)
+                    .into_keys()
+                    .collect(),
+                preferred_names: metadata_preferred_names(&parameter.metadata),
             })
             .collect::<Vec<_>>();
         let runtime_name = if external {
@@ -229,6 +233,10 @@ impl<'a> Lowerer<'a> {
                 required: field.default.is_none(),
                 variadic: false,
                 span: field.span,
+                migration_aliases: metadata_migration_aliases(&field.metadata)
+                    .into_keys()
+                    .collect(),
+                preferred_names: metadata_preferred_names(&field.metadata),
             })
             .collect();
         let mut signature = FunctionType::new(parameter_types, nominal.clone());

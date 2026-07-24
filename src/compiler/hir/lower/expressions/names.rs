@@ -3,21 +3,25 @@ use super::super::super::*;
 impl<'a> Lowerer<'a> {
     pub(in crate::hir) fn lower_name(&mut self, name: &Name, span: Span, scope: &Scope) -> Expr {
         if let Some(id) = scope.resolve(&name.canonical) {
+            let id = id.clone();
+            self.record_migration_alias_use(name, &id, span);
             return Expr {
                 span,
-                ty: self.binding_type(id),
+                ty: self.binding_type(&id),
                 summaries: self
                     .local_value_summaries
-                    .get(id)
+                    .get(&id)
                     .cloned()
                     .unwrap_or_else(CallSummaries::pure_scalar),
-                kind: ExprKind::Binding(id.clone()),
+                kind: ExprKind::Binding(id),
             };
         }
         if let Some(id) = self.resolve_global_name(&name.canonical) {
+            self.record_migration_alias_use(name, &id, span);
             return self.lower_global_binding_read(id, span);
         }
         if let Some(id) = self.qualified_imports.get(&name.canonical).cloned() {
+            self.record_migration_alias_use(name, &id, span);
             return self.lower_global_binding_read(id, span);
         }
         if name.canonical == "osiris.kernel/mapv" {
@@ -101,6 +105,37 @@ impl<'a> Lowerer<'a> {
             span,
         );
         Expr::error(span)
+    }
+
+    fn record_migration_alias_use(&mut self, name: &Name, binding: &BindingId, span: Span) {
+        let canonical_spelling = name
+            .canonical
+            .rsplit(['/', '.'])
+            .next()
+            .unwrap_or(&name.canonical);
+        let Some(target) = self.bindings.get(binding) else {
+            return;
+        };
+        let Some(preferred_names) = self
+            .migration_alias_profiles
+            .get(&(binding.clone(), canonical_spelling.to_owned()))
+        else {
+            return;
+        };
+        let source_terminal = name
+            .spelling
+            .rmatch_indices(['/', '.'])
+            .next()
+            .map_or(name.spelling.as_str(), |(index, separator)| {
+                &name.spelling[index + separator.len()..]
+            });
+        let terminal_offset = name.spelling.len().saturating_sub(source_terminal.len());
+        self.migration_advisories.push(MigrationAdvisory {
+            span: Span::new(span.start + terminal_offset, span.end),
+            alias: source_terminal.to_owned(),
+            canonical: target.name.canonical.clone(),
+            preferred_names: preferred_names.clone(),
+        });
     }
 
     pub(in crate::hir) fn lower_global_binding_read(

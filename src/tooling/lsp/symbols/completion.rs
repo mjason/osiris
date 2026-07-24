@@ -12,7 +12,7 @@ pub(super) fn completion_items(
     let primary = CompletionItem {
         label,
         kind: completion_kind(symbol.kind),
-        detail: format!("{} : {}", symbol.canonical, symbol.ty),
+        detail: format!("{:?} · {}", symbol.kind, symbol.canonical),
         insert_text: insert_text.clone(),
         sort_text: format!("{}:{}", if localized { 0 } else { 1 }, symbol.canonical),
         filter_text: format!(
@@ -23,6 +23,13 @@ pub(super) fn completion_items(
                 .aliases
                 .iter()
                 .map(|alias| alias.spelling.as_str())
+                .chain(
+                    symbol
+                        .names
+                        .localized
+                        .values()
+                        .flat_map(|entry| entry.aliases.iter().map(String::as_str)),
+                )
                 .collect::<Vec<_>>()
                 .join(" ")
         ),
@@ -43,11 +50,19 @@ pub(super) fn completion_items(
         items.push(CompletionItem {
             label: alias.spelling.clone(),
             kind: completion_kind(symbol.kind),
-            detail: format!("{} : {}", symbol.canonical, symbol.ty),
+            detail: if alias.role == crate::semantic::SemanticAliasRole::Migration {
+                format!("Legacy alias · {}", symbol.canonical)
+            } else {
+                format!("{:?} · {}", symbol.kind, symbol.canonical)
+            },
             insert_text: alias.spelling.clone(),
             sort_text: format!(
                 "{}:{}:{}",
-                if alias.preferred { 0 } else { 1 },
+                match alias.role {
+                    crate::semantic::SemanticAliasRole::Preferred => 0,
+                    crate::semantic::SemanticAliasRole::LocalRename => 1,
+                    crate::semantic::SemanticAliasRole::Migration => 2,
+                },
                 symbol.canonical,
                 alias.canonical
             ),
@@ -83,6 +98,10 @@ pub(super) fn symbol_matches_prefix(symbol: &SemanticSymbol, prefix: &str) -> bo
             .aliases
             .iter()
             .any(|alias| alias.spelling.starts_with(prefix))
+        || symbol.names.localized.values().any(|entry| {
+            entry.preferred.starts_with(prefix)
+                || entry.aliases.iter().any(|alias| alias.starts_with(prefix))
+        })
 }
 
 pub(super) fn completion_prefix(source: &str, offset: usize) -> String {

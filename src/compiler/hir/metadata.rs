@@ -84,6 +84,41 @@ pub(in crate::hir) fn parameter_names(name: &Name, metadata: &[MetadataEntry]) -
     names
 }
 
+pub(in crate::hir) fn alias_role(
+    metadata: &[MetadataEntry],
+    spelling: &str,
+) -> crate::hir::AliasRole {
+    metadata_alias_spellings(metadata, "")
+        .into_iter()
+        .find_map(|(name, role)| (name == spelling).then_some(role))
+        .map_or(crate::hir::AliasRole::LocalRename, |role| match role {
+            MetadataAliasRole::Preferred => crate::hir::AliasRole::Preferred,
+            MetadataAliasRole::Migration => crate::hir::AliasRole::Migration,
+        })
+}
+
+pub(in crate::hir) fn imported_alias_role(
+    interface: &Interface,
+    metadata: &[MetadataEntry],
+    requested: &str,
+    local: &str,
+) -> crate::hir::AliasRole {
+    if local != requested {
+        return crate::hir::AliasRole::LocalRename;
+    }
+    interface
+        .aliases
+        .iter()
+        .find(|alias| alias.canonical == requested || alias.spelling == requested)
+        .map_or_else(
+            || alias_role(metadata, local),
+            |alias| match alias.role {
+                crate::interface::PublicAliasRole::Preferred => crate::hir::AliasRole::Preferred,
+                crate::interface::PublicAliasRole::Migration => crate::hir::AliasRole::Migration,
+            },
+        )
+}
+
 pub(in crate::hir) fn find_imported_binding<'a>(
     interface: &'a Interface,
     name: &str,

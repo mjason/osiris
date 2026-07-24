@@ -17,6 +17,92 @@ fn check_accepts_unicode_and_rich_metadata() {
 }
 
 #[test]
+fn check_reports_migration_aliases_without_failing() {
+    let fixture = SourceFixture::new("(def outside 0)\n");
+    let source = fixture.write(
+        "src/app.osr",
+        r#"(module app)
+^{:osiris/names {"zh-CN" {:preferred 格式化文本 :aliases [渲染文本]}}}
+(defn ^Str format-message [^Str value] value)
+(def result (渲染文本 "hello"))
+"#,
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"alias-check\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"],"displayLocale":"zh-CN"}"#,
+    )
+    .unwrap();
+
+    let output = osr(&["check", path_argument(&source)]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("warning[OSR-L0002]"), "{stderr}");
+    assert!(stderr.contains("`渲染文本`"), "{stderr}");
+    assert!(stderr.contains("`格式化文本`"), "{stderr}");
+
+    let lsc = osr(&[
+        "lsc",
+        "diagnostics",
+        path_argument(&source),
+        "--locale",
+        "zh-CN",
+        "--format",
+        "json",
+    ]);
+    assert!(
+        lsc.status.success(),
+        "{}",
+        String::from_utf8_lossy(&lsc.stderr)
+    );
+    let lsc: serde_json::Value = serde_json::from_slice(&lsc.stdout).unwrap();
+    let advisory = lsc["result"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|diagnostic| diagnostic["code"] == "OSR-L0002")
+        .expect("LSC migration advisory");
+    assert_eq!(advisory["data"]["replacement"], "格式化文本");
+
+    let hover = Command::new(env!("CARGO_BIN_EXE_osr"))
+        .args([
+            "lsc",
+            "hover",
+            "渲染文本",
+            "--locale",
+            "zh-CN",
+            "--format",
+            "json",
+        ])
+        .current_dir(&fixture.directory)
+        .output()
+        .unwrap();
+    assert!(
+        hover.status.success(),
+        "{}",
+        String::from_utf8_lossy(&hover.stderr)
+    );
+    let hover: serde_json::Value = serde_json::from_slice(&hover.stdout).unwrap();
+    assert_eq!(
+        hover["result"]["bindingId"],
+        "app::function::format-message"
+    );
+    assert_eq!(hover["result"]["queriedSpelling"]["role"], "migration");
+    assert_eq!(
+        hover["result"]["queriedSpelling"]["replacement"],
+        "格式化文本"
+    );
+}
+
+#[test]
 fn check_reports_stable_reader_diagnostic() {
     let fixture = SourceFixture::new("(def value [1 2)\n");
     let output = osr(&["check", path_argument(&fixture.path)]);
@@ -192,7 +278,7 @@ fn lsc_semantic_json_exposes_aliases_facts_and_operation_graph() {
 }
 
 #[test]
-fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
+fn lsc_position_hover_is_operation_scoped_and_preserves_default_language() {
     let fixture = SourceFixture::new(
         r#"(module sample)
 ^{:doc {:default "默认中文。" "en" "English documentation."}
@@ -209,8 +295,9 @@ fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
     );
     let default: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
     let result = &default["result"];
-    assert_eq!(result["binding_id"], "sample::function::calculate");
-    assert_eq!(result["module"], "sample");
+    assert_eq!(result["schema"], "osiris.hover/v1");
+    assert_eq!(result["bindingId"], "sample::function::calculate");
+    assert_eq!(result["canonical"]["qualified"], "sample/calculate");
     assert_eq!(result["documentation"]["default"], "默认中文。");
     assert_eq!(
         result["documentation"]["translations"]["en"],
@@ -221,11 +308,8 @@ fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
     assert_eq!(result["documentation"]["selection"]["text"], "默认中文。");
     assert_eq!(result["names"]["canonical"], "calculate");
     assert_eq!(result["names"]["selection"]["label"], "calculate");
-    assert!(
-        result["metadata"]["authored"]
-            .as_array()
-            .is_some_and(|entries| !entries.is_empty())
-    );
+    assert!(result.get("metadata").is_none());
+    assert!(result["semantic"].is_object());
 
     let localized = osr(&[
         "lsc", "hover", "--at", &at, "--locale", "en-US", "--format", "json",
@@ -237,10 +321,16 @@ fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
     );
     let localized: serde_json::Value = serde_json::from_slice(&localized.stdout).unwrap();
     let result = &localized["result"];
-    assert_eq!(result["requestedLocale"], "en-US");
-    assert_eq!(result["resolvedLocale"], "en");
-    assert_eq!(result["resolvedNameLocale"], "en");
-    assert_eq!(result["selectedDocumentation"], "English documentation.");
+    assert_eq!(
+        result["documentation"]["selection"]["requestedLocale"],
+        "en-US"
+    );
+    assert_eq!(result["documentation"]["selection"]["resolvedLocale"], "en");
+    assert_eq!(result["names"]["selection"]["resolvedLocale"], "en");
+    assert_eq!(
+        result["documentation"]["selection"]["text"],
+        "English documentation."
+    );
     assert_eq!(result["label"], "calculate-value");
 }
 
@@ -269,17 +359,17 @@ fn lsc_standard_hover_uses_progressive_human_and_machine_projections() {
         String::from_utf8_lossy(&json.stderr)
     );
     let json: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
-    let reduce = &json["result"][0];
-    assert_eq!(reduce["schema"], "osiris.standard-api/v2");
+    let reduce = &json["result"];
+    assert_eq!(reduce["schema"], "osiris.hover/v1");
     assert_eq!(reduce["examples"][0][0], "(reduce + 0 [1 2 3 4])");
     assert_eq!(reduce["examples"][0][1], ";; => 10");
-    assert_eq!(reduce["evaluation"], "consumer");
+    assert_eq!(reduce["semantic"]["evaluation"], "consumer");
     assert_eq!(reduce["bindingId"], "osiris.core::function::reduce");
     assert_eq!(
         reduce["source"]["uri"],
         "osiris-stdlib:///osiris/core/transform.osr"
     );
-    assert!(reduce["effects"].is_object());
+    assert!(reduce["semantic"]["effects"].is_object());
 }
 
 #[test]

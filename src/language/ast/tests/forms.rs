@@ -1,6 +1,6 @@
 #[test]
 fn keeps_call_keyword_order_and_duplicates() {
-    let document = read("(f first :周期 3 :周期 4 tail)");
+    let document = read("(f first :次数 3 :次数 4 tail)");
     let lowered = lower_document(&document);
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let item = &lowered.module.items[0];
@@ -14,8 +14,8 @@ fn keeps_call_keyword_order_and_duplicates() {
     assert_eq!(call.args.len(), 4);
     assert_eq!(call.positional.len(), 2);
     assert_eq!(call.keywords.len(), 2);
-    assert_eq!(call.keywords[0].key.canonical, ":周期");
-    assert_eq!(call.keywords[1].key.canonical, ":周期");
+    assert_eq!(call.keywords[0].key.canonical, ":次数");
+    assert_eq!(call.keywords[1].key.canonical, ":次数");
 }
 
 #[test]

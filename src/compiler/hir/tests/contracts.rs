@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    CallArgument, ContractTrustPolicy, ExprKind, InterfaceTrustPolicy, ItemKind, lower_module,
-    lower_module_with_interfaces, lower_module_with_interfaces_and_trust_policy,
+    AliasRole, CallArgument, ContractTrustPolicy, ExprKind, InterfaceTrustPolicy, ItemKind,
+    lower_module, lower_module_with_interfaces, lower_module_with_interfaces_and_trust_policy,
 };
 
 fn lower(source: &str) -> super::LowerResult {
@@ -23,7 +23,8 @@ fn lower(source: &str) -> super::LowerResult {
 fn dependency_interfaces() -> BTreeMap<String, interface::Interface> {
     let document = read(
         r#"(module dep.core)
-               ^{:doc "Add two integers."}
+               ^{:doc "Add two integers."
+                 :osiris/names {"zh-CN" {:preferred 相加 :aliases [求和]}}}
                (defn ^Int add [^Int x ^{:type Int :osiris/names {"zh-CN" {:preferred 值}}} value] (+ x value))
                (alias sum add)
                (export [add sum])"#,

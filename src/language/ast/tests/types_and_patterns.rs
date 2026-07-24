@@ -16,7 +16,7 @@ fn lowers_module_header_and_declarations() {
              (import-for-syntax osiris.syntax :as syntax)
              (py/import numpy :as np)
              (export [normalize])
-             (alias 窗口均值 series/moving-average)
+             (alias 格式化文本 text/format-message)
              (def ^Float scale 0.5)
              (defn ^Float normalize [^Frame values [^PositiveInt window = 8]]
                (let [x 1 y (+ x 2)] y))",

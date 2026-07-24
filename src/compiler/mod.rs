@@ -102,6 +102,7 @@ pub struct Analysis {
     pub hir: hir::Module,
     pub static_data: records::StaticModuleData,
     pub diagnostics: Vec<Diagnostic>,
+    pub migration_advisories: Vec<hir::MigrationAdvisory>,
     pub source_hash: String,
     pub cache_key: String,
 }
@@ -256,6 +257,7 @@ fn analyze_document(
         hir: hir_result.module,
         static_data,
         diagnostics,
+        migration_advisories: hir_result.migration_advisories,
         source_hash,
         cache_key,
     }
@@ -403,7 +405,7 @@ mod workspace;
 pub use support::python_module_path;
 use support::*;
 use workspace::PreparedInput;
-pub use workspace::{analyze_workspace_recovering, compile_workspace};
+pub use workspace::{analyze_workspace, analyze_workspace_recovering, compile_workspace};
 
 #[cfg(test)]
 #[path = "tests.rs"]

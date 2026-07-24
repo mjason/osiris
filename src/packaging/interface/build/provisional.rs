@@ -119,19 +119,33 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
             spelling: alias.local.spelling.clone(),
             canonical: alias.local.canonical.clone(),
             target: target.binding.id.clone(),
+            role: PublicAliasRole::Migration,
         });
     }
     for binding in &bindings {
-        for alias in metadata_aliases(&binding.metadata, &binding.canonical) {
+        for (alias, role) in metadata_alias_spellings(&binding.metadata, &binding.canonical) {
             aliases.push(PublicAlias {
                 spelling: alias.clone(),
                 canonical: alias,
                 target: binding.id.clone(),
+                role: match role {
+                    MetadataAliasRole::Preferred => PublicAliasRole::Preferred,
+                    MetadataAliasRole::Migration => PublicAliasRole::Migration,
+                },
             });
         }
     }
     aliases.sort_by(|left, right| {
-        (&left.canonical, &left.target).cmp(&(&right.canonical, &right.target))
+        (
+            &left.canonical,
+            &left.target,
+            public_alias_role_rank(left.role),
+        )
+            .cmp(&(
+                &right.canonical,
+                &right.target,
+                public_alias_role_rank(right.role),
+            ))
     });
     aliases
         .dedup_by(|left, right| left.canonical == right.canonical && left.target == right.target);

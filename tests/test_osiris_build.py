@@ -150,7 +150,7 @@ for source in sources:
         quote(module + '/value'), quote(module), quote(stable_record_id),
         quote(record_body_hash), quote(stem), quote(module),
     )
-    interface = '''(osiris-interface/header {:format "osiris-interface" :format-version 3
+    interface = '''(osiris-interface/header {:format "osiris-interface" :format-version 4
   :compiler-abi "osiris-compiler-v0" :language-version "0.1" :language-abi "osiris-language-v1"
   :standard-library-abi 1 :linkable-helper-format 1 :python-target %s})
 (osiris-interface/body {:module %s :metadata [] :bindings [] :aliases [] :functions []

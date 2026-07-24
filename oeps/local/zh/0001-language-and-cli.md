@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-24
-revision: 9
+revision: 12
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 9
+source-revision: 12
 translation-status: Current
 requires: [0]
 replaces: []
@@ -470,17 +470,22 @@ tag。Locale selection 不得改变 binding identity、overload selection 或 se
 结构 map 的映射：
 
 ```clojure
-{"zh-CN" {:preferred 时序均值
-          :aliases [滚动均值]}
- "ja"    {:preferred 移動平均
-          :aliases [ローリング平均]}
- "fr"    {:preferred moyenne-mobile
-          :aliases [moyenne-glissante]}}
+{"zh-CN" {:preferred 格式化文本
+          :aliases [渲染文本]}
+ "ja"    {:preferred メッセージ整形
+          :aliases [テキスト整形]}
+ "fr"    {:preferred formater-message
+          :aliases [rendre-message]}}
 ```
 
 `:preferred` 必须是一个 Symbol。可选 `:aliases` 必须是 Symbol Vector。Locale key 经
 BCP 47 canonicalization 后必须唯一；一个 declaration 的完整 name table 中，名称经过
 NFC normalize 后必须唯一。Locale entry 中的未知 key 必须诊断。
+
+**OEP-0001-R060A：** `:preferred` 必须表示当前推荐的本地化源码拼写。`:aliases`
+必须只用于保留旧源码兼容性和迁移，不得解释为多个同等推荐的翻译。Interface 与
+semantic index 必须保留一个 spelling 属于 canonical、preferred 还是 migration alias，
+不得只暴露扁平化 spelling list。
 
 **OEP-0001-R061：** Canonical declaration spelling 是默认 binding label 和 identity。
 Localized preferred name 与所有 localized alias 必须在每种 display locale 下解析到同一个
@@ -491,6 +496,12 @@ canonical binding。可复用 public library 应使用稳定 ASCII English canon
 parameter 和 `defstruct` field。Parameter/field alias 必须限制在所属 signature/structure，
 并降低为 canonical Python keyword/attribute；不得定义全局 keyword translation table。
 
+**OEP-0001-R062A：** 源码使用 `:aliases` 中的 spelling 时，必须继续解析到 canonical
+identity，但 compiler CLI、LSC 和 LSP diagnostics 必须报告不阻断编译的迁移提示。
+Replacement 应优先使用 requested display locale 的 `:preferred` spelling；不存在时使用
+canonical spelling。源码使用 `:preferred` 时不得产生该提示。LSP 应提供执行替换的
+code action。
+
 **OEP-0001-R063：** `.osri`、semantic query、LSP 与 local CLI query 必须保留 default
 documentation、所有 tagged translation、canonical name、localized preferred name、alias
 与 provenance。JSON documentation entry 必须至少暴露以下逻辑结构：
@@ -498,18 +509,18 @@ documentation、所有 tagged translation、canonical name、localized preferred
 ```json
 {
   "documentation": {
-    "default": "Return the mean over the most recent window.",
-    "translations": {"zh-CN": "返回最近窗口的均值。"},
+    "default": "Format a message for display.",
+    "translations": {"zh-CN": "格式化用于显示的文本。"},
     "selection": {
       "requestedLocale": "zh-CN",
       "resolvedLocale": "zh-CN",
-      "text": "返回最近窗口的均值。"
+      "text": "格式化用于显示的文本。"
     }
   },
   "names": {
-    "canonical": "rolling-mean",
+    "canonical": "format-message",
     "localized": {
-      "zh-CN": {"preferred": "时序均值", "aliases": ["滚动均值"]}
+      "zh-CN": {"preferred": "格式化文本", "aliases": ["渲染文本"]}
     }
   }
 }
@@ -519,20 +530,22 @@ documentation、所有 tagged translation、canonical name、localized preferred
 类型标注继续使用名称上的 Rich Metadata，不使用独立 signature syntax：
 
 ```clojure
-(extern python "data_runtime.series"
-  ^{:doc {:default "Return the mean over the most recent window."
-          "zh-CN" "返回最近窗口的均值。"}
+(extern python "text_runtime.format"
+  ^{:doc {:default "Format a message for display."
+          "zh-CN" "格式化用于显示的文本。"}
     :osiris/names
-    {"zh-CN" {:preferred 时序均值
-               :aliases [滚动均值]}}}
-  (defn ^Series rolling-mean
-    [^Series values
-     ^{:type Int
-       :osiris/names {"zh-CN" {:preferred 周期}}}
-     window
-     [^{:type Int
-        :osiris/names {"zh-CN" {:preferred 最小样本}}}
-      min-samples = window]]))
+    {"zh-CN" {:preferred 格式化文本
+               :aliases [渲染文本]}}}
+  (defn ^Str format-message
+    [^Str template
+     ^{:type Str
+       :osiris/names {"zh-CN" {:preferred 名称
+                                :aliases [显示名称]}}}
+     name
+     [^{:type Bool
+        :osiris/names {"zh-CN" {:preferred 转为大写
+                                 :aliases [大写 使用大写]}}}
+      uppercase = false]]))
 ```
 
 OEP translation 仍由 OEP-0000 管理，不存储在 API Rich Metadata 中。本 requirement
@@ -853,6 +866,15 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 12，2026-07-24：规定 `:aliases` 只用于源码迁移，要求 interface 与 semantic
+  index 保留 spelling role，并规定 compiler CLI、LSC、LSP 都提供不阻断编译的替换提示。
+- Revision 11，2026-07-24：定义本地化参数 keyword spelling、signature-local resolution、
+  canonical Python lowering 与重复参数行为。
+- Revision 10，2026-07-24：把领域相关的本地化名称示例替换为中性的文本格式化示例。
+- Revision 9，2026-07-24：定义 compiler kernel、以源码分发且由 Osiris 自举的标准库，
+  以及 linked `__osiris_runtime__` boundary。
+- Revision 8，2026-07-24：定义 canonical formatting、LSP/LSC parity，以及 packaged
+  standard-library source 的源码导航要求。
 - Revision 7，2026-07-23：修正一致性措辞；未指定 locale 的 LSC 查询选择 authored
   `:default` slot。该 slot 推荐使用英文，但允许作者使用任意语言。
 - Revision 6，2026-07-23：独立 language compatibility version 从 `0.1` 开始，并把稳定的

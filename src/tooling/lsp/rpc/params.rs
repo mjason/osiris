@@ -53,3 +53,10 @@ struct RenameParams {
     position: Position,
     new_name: String,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodeActionParams {
+    text_document: TextDocumentIdentifier,
+    range: Range,
+}

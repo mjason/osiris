@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub const FORMAT_NAME: &str = "osiris-interface";
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 pub const COMPILER_ABI: &str = "osiris-compiler-v0";
 pub const LANGUAGE_ABI: &str = "osiris-language-v1";
 
@@ -93,6 +93,13 @@ pub struct PublicAlias {
     pub spelling: String,
     pub canonical: String,
     pub target: String,
+    pub role: PublicAliasRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PublicAliasRole {
+    Preferred,
+    Migration,
 }
 
 #[derive(Clone, Debug, PartialEq)]

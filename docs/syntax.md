@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 4
+revision: 8
 ---
 
 # Osiris Syntax
@@ -57,11 +57,11 @@ Names may use Unicode. Name identity uses Unicode NFC while diagnostics retain
 the authored spelling. Common spellings include:
 
 ```clojure
-rolling-mean          ; Lisp-style name
+format-message        ; Lisp-style name
 ready?                ; predicate convention
-series/rolling-mean   ; qualified Osiris name
+text/format-message   ; qualified Osiris name
 row.value             ; statically resolved field or Python attribute
-时序均值               ; Unicode source name
+格式化文本             ; Unicode source name
 ```
 
 Localized names are aliases of one canonical binding, not independent
@@ -80,7 +80,7 @@ and exports:
 (py/import math :as math)
 
 (export [normalize summarize])
-(alias 汇总 summarize)
+(alias summarize-legacy summarize)
 ```
 
 - `import` reads another Osiris module's `.osri` interface.
@@ -88,7 +88,9 @@ and exports:
 - `py/import` emits a Python runtime import; it does not execute Python while
   compiling.
 - `export` defines the public module interface.
-- `alias` adds another resolvable spelling for an existing binding.
+- `alias` retains a migration spelling for an existing binding. References
+  remain valid but receive a non-failing replacement advisory. Use
+  `:osiris/names` with `:preferred` for a recommended localized spelling.
 
 The project configuration maps source paths to module names. A written
 `module` declaration must agree with that mapping.
@@ -170,6 +172,58 @@ vector containing one source line per string:
 Do not put escaped newlines into one string. The outer vector separates
 examples; the inner vector preserves canonically formatted source lines. LSP,
 LSC, package interfaces, and Agent-facing JSON all consume this same metadata.
+
+`:osiris/names` may also be attached directly to a function parameter. This
+publishes localized keyword spellings as part of that function's static
+signature:
+
+```clojure
+(extern python "text_runtime.format"
+  ^{:doc {:default "Format a message for display."
+          "zh-CN" "格式化用于显示的文本。"}
+    :osiris/names
+    {"zh-CN" {:preferred 格式化文本
+               :aliases [渲染文本]}}}
+  (defn ^Str format-message
+    [^Str template
+     ^{:type Str
+       :osiris/names {"zh-CN" {:preferred 名称
+                                :aliases [显示名称]}}}
+     name
+     [^{:type Bool
+        :osiris/names {"zh-CN" {:preferred 转为大写
+                                 :aliases [大写 使用大写]}}}
+      uppercase = false]]))
+```
+
+Given a statically known signature, localized parameter names are accepted as
+keyword arguments:
+
+```clojure
+(format-message "Hello, {name}!" :显示名称 "Osiris" :大写 true)
+(格式化文本 "Hello, {name}!" :名称 "Osiris")
+```
+
+Every parameter locale entry has the same shape as a declaration locale entry:
+`:preferred` is one Symbol and optional `:aliases` is a Vector of Symbols.
+Use `:preferred` for the normal localized spelling. Reserve `:aliases` for old
+spellings that remain accepted during source migration; do not use aliases as
+an unordered list of equally recommended translations. Tooling and the
+compiler should suggest replacing an authored alias with the locale's
+preferred spelling, or with the canonical name when no preferred spelling is
+available.
+
+Parameter aliases belong only to their declaring function signature; they are
+not global keyword substitutions. The compiler resolves every preferred name
+and alias to the canonical parameter identity before checking missing,
+unknown, duplicate, and mistyped arguments. `:uppercase`, `:转为大写`, `:大写`,
+and `:使用大写` all identify the same parameter; passing any two of them is a
+duplicate-argument error. The example call using `:大写` remains valid but is a
+migration use and should receive a non-failing replacement diagnostic.
+Generated Python always uses the canonical Python parameter name, regardless
+of the source spelling or display locale. Calls through `Any` or an untyped
+Python boundary have no static signature, so their keyword names cannot be
+translated automatically.
 
 Phase 1 can read and immutably update metadata with `meta`, `with-meta`, and
 `vary-meta`. Metadata cannot claim compiler-verified type, effect, temporal, or

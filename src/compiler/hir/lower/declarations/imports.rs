@@ -85,6 +85,17 @@ impl<'a> Lowerer<'a> {
             let Some(target) = bindings.get(&alias_target_canonical(&interface, alias)) else {
                 continue;
             };
+            if alias.role == crate::interface::PublicAliasRole::Migration {
+                let preferred_names = self
+                    .bindings
+                    .get(target)
+                    .map(|binding| metadata_preferred_names(&binding.metadata))
+                    .unwrap_or_default();
+                for spelling in [&alias.canonical, &alias.spelling] {
+                    self.migration_alias_profiles
+                        .insert((target.clone(), spelling.clone()), preferred_names.clone());
+                }
+            }
             for qualifier in [base.as_str(), module_name.as_str()] {
                 self.qualified_imports
                     .insert(format!("{qualifier}/{}", alias.canonical), target.clone());
@@ -112,13 +123,14 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
             self.globals.insert(local.clone(), id.clone());
-            if local != canonical {
+            if local != &public.canonical {
                 self.aliases.push(Alias {
                     spelling: local.clone(),
                     canonical: local.clone(),
                     target: id,
                     span: import.span,
                     public: false,
+                    role: imported_alias_role(&interface, &public.metadata, canonical, local),
                 });
             }
         }
@@ -130,6 +142,13 @@ impl<'a> Lowerer<'a> {
             });
             if explicitly_requested && !excluded.contains(&alias.canonical) {
                 if let Some(id) = bindings.get(&alias_target_canonical(&interface, alias)) {
+                    let Some(public) = interface
+                        .bindings
+                        .iter()
+                        .find(|binding| binding.id == id.as_str())
+                    else {
+                        continue;
+                    };
                     let requested = import
                         .members
                         .iter()
@@ -143,12 +162,15 @@ impl<'a> Lowerer<'a> {
                         .iter()
                         .any(|existing| existing.canonical == local && existing.target == *id)
                     {
+                        let role =
+                            imported_alias_role(&interface, &public.metadata, &canonical, &local);
                         self.aliases.push(Alias {
                             spelling: local.clone(),
                             canonical: local,
                             target: id.clone(),
                             span: import.span,
                             public: false,
+                            role,
                         });
                     }
                 }
@@ -253,6 +275,11 @@ impl<'a> Lowerer<'a> {
                     metadata: public.metadata.clone(),
                 },
             );
+            let preferred_names = metadata_preferred_names(&public.metadata);
+            for spelling in metadata_migration_aliases(&public.metadata).into_keys() {
+                self.migration_alias_profiles
+                    .insert((id.clone(), spelling), preferred_names.clone());
+            }
             self.register_imported_callable(&id, public, interface);
         }
         if let Some(local_name) = local_name {
@@ -321,6 +348,10 @@ impl<'a> Lowerer<'a> {
                         required: !parameter.has_default && !parameter.variadic,
                         variadic: parameter.variadic,
                         span: Span::default(),
+                        migration_aliases: metadata_migration_aliases(&parameter.metadata)
+                            .into_keys()
+                            .collect(),
+                        preferred_names: metadata_preferred_names(&parameter.metadata),
                     })
                     .collect();
                 let generic_variables = variables
@@ -402,6 +433,10 @@ impl<'a> Lowerer<'a> {
                         required: !field.has_default,
                         variadic: false,
                         span: Span::default(),
+                        migration_aliases: metadata_migration_aliases(&field.metadata)
+                            .into_keys()
+                            .collect(),
+                        preferred_names: metadata_preferred_names(&field.metadata),
                     })
                     .collect();
                 self.register_callable(

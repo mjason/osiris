@@ -11,6 +11,13 @@ pub(super) struct WorkspaceSymbolIndex {
     pub(super) provider_names: BTreeMap<(String, String), String>,
     pub(super) ambiguous_provider_names: BTreeSet<(String, String)>,
     pub(super) pending_import_members: Vec<PendingImportMember>,
+    pub(super) semantic_symbols: Vec<WorkspaceSemanticSymbol>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct WorkspaceSemanticSymbol {
+    pub(super) uri: String,
+    pub(super) symbol: SemanticSymbol,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

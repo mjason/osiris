@@ -65,6 +65,13 @@ pub(super) fn finish_symbol_index(index: &mut WorkspaceSymbolIndex) {
                 && left.declaration == right.declaration
         });
     }
+    index.semantic_symbols.sort_by(|left, right| {
+        (&left.symbol.binding_id, &left.uri, left.symbol.definition.start).cmp(&(
+            &right.symbol.binding_id,
+            &right.uri,
+            right.symbol.definition.start,
+        ))
+    });
 }
 
 pub(super) fn collect_function_interfaces(

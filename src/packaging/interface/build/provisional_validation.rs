@@ -176,7 +176,16 @@ pub(crate) fn validate_provisional_shape(
                     .bindings
                     .iter()
                     .find(|binding| binding.id == alias.target)
-                    .map(|binding| (alias.canonical.clone(), binding.canonical.clone()))
+                    .map(|binding| {
+                        (
+                            alias.canonical.clone(),
+                            binding.canonical.clone(),
+                            match alias.role {
+                                PublicAliasRole::Preferred => "preferred",
+                                PublicAliasRole::Migration => "migration",
+                            },
+                        )
+                    })
             })
             .collect::<BTreeSet<_>>()
     };

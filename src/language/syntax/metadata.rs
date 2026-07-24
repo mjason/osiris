@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
@@ -186,21 +186,104 @@ pub(crate) fn metadata_datum_is_serializable(form: &Form) -> bool {
     true
 }
 
-/// Return normalized aliases declared by Clojure-style rich metadata.
-pub(crate) fn metadata_aliases(metadata: &[MetadataEntry], canonical: &str) -> Vec<String> {
-    let mut names = BTreeSet::new();
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MetadataAliasRole {
+    Preferred,
+    Migration,
+}
+
+/// Return normalized names declared by Clojure-style rich metadata while
+/// retaining whether each spelling is recommended or migration-only.
+pub(crate) fn metadata_alias_spellings(
+    metadata: &[MetadataEntry],
+    canonical: &str,
+) -> Vec<(String, MetadataAliasRole)> {
+    let mut names = BTreeMap::new();
     for entry in metadata {
         if metadata_name(&entry.key)
             .is_some_and(|name| name.trim_start_matches(':') == "osiris/names")
         {
-            collect_metadata_names(&entry.value, &mut names);
+            collect_metadata_name_roles(&entry.value, &mut names);
         }
     }
     names.remove(canonical);
     names.into_iter().collect()
 }
 
-fn collect_metadata_names(form: &Form, names: &mut BTreeSet<String>) {
+/// Return normalized aliases declared by Clojure-style rich metadata.
+pub(crate) fn metadata_aliases(metadata: &[MetadataEntry], canonical: &str) -> Vec<String> {
+    metadata_alias_spellings(metadata, canonical)
+        .into_iter()
+        .map(|(spelling, _)| spelling)
+        .collect()
+}
+
+pub(crate) fn metadata_preferred_names(
+    metadata: &[MetadataEntry],
+) -> BTreeMap<String, String> {
+    metadata_localized_name_values(metadata, "preferred")
+        .into_iter()
+        .filter_map(|(locale, value)| match &value.kind {
+            FormKind::Symbol(name) => Some((locale, name.canonical.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(crate) fn metadata_migration_aliases(metadata: &[MetadataEntry]) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    for (locale, value) in metadata_localized_name_values(metadata, "aliases") {
+        let FormKind::Vector(values) = &value.kind else {
+            continue;
+        };
+        for value in values {
+            if let FormKind::Symbol(name) = &value.kind {
+                aliases.insert(name.canonical.clone(), locale.clone());
+            }
+        }
+    }
+    aliases
+}
+
+fn metadata_localized_name_values<'a>(
+    metadata: &'a [MetadataEntry],
+    expected: &str,
+) -> Vec<(String, &'a Form)> {
+    let Some(names) = metadata.iter().find_map(|entry| {
+        (metadata_name(&entry.key)
+            .is_some_and(|name| name.trim_start_matches(':') == "osiris/names"))
+        .then_some(&entry.value)
+    }) else {
+        return Vec::new();
+    };
+    let FormKind::Map(locales) = &names.kind else {
+        return Vec::new();
+    };
+    locales
+        .chunks_exact(2)
+        .filter_map(|locale_entry| {
+            let FormKind::String(raw_locale) = &locale_entry[0].kind else {
+                return None;
+            };
+            let locale = oxilangtag::LanguageTag::parse_and_normalize(raw_locale)
+                .ok()?
+                .to_string();
+            let FormKind::Map(values) = &locale_entry[1].kind else {
+                return None;
+            };
+            values.chunks_exact(2).find_map(|entry| {
+                (metadata_name(&entry[0])
+                    .is_some_and(|name| name.trim_start_matches(':') == expected))
+                .then_some((locale.clone(), &entry[1]))
+            })
+        })
+        .collect()
+}
+
+fn collect_metadata_name_roles(
+    form: &Form,
+    names: &mut BTreeMap<String, MetadataAliasRole>,
+) {
     let FormKind::Map(entries) = &form.kind else {
         return;
     };
@@ -211,20 +294,22 @@ fn collect_metadata_names(form: &Form, names: &mut BTreeSet<String>) {
         {
             "preferred" => {
                 if let FormKind::Symbol(name) = &pair[1].kind {
-                    names.insert(name.canonical.clone());
+                    names.insert(name.canonical.clone(), MetadataAliasRole::Preferred);
                 }
             }
             "aliases" => {
                 if let FormKind::Vector(values) = &pair[1].kind {
-                    names.extend(values.iter().filter_map(|value| {
+                    for value in values {
                         let FormKind::Symbol(name) = &value.kind else {
-                            return None;
+                            continue;
                         };
-                        Some(name.canonical.clone())
-                    }));
+                        names
+                            .entry(name.canonical.clone())
+                            .or_insert(MetadataAliasRole::Migration);
+                    }
                 }
             }
-            _ => collect_metadata_names(&pair[1], names),
+            _ => collect_metadata_name_roles(&pair[1], names),
         }
     }
 }

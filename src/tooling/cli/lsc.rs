@@ -6,8 +6,10 @@ use serde_json::{Value as JsonValue, json};
 use super::*;
 use crate::lsp::{Location, LspState, Position};
 
+mod standard;
 mod support;
 
+use standard::*;
 use support::*;
 
 const LSC_SCHEMA: &str = "osiris.lsc/v1";
@@ -168,7 +170,10 @@ fn execute(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
 
 fn diagnostics(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
     let path = optional_single_path(&request.arguments)?.unwrap_or_else(|| ".".to_owned());
-    let (state, uri) = open(&path)?;
+    let (mut state, uri) = open(&path)?;
+    if let Some(locale) = &request.locale {
+        state.set_display_locale(locale);
+    }
     let result = state
         .diagnostics(&uri)
         .ok_or_else(|| "document analysis is unavailable".to_owned())?;
@@ -204,99 +209,97 @@ fn hover(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
                 .as_ref()
                 .map(|hover| markdown_hover_to_plain(&hover.contents.value))
                 .unwrap_or_default();
-            let symbol = state
-                .semantic_symbol_at(uri, position)
+            let value = state
+                .hover_machine_projection(uri, position, locale)
                 .ok_or_else(|| "no symbol exists at the requested position".to_owned())?;
-            if let Some(standard) = crate::stdlib::query_api(&symbol.binding_id, locale)
-                .into_iter()
-                .next()
-            {
-                let mut value =
-                    serde_json::to_value(standard).map_err(|error| error.to_string())?;
-                value["range"] = serde_json::to_value(hover.and_then(|value| value.range))
-                    .map_err(|error| error.to_string())?;
-                return Ok((value, text));
-            }
-
-            let document = state
-                .semantic_document(uri)
-                .ok_or_else(|| "document analysis is unavailable".to_owned())?;
-            let mut value = serde_json::to_value(symbol).map_err(|error| error.to_string())?;
-            let object = value
-                .as_object_mut()
-                .ok_or_else(|| "semantic symbol did not serialize as an object".to_owned())?;
-            let (selected_doc, doc_locale) = symbol.documentation.for_locale(locale);
-            let (selected_name, name_locale) = symbol.names.for_locale(locale);
-            let requested_locale = locale.map(ToOwned::to_owned);
-            let available_locales = symbol
-                .documentation
-                .translations
-                .keys()
-                .chain(symbol.names.localized.keys())
-                .cloned()
-                .collect::<std::collections::BTreeSet<_>>();
-            object.insert("schema".to_owned(), json!("osiris.local-symbol/v1"));
-            object.insert("module".to_owned(), json!(document.module));
-            object.insert(
-                "documentVersion".to_owned(),
-                json!(document.document_version),
-            );
-            object.insert("provenance".to_owned(), json!("workspace-source"));
-            object.insert("requestedLocale".to_owned(), json!(requested_locale));
-            object.insert("resolvedLocale".to_owned(), json!(doc_locale));
-            object.insert("selectedDocumentation".to_owned(), json!(selected_doc));
-            object.insert("label".to_owned(), json!(selected_name));
-            object.insert("resolvedNameLocale".to_owned(), json!(name_locale));
-            object.insert("availableLocales".to_owned(), json!(available_locales));
-            if let Some(documentation) = object
-                .get_mut("documentation")
-                .and_then(JsonValue::as_object_mut)
-            {
-                documentation.insert(
-                    "selection".to_owned(),
-                    json!({
-                        "requestedLocale": locale,
-                        "resolvedLocale": doc_locale,
-                        "text": selected_doc,
-                    }),
-                );
-            }
-            if let Some(names) = object.get_mut("names").and_then(JsonValue::as_object_mut) {
-                names.insert(
-                    "selection".to_owned(),
-                    json!({
-                        "requestedLocale": locale,
-                        "resolvedLocale": name_locale,
-                        "label": selected_name,
-                    }),
-                );
-            }
             Ok((value, text))
         });
     }
     let query = required_single(&request.arguments, "API-NAME-OR-BINDING-ID")?;
     let standard = crate::stdlib::query_api(query, request.locale.as_deref());
     if !standard.is_empty() {
-        return render_standard_api(standard, false);
+        return render_standard_hover(standard);
     }
-    symbol_query(query, request.locale.as_deref())
+    symbol_query(query, request.locale.as_deref(), true)
 }
 
 fn symbol(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
     let query = required_single(&request.arguments, "NAME-OR-BINDING-ID")?;
-    symbol_query(query, request.locale.as_deref())
+    symbol_query(query, request.locale.as_deref(), false)
 }
 
-fn symbol_query(query: &str, locale: Option<&str>) -> Result<(JsonValue, String, bool), String> {
+fn symbol_query(
+    query: &str,
+    locale: Option<&str>,
+    hover: bool,
+) -> Result<(JsonValue, String, bool), String> {
     let standard = crate::stdlib::query_api(query, locale);
     if !standard.is_empty() {
-        return render_standard_api(standard, false);
+        return if hover {
+            render_standard_hover(standard)
+        } else {
+            render_standard_api(standard, false)
+        };
     }
     let (mut state, uri) = open(".")?;
     if let Some(locale) = locale {
         state.set_display_locale(locale);
     }
     let symbols = state.symbols(&uri, Some(query)).unwrap_or_default();
+    if hover && symbols.len() == 1 {
+        let binding_id = symbols[0]["binding_id"]
+            .as_str()
+            .ok_or_else(|| "matched symbol has no stable binding identity".to_owned())?;
+        let (hover, mut machine) = state
+            .hover_for_binding(&uri, binding_id, locale)
+            .ok_or_else(|| "matched symbol has no hover projection".to_owned())?;
+        let mut human = markdown_hover_to_plain(&hover.contents.value);
+        let queried = queried_spelling(&symbols[0], query, &machine);
+        if queried["role"] == "migration" {
+            let replacement = queried["replacement"].as_str().unwrap_or_default();
+            if locale.is_some_and(|locale| locale == "zh" || locale.starts_with("zh-")) {
+                let _ = writeln!(
+                    human,
+                    "\n迁移提示\n  {query} 是兼容旧源码的别名；请改用 {replacement}。"
+                );
+            } else {
+                let _ = writeln!(
+                    human,
+                    "\nMigration\n  {query} is a source-compatibility alias; use {replacement}."
+                );
+            }
+        }
+        machine["queriedSpelling"] = queried;
+        return Ok((machine, human, false));
+    }
+    if hover && symbols.len() > 1 {
+        let candidates = symbols
+            .iter()
+            .map(|symbol| {
+                json!({
+                    "bindingId": symbol["binding_id"],
+                    "canonical": symbol["canonical"],
+                    "kind": symbol["kind"],
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut text = format!("ambiguous name `{query}`; candidates:\n");
+        for candidate in &candidates {
+            let _ = writeln!(
+                text,
+                "  {}",
+                candidate["bindingId"].as_str().unwrap_or_default()
+            );
+        }
+        return Ok((
+            json!({"ambiguous": true, "candidates": candidates}),
+            text,
+            false,
+        ));
+    }
+    if hover && symbols.is_empty() {
+        return Err(format!("symbol `{query}` was not found"));
+    }
     let mut text = String::new();
     for symbol in &symbols {
         let _ = writeln!(
@@ -310,128 +313,46 @@ fn symbol_query(query: &str, locale: Option<&str>) -> Result<(JsonValue, String,
     Ok((JsonValue::Array(symbols), text, false))
 }
 
-fn standard_api_query(
-    request: &LscRequest,
-    label: &str,
-    signatures_only: bool,
-) -> Result<(JsonValue, String, bool), String> {
-    let query = required_single(&request.arguments, label)?;
-    let records = crate::stdlib::query_api(query, request.locale.as_deref());
-    if records.is_empty() {
-        return Err(format!("standard API `{query}` was not found"));
+fn queried_spelling(symbol: &JsonValue, query: &str, hover: &JsonValue) -> JsonValue {
+    let spelling = query
+        .rmatch_indices(['/', '.'])
+        .next()
+        .map_or(query, |(index, separator)| {
+            &query[index + separator.len()..]
+        });
+    let canonical = symbol["canonical"].as_str().unwrap_or_default();
+    let mut role = (spelling == canonical).then_some("canonical");
+    if let Some(localized) = symbol["names"]["localized"].as_object() {
+        for entry in localized.values() {
+            if entry["preferred"] == spelling {
+                role = Some("preferred");
+                break;
+            }
+            if entry["aliases"]
+                .as_array()
+                .is_some_and(|aliases| aliases.iter().any(|alias| alias == spelling))
+            {
+                role = Some("migration");
+                break;
+            }
+        }
     }
-    render_standard_api(records, signatures_only)
-}
-
-fn standard_definition(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
-    let query = required_single(&request.arguments, "API-NAME-OR-BINDING-ID")?;
-    let records = crate::stdlib::query_api(query, request.locale.as_deref());
-    if records.is_empty() {
-        return Err(format!("standard API `{query}` was not found"));
-    }
-    let locations = records
-        .into_iter()
-        .map(|record| Location {
-            uri: record.api.source.uri,
-            range: crate::lsp::Range {
-                start: Position {
-                    line: record.api.source.line.saturating_sub(1),
-                    character: record.api.source.column.saturating_sub(1),
-                },
-                end: Position {
-                    line: record.api.source.line.saturating_sub(1),
-                    character: record.api.source.column.saturating_sub(1)
-                        + record.api.canonical.chars().count() as u32,
-                },
-            },
+    if role.is_none()
+        && let Some(alias) = symbol["aliases"].as_array().and_then(|aliases| {
+            aliases
+                .iter()
+                .find(|alias| alias["spelling"] == spelling || alias["canonical"] == spelling)
         })
-        .collect::<Vec<_>>();
-    let text = locations.iter().map(render_location).collect();
-    Ok((
-        serde_json::to_value(locations).map_err(|error| error.to_string())?,
-        text,
-        false,
-    ))
-}
-
-fn render_standard_api(
-    records: Vec<crate::stdlib::StandardApiSelection>,
-    signatures_only: bool,
-) -> Result<(JsonValue, String, bool), String> {
-    let mut text = String::new();
-    for record in &records {
-        let locale = record
-            .resolved_locale
-            .as_deref()
-            .or(record.requested_locale.as_deref())
-            .unwrap_or("default");
-        let chinese = locale == "zh" || locale.starts_with("zh-");
-        if signatures_only {
-            for shape in &record.api.call_shapes {
-                let _ = writeln!(text, "{shape}");
-            }
-            let _ = writeln!(text, "type: {}", record.api.signature);
-        } else {
-            let kind = if chinese && record.api.kind == crate::name::BindingKind::Function {
-                "函数".to_owned()
-            } else {
-                format!("{:?}", record.api.kind)
-            };
-            let _ = writeln!(text, "{} · {}", record.label, kind);
-            let _ = writeln!(text, "\n{}", record.selected_documentation);
-            if !record.api.call_shapes.is_empty() {
-                text.push_str(if chinese { "\n用法\n" } else { "\nUsage\n" });
-                for shape in &record.api.call_shapes {
-                    let _ = writeln!(text, "  {shape}");
-                }
-            }
-            if !record.api.examples.is_empty() {
-                text.push_str(if chinese {
-                    "\n示例\n"
-                } else {
-                    "\nExamples\n"
-                });
-                for example in &record.api.examples {
-                    for line in example {
-                        let _ = writeln!(text, "  {line}");
-                    }
-                    text.push('\n');
-                }
-            }
-            let type_heading = if chinese { "类型" } else { "Type" };
-            let _ = writeln!(text, "{type_heading}\n  {}", record.api.signature);
-            if let Some(behavior) = lsc_evaluation_behavior(record.api.evaluation, chinese) {
-                let heading = if chinese { "行为" } else { "Behavior" };
-                let _ = writeln!(text, "\n{heading}\n  {behavior}");
-            }
-            let canonical_heading = if chinese {
-                "规范名称"
-            } else {
-                "Canonical name"
-            };
-            let _ = writeln!(
-                text,
-                "\n{canonical_heading}\n  {}/{}",
-                record.api.namespace, record.api.canonical
-            );
-        }
-        if records.len() > 1 {
-            text.push('\n');
-        }
+    {
+        role = alias["role"].as_str();
     }
-    serde_json::to_value(records)
-        .map(|value| (value, text, false))
-        .map_err(|error| error.to_string())
-}
-
-fn lsc_evaluation_behavior(evaluation: &str, chinese: bool) -> Option<&'static str> {
-    match (evaluation, chinese) {
-        ("consumer", true) => Some("立即消费输入集合。"),
-        ("consumer", false) => Some("Consumes its input eagerly."),
-        ("lazy", true) => Some("按需生成结果。"),
-        ("lazy", false) => Some("Produces results lazily."),
-        _ => None,
-    }
+    let replacement = (role == Some("migration"))
+        .then(|| hover["label"].as_str().unwrap_or(canonical).to_owned());
+    json!({
+        "text": spelling,
+        "role": role.unwrap_or("canonical"),
+        "replacement": replacement,
+    })
 }
 
 fn markdown_hover_to_plain(markdown: &str) -> String {

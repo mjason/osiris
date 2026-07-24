@@ -46,6 +46,72 @@ fn project_document_uses_path_identity_and_dependency_interfaces() {
 }
 
 #[test]
+fn workspace_symbol_queries_find_localized_names_outside_the_open_module() {
+    let sequence = NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "osiris-lsp-symbol-workspace-{}-{sequence}",
+        std::process::id()
+    ));
+    let source_root = root.join("src/demo");
+    fs::create_dir_all(&source_root).expect("source root");
+    fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"lsp-symbol-workspace\"\nversion = \"1.0\"\n",
+    )
+    .expect("project configuration");
+    fs::write(
+        root.join("osiris.jsonc"),
+        r#"{"source":["src"],"displayLocale":"zh-CN"}"#,
+    )
+    .expect("Osiris configuration");
+    let provider_source = r#"(module demo.text)
+(export [format-message])
+^{:doc {:default "Format text for display." "zh-CN" "格式化用于显示的文本。"}
+  :osiris/names {"zh-CN" {:preferred 格式化文本 :aliases [渲染文本]}}}
+(defn ^Str format-message [^Str value] value)
+"#;
+    let provider = source_root.join("text.osr");
+    fs::write(&provider, provider_source).expect("provider source");
+    let app_source = "(module demo.app)\n(def answer 42)\n";
+    let app = source_root.join("app.osr");
+    fs::write(&app, app_source).expect("application source");
+    let app_uri = format!("file://{}", app.display());
+    let provider_uri = format!("file://{}", provider.display());
+    let mut state = LspState::new();
+
+    let diagnostics = state.did_open(&app_uri, 1, app_source);
+    assert!(diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
+    let symbols = state
+        .symbols(&app_uri, Some("渲染文本"))
+        .expect("workspace symbols");
+    assert_eq!(symbols.len(), 1, "{symbols:?}");
+    assert_eq!(
+        symbols[0]["binding_id"],
+        "demo.text::function::format-message"
+    );
+    assert_eq!(
+        state
+            .symbols(&app_uri, Some("demo.text/渲染文本"))
+            .expect("qualified workspace symbols")
+            .len(),
+        1
+    );
+    let (hover, machine) = state
+        .hover_for_binding(
+            &app_uri,
+            "demo.text::function::format-message",
+            Some("zh-CN"),
+        )
+        .expect("provider hover");
+    assert!(hover.contents.value.starts_with("**格式化文本** · 函数"));
+    assert_eq!(machine["source"]["uri"], provider_uri);
+    assert_eq!(machine["source"]["provenance"], "workspace-source");
+
+    drop(state);
+    fs::remove_dir_all(root).expect("workspace cleanup");
+}
+
+#[test]
 fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
     let sequence = NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
@@ -101,7 +167,10 @@ fn workspace_navigation_uses_provider_locations_and_stable_binding_identity() {
 
     let app_diagnostics = state.did_open(&app_uri, 1, app_source);
     assert!(
-        app_diagnostics.diagnostics.is_empty(),
+        !app_diagnostics
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == 1),
         "{app_diagnostics:?}"
     );
     let alpha_call = offset_to_position(

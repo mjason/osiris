@@ -1,5 +1,5 @@
 use super::super::*;
-use super::{metadata::*, nominal::*, operators::*};
+use super::{aliases::*, metadata::*, nominal::*, operators::*};
 
 pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceResult<()> {
     validate_interface_metadata_resources(interface)?;
@@ -102,6 +102,7 @@ pub(in crate::interface) fn validate_model(interface: &Interface) -> InterfaceRe
             ));
         }
     }
+    validate_alias_contracts(interface, &bindings)?;
     let mut contract_ids = BTreeSet::new();
     for function in &interface.functions {
         let binding = bindings.get(function.binding.as_str()).ok_or_else(|| {

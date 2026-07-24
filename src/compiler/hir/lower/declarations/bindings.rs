@@ -28,11 +28,12 @@ impl<'a> Lowerer<'a> {
         {
             Ok(name) => {
                 let id = name.id.clone();
+                let metadata_aliases = metadata_alias_spellings(&metadata, &name.canonical);
                 self.globals.insert(name.canonical.clone(), id.clone());
                 self.bindings.insert(
                     id.clone(),
                     Binding {
-                        name,
+                        name: name.clone(),
                         source_spelling: source_name.spelling.clone(),
                         ty,
                         runtime,
@@ -40,6 +41,48 @@ impl<'a> Lowerer<'a> {
                         metadata,
                     },
                 );
+                for (spelling, role) in metadata_aliases {
+                    if let Some(existing) = self.globals.get(&spelling) {
+                        self.error(
+                            "OSR-N0001",
+                            format!(
+                                "name `{spelling}` conflicts with binding `{}`",
+                                existing.as_str()
+                            ),
+                            span,
+                        );
+                        continue;
+                    }
+                    let alias_name = Name {
+                        spelling: spelling.clone(),
+                        canonical: spelling.clone(),
+                    };
+                    match self.allocator.alias(&spelling, &name, span) {
+                        Ok(()) => {
+                            self.globals.insert(spelling.clone(), id.clone());
+                            self.aliases.push(Alias {
+                                spelling: alias_name.spelling,
+                                canonical: alias_name.canonical,
+                                target: id.clone(),
+                                span,
+                                public: false,
+                                role: match role {
+                                    MetadataAliasRole::Preferred => AliasRole::Preferred,
+                                    MetadataAliasRole::Migration => AliasRole::Migration,
+                                },
+                            });
+                            if role == MetadataAliasRole::Migration {
+                                self.migration_alias_profiles.insert(
+                                    (id.clone(), spelling),
+                                    metadata_preferred_names(
+                                        &self.bindings.get(&id).expect("declared binding").metadata,
+                                    ),
+                                );
+                            }
+                        }
+                        Err(diagnostic) => self.diagnostics.push(diagnostic),
+                    }
+                }
                 Some(id)
             }
             Err(diagnostic) => {
@@ -99,7 +142,7 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
             // An alias target may be a qualified member of an imported
-            // interface (for example `series/rolling-mean`).  Such members
+            // interface (for example `text/format-message`). Such members
             // intentionally do not enter `globals`: they retain the
             // provider's stable imported BindingId in `qualified_imports`.
             // Resolve that table here so a local alias is only a spelling
@@ -119,6 +162,9 @@ impl<'a> Lowerer<'a> {
             let Some(binding) = self.bindings.get(&target).cloned() else {
                 continue;
             };
+            if self.globals.get(&alias.local.canonical) == Some(&target) {
+                continue;
+            }
             match self
                 .allocator
                 .alias(&alias.local.spelling, &binding.name, alias.span)
@@ -129,10 +175,15 @@ impl<'a> Lowerer<'a> {
                     self.aliases.push(Alias {
                         spelling: alias.local.spelling.clone(),
                         canonical: alias.local.canonical.clone(),
-                        target,
+                        target: target.clone(),
                         span: alias.span,
                         public: false,
+                        role: AliasRole::Migration,
                     });
+                    self.migration_alias_profiles.insert(
+                        (target.clone(), alias.local.canonical.clone()),
+                        metadata_preferred_names(&binding.metadata),
+                    );
                 }
                 Err(diagnostic) => self.diagnostics.push(diagnostic),
             }

@@ -192,29 +192,58 @@ impl LspState {
     #[must_use]
     pub fn symbols(&self, uri: &str, query: Option<&str>) -> Option<Vec<JsonValue>> {
         let document = self.document(uri)?;
-        let mut symbols = document
-            .semantic
-            .symbols
-            .iter()
-            .filter(|symbol| {
-                let Some(query) = query.filter(|query| !query.is_empty()) else {
-                    return true;
-                };
-                symbol.binding_id == query
-                    || symbol.canonical == query
-                    || symbol.source_spelling == query
-                    || symbol
-                        .aliases
-                        .iter()
-                        .any(|alias| alias.spelling == query || alias.canonical == query)
-            })
-            .collect::<Vec<_>>();
-        symbols.sort_by_key(|symbol| &symbol.binding_id);
+        let query = query.filter(|query| !query.is_empty());
+        let mut symbols = BTreeMap::<&str, (&SemanticSymbol, bool)>::new();
+        for entry in &document.workspace_symbols.semantic_symbols {
+            let symbol = &entry.symbol;
+            if query.is_some_and(|query| !semantic_symbol_accepts(symbol, query)) {
+                continue;
+            }
+            let provider = document
+                .workspace_symbols
+                .definitions
+                .get(&symbol.binding_id)
+                .is_some_and(|definition| definition.uri == entry.uri);
+            match symbols.entry(&symbol.binding_id) {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert((symbol, provider));
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot)
+                    if provider && !slot.get().1 =>
+                {
+                    slot.insert((symbol, true));
+                }
+                _ => {}
+            }
+        }
         Some(
             symbols
                 .into_iter()
-                .filter_map(|symbol| serde_json::to_value(symbol).ok())
+                .filter_map(|(_, (symbol, _))| serde_json::to_value(symbol).ok())
                 .collect(),
         )
     }
+}
+
+fn semantic_symbol_accepts(symbol: &SemanticSymbol, query: &str) -> bool {
+    if symbol.binding_id == query || semantic_symbol_accepts_spelling(symbol, query) {
+        return true;
+    }
+    let module = symbol.binding_id.split("::").next().unwrap_or_default();
+    [format!("{module}/"), format!("{module}.")]
+        .iter()
+        .find_map(|prefix| query.strip_prefix(prefix))
+        .is_some_and(|spelling| semantic_symbol_accepts_spelling(symbol, spelling))
+}
+
+fn semantic_symbol_accepts_spelling(symbol: &SemanticSymbol, spelling: &str) -> bool {
+    symbol.canonical == spelling
+        || symbol.source_spelling == spelling
+        || symbol
+            .aliases
+            .iter()
+            .any(|alias| alias.spelling == spelling || alias.canonical == spelling)
+        || symbol.names.localized.values().any(|entry| {
+            entry.preferred == spelling || entry.aliases.iter().any(|alias| alias == spelling)
+        })
 }

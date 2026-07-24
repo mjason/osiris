@@ -37,7 +37,9 @@ fn source() -> &'static str {
 fn state_reuses_one_analysis_for_all_queries() {
     let mut state = LspState::new();
     let diagnostics = state.did_open(URI, 1, source());
-    assert!(diagnostics.diagnostics.is_empty());
+    assert_eq!(diagnostics.diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics.diagnostics[0].code, "OSR-L0002");
+    assert_eq!(diagnostics.diagnostics[0].severity, 2);
     assert_eq!(state.analysis_runs(), 1);
 
     let position = Position {
@@ -76,6 +78,80 @@ fn state_reuses_one_analysis_for_all_queries() {
         "implicit core bindings should participate in completion"
     );
     assert_eq!(state.analysis_runs(), 1);
+}
+
+#[test]
+fn migration_alias_diagnostics_preserve_roles_and_locale_replacements() {
+    let uri = "file:///workspace/aliases.osr";
+    let source = r#"(module aliases)
+^{:osiris/names {"zh-CN" {:preferred 格式化文本 :aliases [渲染文本]}}}
+(defn format-message [^{:osiris/names {"zh-CN" {:preferred 名称 :aliases [显示名称]}}} name] name)
+(def preferred (格式化文本 :名称 "Osiris"))
+(def migrated (渲染文本 :显示名称 "Osiris"))
+"#;
+    let mut state = LspState::new();
+    state.set_display_locale("zh-CN");
+    let diagnostics = state.did_open(uri, 1, source);
+    let migrations = diagnostics
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == "OSR-L0002")
+        .collect::<Vec<_>>();
+    assert_eq!(migrations.len(), 2, "{diagnostics:?}");
+    assert!(migrations.iter().all(|diagnostic| diagnostic.severity == 2));
+    assert!(migrations.iter().any(|diagnostic| {
+        diagnostic.data["alias"] == "渲染文本"
+            && diagnostic.data["replacement"] == "格式化文本"
+    }));
+    let parameter_diagnostic = migrations
+        .iter()
+        .find(|diagnostic| diagnostic.data["alias"] == "显示名称")
+        .expect("parameter migration diagnostic");
+    let actions = state.code_actions(uri, parameter_diagnostic.range);
+    assert_eq!(actions.len(), 1, "{actions:?}");
+    assert_eq!(
+        actions[0]["edit"]["changes"][uri][0]["newText"],
+        ":名称"
+    );
+    assert!(migrations.iter().any(|diagnostic| {
+        diagnostic.data["alias"] == "显示名称"
+            && diagnostic.data["replacement"] == "名称"
+    }));
+
+    let migrated_position = offset_to_position(
+        source,
+        source.find("渲染文本 :显示名称").expect("migration call"),
+    );
+    let hover = state
+        .hover(uri, migrated_position, Some("zh-CN"))
+        .expect("migration hover");
+    assert!(hover.contents.value.contains("迁移提示"), "{}", hover.contents.value);
+    assert!(hover.contents.value.contains("`渲染文本` -> `格式化文本`"));
+    let machine = state
+        .hover_machine_projection(uri, migrated_position, Some("zh-CN"))
+        .expect("migration machine hover");
+    assert_eq!(machine["schema"], "osiris.hover/v1");
+    assert_eq!(machine["authoredSpelling"]["role"], "migration");
+    assert_eq!(machine["authoredSpelling"]["replacement"], "格式化文本");
+    assert!(machine.get("metadata").is_none());
+
+    let preferred_position = offset_to_position(
+        source,
+        source.find("格式化文本 :名称").expect("preferred call"),
+    );
+    let preferred = state
+        .hover(uri, preferred_position, Some("zh-CN"))
+        .expect("preferred hover");
+    assert!(!preferred.contents.value.contains("迁移提示"));
+
+    state.set_display_locale("en-US");
+    let english = state.diagnostics(uri).expect("diagnostics");
+    assert!(english.diagnostics.iter().filter(|diagnostic| diagnostic.code == "OSR-L0002").all(
+        |diagnostic| matches!(
+            diagnostic.data["replacement"].as_str(),
+            Some("format-message" | "name")
+        )
+    ));
 }
 
 #[test]
@@ -119,7 +195,13 @@ fn python_decorator_targets_participate_in_navigation() {
 "#;
     let mut state = LspState::new();
     let diagnostics = state.did_open(DECORATOR_URI, 1, source);
-    assert!(diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
+    assert!(
+        !diagnostics
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == 1),
+        "{diagnostics:?}"
+    );
     let target = offset_to_position(
         source,
         source.rfind("发布 host.register").expect("decorator target"),
@@ -135,7 +217,13 @@ fn python_decorator_targets_participate_in_navigation() {
 fn rename_keeps_canonical_and_alias_spelling_groups_separate() {
     let mut state = LspState::new();
     let diagnostics = state.did_open(URI, 1, source());
-    assert!(diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
+    assert!(
+        !diagnostics
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == 1),
+        "{diagnostics:?}"
+    );
 
     let canonical_position = offset_to_position(
         source(),
@@ -217,6 +305,11 @@ fn json_rpc_advertises_and_dispatches_prepare_and_rename() {
             ["prepareProvider"],
         true
     );
+    assert_eq!(
+        initialized.response.as_ref().expect("initialize response")["result"]["capabilities"]
+            ["codeActionProvider"]["codeActionKinds"],
+        json!(["quickfix"])
+    );
     machine.state.did_open(URI, 1, source());
     let position = offset_to_position(source(), source().find("加一 2").expect("alias call"));
 
@@ -265,7 +358,13 @@ fn rename_validates_collisions_normalizes_nfc_and_emits_utf16_ranges() {
 "#;
     let mut state = LspState::new();
     let diagnostics = state.did_open(URI, 1, source);
-    assert!(diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
+    assert!(
+        !diagnostics
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == 1),
+        "{diagnostics:?}"
+    );
     let first = offset_to_position(source, source.find("first [^Int x").expect("first"));
     let alias_offset = source.rfind("第一 1").expect("alias call");
     let alias = offset_to_position(source, alias_offset);

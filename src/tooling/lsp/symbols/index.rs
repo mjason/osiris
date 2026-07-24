@@ -91,6 +91,12 @@ pub(super) fn index_analysis_symbols(
         }
     }
     index_declaration_references(index, analysis, &semantic, uri, source);
+    index
+        .semantic_symbols
+        .extend(semantic.symbols.into_iter().map(|symbol| WorkspaceSemanticSymbol {
+            uri: uri.to_owned(),
+            symbol,
+        }));
 }
 
 pub(super) fn index_symbol_rename_occurrences(

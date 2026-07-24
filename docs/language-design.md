@@ -288,50 +288,52 @@ binding 条件、集合迭代和 threading macros 在 core 中以卫生宏或普
 Osiris 的别名是名称解析能力，不是运行时注册表，也不是第二个函数或变量：
 
 ```clojure
-(import data.series :as ts)
+(import text.format :as text)
 (import osiris.math :as math)
 
-(alias 时序均值 ts/rolling-mean)
-(alias 绝对值 math/abs)
+(alias legacy-format text/format-message)
+(alias magnitude math/abs)
 
-(时序均值 values window :最小样本 1)
+(legacy-format "Hello, {name}!" :name "Osiris")
 ```
 
-`alias` 是必须直接出现在模块中的声明，左侧创建当前模块可见的拼写，右侧必须解析到已有 binding。两者具有完全相同的 binding id、kind、phase、类型和三类语义摘要；别名链在接口中扁平化到唯一 canonical binding，循环是编译错误。别名本身不生成 Python 赋值、wrapper 或第二份实现。
+`alias` 是必须直接出现在模块中的迁移声明，左侧保留当前模块仍可解析的旧拼写，右侧必须解析到已有 binding。两者具有完全相同的 binding id、kind、phase、类型和三类语义摘要；别名链在接口中扁平化到唯一 canonical binding，循环是编译错误。引用旧拼写会产生不阻断编译的替换提示。别名本身不生成 Python 赋值、wrapper 或第二份实现；推荐的本地化拼写应通过下文的 `:preferred` 声明。
 
 API 作者可以通过第 8.8 节的标准 metadata 发布本地化名称：
 
 ```clojure
-(extern python "data_runtime.series"
-  ^{:doc {:default "Return the mean over the most recent window."
-          "zh-CN" "返回最近窗口的均值。"}
+(extern python "text_runtime.format"
+  ^{:doc {:default "Format a message for display."
+          "zh-CN" "格式化用于显示的文本。"}
     :osiris/names
-    {"zh-CN" {:preferred 时序均值
-               :aliases [滚动均值]}}}
-  (defn ^Series rolling-mean
-    [^Series values
-     ^{:type Int
-       :osiris/names {"zh-CN" {:preferred 周期}}}
-     window
-     [^{:type Int
-        :osiris/names {"zh-CN" {:preferred 最小样本}}}
-      min-samples = window]]))
+    {"zh-CN" {:preferred 格式化文本
+               :aliases [渲染文本]}}}
+  (defn ^Str format-message
+    [^Str template
+     ^{:type Str
+       :osiris/names {"zh-CN" {:preferred 名称
+                                :aliases [显示名称]}}}
+     name
+     [^{:type Bool
+        :osiris/names {"zh-CN" {:preferred 转为大写
+                                 :aliases [大写 使用大写]}}}
+      uppercase = false]]))
 ```
 
-当 canonical declaration 被 `export` 时，直接附着在该源码声明上的 `:osiris/names` 自动成为可解析 public aliases 并进入 `.osri`，不要求在 `export` 中重复列出；所以上例可以由消费者写成 `ts/rolling-mean`、`ts/时序均值` 或 `ts/滚动均值`。`preferred` 状态只影响显示和补全排序，不改变这些名称的解析身份；编译器绝不能根据当前 locale 为同一 token 选择不同含义。独立 `(alias local-name target)` 默认只在当前模块可见；若要公开，必须显式 export 该 alias，且 target 的 canonical binding 也已经 export。
+当 canonical declaration 被 `export` 时，直接附着在该源码声明上的 `:osiris/names` 自动成为可解析 public names 并进入 `.osri`，不要求在 `export` 中重复列出；所以上例可以由消费者写成 `text/format-message` 或推荐的 `text/格式化文本`。兼容拼写 `text/渲染文本` 仍可解析，但会提示迁移到当前 locale 的 preferred spelling。`preferred` 不改变 binding identity；编译器绝不能根据当前 locale 为同一 token 选择不同含义。独立 `(alias local-name target)` 默认只在当前模块可见；若要公开，必须显式 export 该 alias，且 target 的 canonical binding 也已经 export。
 
-名称表可以附着到模块级 value、type、macro、`defstruct` 字段和函数参数。已知静态签名的调用会先把参数别名归一到 canonical parameter id，再检查缺失、重复和类型，并在 Python AST 中生成 canonical keyword；同一次调用同时传 `:min-samples` 和 `:最小样本` 必须报告重复参数。动态 `Any`/Python 调用没有可验证签名，不能自动翻译关键字，必须使用目标 Python 的真实参数名或显式 typed wrapper。
+名称表可以附着到模块级 value、type、macro、`defstruct` 字段和函数参数。参数 locale entry 与声明相同：`:preferred` 是一个 Symbol，`:aliases` 是可选的 Symbol vector。`:preferred` 表示当前推荐拼写；`:aliases` 只用于兼容需要迁移的旧源码，不是同义词集合。已知静态签名的调用会先把参数 preferred name 与所有 aliases 归一到 canonical parameter id，再检查缺失、重复和类型，并在 Python AST 中生成 canonical keyword；`:uppercase`、`:转为大写`、`:大写` 和 `:使用大写` 都指向同一参数，任意两个同时传入必须报告重复参数。使用 alias 必须产生不阻断编译的迁移 lint，replacement 优先选择当前 display locale 的 preferred name，没有时使用 canonical name。动态 `Any`/Python 调用没有可验证签名，不能自动翻译关键字，必须使用目标 Python 的真实参数名或显式 typed wrapper。
 
 第一版遵守以下约束：
 
 - 同一作用域内，canonical name、别名、import 和本地定义经过 NFC 后不能指向不同 binding；冲突必须显式改名。
 - public alias 的 target 必须是同一模块已显式 export 的 canonical binding，不能借 alias 意外公开私有实现；public alias 必须来自直接源码中的 `alias`、declaration 或顶层 declaration-macro 调用上的 `:osiris/names`。宏可以保留调用方直接写出的 public names，但不能自行发明或修改 export table；宏生成的其他名称 metadata 只能用于其卫生作用域和展示。
 - 一个源代码拼写在所有 locale 中只有一个含义，不提供全局“中文词典”或按 locale 切换的解析器。
-- 参数别名属于具体函数签名，字段别名属于具体 struct；不使用类似 `周期 -> n` 的全局关键字替换表。
+- 参数别名属于具体函数签名，字段别名属于具体 struct；不使用类似 `名称 -> name` 的全局关键字替换表。
 - struct 字段别名可以用于静态字段访问和构造器关键字，并降低为 canonical Python attribute；DataFrame 的物理列名是运行时数据，不能被字段别名静默改写，必须由 schema/adapter 显式声明映射。
 - module alias 继续使用 `(import ... :as q)`；普通 keyword、字符串和枚举值不是 binding alias，领域包必须用 typed constant、schema 或宏明确处理。
 - `go-to-definition` 从别名跳到 canonical definition，find-references 可以按 binding id 汇总所有拼写；rename 必须区分“仅重命名当前 alias”和“重命名 canonical API”。
-- alias 可以带 `:since`、`:deprecated`、`:replacement` 和迁移原因；deprecated alias 继续解析但产生 lint/LSP warning，并提供改写到 preferred/canonical name 的 code action。增加 public alias 是兼容变化，删除或改绑 public alias 是 source-breaking change。
+- alias 本身就是兼容旧源码的迁移拼写，继续解析但产生 lint/LSP warning，并提供改写到 preferred/canonical name 的 code action；可附加 `:since`、`:deprecated`、`:replacement` 和迁移原因来描述生命周期。增加 public alias 是兼容变化，删除或改绑 public alias 是 source-breaking change。
 - strict lint 应提示 Unicode confusable、不可见字符和高风险混合文字标识符，但不能把正常中文名称视为错误；真正的 NFC/NFKC 碰撞仍是编译错误。
 - 公共库推荐使用稳定的 ASCII canonical name 加本地化 public names；应用内部的局部绑定可以直接使用中文。两种风格都是真实源码，不要求 LSP 才能编译。
 

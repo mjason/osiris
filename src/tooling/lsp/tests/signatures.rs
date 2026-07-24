@@ -139,3 +139,25 @@ fn macro_signature_help_uses_stable_identity_for_qualified_referred_and_local_ma
     drop(state);
     fs::remove_dir_all(root).expect("workspace cleanup");
 }
+
+#[test]
+fn nested_runtime_call_inside_macro_source_uses_the_smallest_call_signature() {
+    let source = r#"(module nested-signature)
+(defn ^Str format-message [^Str template ^Str name] template)
+(defmacro keep [form] form)
+(def result (keep (format-message "Hello" )))
+"#;
+    let uri = "file:///workspace/nested-signature.osr";
+    let mut state = LspState::new();
+    state.did_open(uri, 1, source);
+    let cursor = source.find("\"Hello\" )").expect("nested call") + "\"Hello\" ".len();
+    let signature = state
+        .signature_help(uri, offset_to_position(source, cursor), Some("en"))
+        .expect("nested runtime signature");
+    assert!(
+        signature.signatures[0].label.starts_with("format-message("),
+        "{:?}",
+        signature.signatures[0].label
+    );
+    assert_eq!(signature.active_parameter, Some(1));
+}

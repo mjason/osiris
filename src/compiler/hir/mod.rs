@@ -13,7 +13,10 @@ use crate::{
     interface::{Interface, PublicBinding},
     name::{BindingId, BindingKind, BindingName, NameAllocator, python_identifier},
     source::Span,
-    syntax::{Form, FormKind, MetadataEntry, Name},
+    syntax::{
+        Form, FormKind, MetadataAliasRole, MetadataEntry, Name, metadata_alias_spellings,
+        metadata_migration_aliases, metadata_preferred_names,
+    },
     types::{
         Alignment, Availability, CallSummaries, DataProperties, Effect, EffectRow, FunctionType,
         OperatorInstance, OperatorSignature, ScalarOperator, TemporalBound, Type, TypeContext,
@@ -141,10 +144,12 @@ struct Lowerer<'a> {
     struct_type_parameters: BTreeMap<BindingId, BTreeMap<String, Type>>,
     phase_one_names: BTreeSet<String>,
     aliases: Vec<Alias>,
+    migration_alias_profiles: BTreeMap<(BindingId, String), BTreeMap<String, String>>,
     exports: BTreeSet<BindingId>,
     extern_functions: Vec<ExternFunction>,
     items: Vec<Item>,
     diagnostics: Vec<Diagnostic>,
+    migration_advisories: Vec<MigrationAdvisory>,
     types: TypeContext,
     next_scope: u32,
     interfaces: Option<&'a dyn InterfaceProvider>,
@@ -190,6 +195,8 @@ struct CallableParameter {
     required: bool,
     variadic: bool,
     span: Span,
+    migration_aliases: BTreeSet<String>,
+    preferred_names: BTreeMap<String, String>,
 }
 
 struct FunctionRecurContext {

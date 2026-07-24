@@ -17,8 +17,9 @@ use crate::{
     source::Span,
     syntax::{
         Document, Form, FormKind, METADATA_DECLARATION_LIMITS, METADATA_INTERFACE_LIMITS,
-        METADATA_TARGET_LIMITS, MetadataEntry, MetadataLimitExceeded, MetadataResourceUsage, Name,
-        ReaderMacroKind, check_metadata_resources, check_metadata_usage, metadata_aliases,
+        METADATA_TARGET_LIMITS, MetadataAliasRole, MetadataEntry, MetadataLimitExceeded,
+        MetadataResourceUsage, Name, ReaderMacroKind, check_metadata_resources,
+        check_metadata_usage, metadata_alias_spellings, metadata_aliases,
         metadata_datum_is_serializable,
     },
     types::{
@@ -48,6 +49,13 @@ pub use encode::install_hash_group;
 pub(crate) use encode::refresh_standalone_hashes;
 use encode::{MetadataProjection, calculate_hashes, file_forms};
 pub use model::*;
+
+const fn public_alias_role_rank(role: PublicAliasRole) -> u8 {
+    match role {
+        PublicAliasRole::Preferred => 0,
+        PublicAliasRole::Migration => 1,
+    }
+}
 use rules::*;
 use validate::{
     metadata_resource_error, validate, validate_interface_metadata_resources,

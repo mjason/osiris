@@ -13,7 +13,7 @@ areas:
   - Packaging
 created: 2026-07-24
 updated: 2026-07-24
-revision: 1
+revision: 2
 requires: [0, 1, 2, 3]
 replaces: []
 superseded-by: null

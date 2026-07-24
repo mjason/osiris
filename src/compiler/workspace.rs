@@ -1,4 +1,5 @@
 use super::*;
+use rayon::prelude::*;
 
 mod recover;
 
@@ -21,6 +22,25 @@ pub fn compile_workspace(
     inputs: &[CompileInput<'_>],
     external_interfaces: &BTreeMap<String, interface::Interface>,
 ) -> WorkspaceCompileResult {
+    compile_workspace_with_emission(inputs, external_interfaces, true)
+}
+
+/// Analyze a workspace without generating Python or serialized artifacts.
+#[must_use]
+pub fn analyze_workspace(
+    inputs: &[CompileInput<'_>],
+    external_interfaces: &BTreeMap<String, interface::Interface>,
+) -> WorkspaceCompileResult {
+    compile_workspace_with_emission(inputs, external_interfaces, false)
+}
+
+fn compile_workspace_with_emission(
+    inputs: &[CompileInput<'_>],
+    external_interfaces: &BTreeMap<String, interface::Interface>,
+    emit: bool,
+) -> WorkspaceCompileResult {
+    let timing_started = std::time::Instant::now();
+    let timings = std::env::var_os("OSIRIS_TIMINGS").is_some();
     if inputs.is_empty() {
         return WorkspaceCompileResult::default();
     }
@@ -66,34 +86,50 @@ pub fn compile_workspace(
         };
     }
 
-    let mut prepared = Vec::with_capacity(inputs.len());
-    let mut diagnostics = Vec::new();
-    for (input_index, input) in inputs.iter().enumerate() {
-        let document = reader::read(input.source);
-        let mut lowered = ast::lower_document(&document);
-        install_module_identity(&mut lowered.module, input.options, &mut lowered.diagnostics);
-        diagnostics.extend(
-            lowered
+    let prepared_results = inputs
+        .par_iter()
+        .enumerate()
+        .map(|(input_index, input)| {
+            let document = reader::read(input.source);
+            let mut lowered = ast::lower_document(&document);
+            install_module_identity(&mut lowered.module, input.options, &mut lowered.diagnostics);
+            let diagnostics = lowered
                 .diagnostics
                 .drain(..)
                 .map(|diagnostic| LocatedDiagnostic {
                     input_index,
                     diagnostic,
-                }),
+                })
+                .collect::<Vec<_>>();
+            let module_name = lowered
+                .module
+                .name
+                .as_ref()
+                .expect("implicit workspace module name was installed")
+                .canonical
+                .clone();
+            (
+                PreparedInput {
+                    input_index,
+                    document,
+                    header: lowered.module,
+                    module_name,
+                },
+                diagnostics,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut prepared = Vec::with_capacity(inputs.len());
+    let mut diagnostics = Vec::new();
+    for (unit, mut unit_diagnostics) in prepared_results {
+        prepared.push(unit);
+        diagnostics.append(&mut unit_diagnostics);
+    }
+    if timings {
+        eprintln!(
+            "osr timing: workspace read+lower {:?}",
+            timing_started.elapsed()
         );
-        let module_name = lowered
-            .module
-            .name
-            .as_ref()
-            .expect("implicit workspace module name was installed")
-            .canonical
-            .clone();
-        prepared.push(PreparedInput {
-            input_index,
-            document,
-            header: lowered.module,
-            module_name,
-        });
     }
     if !diagnostics.is_empty() {
         sort_located_diagnostics(&mut diagnostics);
@@ -115,6 +151,7 @@ pub fn compile_workspace(
             };
         }
     };
+    let analysis_started = std::time::Instant::now();
 
     let source_names = prepared
         .iter()
@@ -172,6 +209,11 @@ pub fn compile_workspace(
     let mut completed_components = BTreeSet::new();
     let mut analyses = (0..inputs.len()).map(|_| None).collect::<Vec<_>>();
     let mut interface_models = BTreeMap::<String, interface::Interface>::new();
+    let mut provisional_elapsed = std::time::Duration::ZERO;
+    let mut expansion_elapsed = std::time::Duration::ZERO;
+    let mut frontend_elapsed = std::time::Duration::ZERO;
+    let mut interface_elapsed = std::time::Duration::ZERO;
+    let mut validation_elapsed = std::time::Duration::ZERO;
 
     while completed_components.len() < runtime_components.len() {
         let ready = (0..runtime_components.len()).find(|component| {
@@ -202,6 +244,7 @@ pub fn compile_workspace(
             let unit = &prepared[*by_name
                 .get(module_name)
                 .expect("workspace source module has an input")];
+            let started = std::time::Instant::now();
             let model = match interface::build_provisional(&unit.header) {
                 Ok(model) => model,
                 Err(error) => {
@@ -218,6 +261,7 @@ pub fn compile_workspace(
                     };
                 }
             };
+            provisional_elapsed += started.elapsed();
             provisional.insert(module_name.clone(), model);
         }
 
@@ -239,6 +283,7 @@ pub fn compile_workspace(
                 .get(module_name)
                 .expect("workspace source module has an input")];
             let imported_phase = imported_phase_modules(&unit.header, &raw_interfaces);
+            let started = std::time::Instant::now();
             let expanded = macro_expand::expand_with_imported_phase_modules_for_module(
                 &unit.document,
                 &imported_phase,
@@ -254,6 +299,7 @@ pub fn compile_workspace(
             if let Ok(model) = interface::build_provisional(&lowered.module) {
                 expanded_provisional.insert(module_name.clone(), model);
             }
+            expansion_elapsed += started.elapsed();
         }
         if expanded_provisional.len() == modules.len() {
             provisional = expanded_provisional;
@@ -289,12 +335,15 @@ pub fn compile_workspace(
                 .get(&module_name)
                 .expect("workspace source module has an input")];
             let imported_phase = imported_phase_modules(&unit.header, &scc_interfaces);
+            let started = std::time::Instant::now();
             let mut analysis = analyze_document(
                 &unit.document,
                 inputs[unit.input_index].options,
                 &imported_phase,
                 Some(&scc_interfaces),
             );
+            frontend_elapsed += started.elapsed();
+            let started = std::time::Instant::now();
             let Some(interface_model) = build_interface_model(
                 &mut analysis,
                 inputs[unit.input_index].options.target_python,
@@ -314,6 +363,7 @@ pub fn compile_workspace(
                     diagnostics,
                 };
             };
+            interface_elapsed += started.elapsed();
             if analysis.has_errors() {
                 let mut diagnostics = analysis
                     .diagnostics
@@ -333,6 +383,7 @@ pub fn compile_workspace(
             let Some(provisional_model) = provisional.get(&module_name) else {
                 unreachable!("every SCC member has a provisional interface")
             };
+            let started = std::time::Instant::now();
             if let Err(error) =
                 interface::validate_provisional_shape(provisional_model, &interface_model)
             {
@@ -344,6 +395,7 @@ pub fn compile_workspace(
                     }],
                 };
             }
+            validation_elapsed += started.elapsed();
             staged.push((module_name, analysis, interface_model));
         }
 
@@ -357,6 +409,17 @@ pub fn compile_workspace(
             available_interfaces.insert(module_name, model);
         }
         completed_components.extend(batch_components);
+    }
+    if timings {
+        eprintln!(
+            "osr timing: workspace analysis {:?} (provisional {:?}, expansion {:?}, frontend {:?}, interface {:?}, validation {:?})",
+            analysis_started.elapsed(),
+            provisional_elapsed,
+            expansion_elapsed,
+            frontend_elapsed,
+            interface_elapsed,
+            validation_elapsed,
+        );
     }
 
     let local_bodies = interface_models
@@ -436,7 +499,7 @@ pub fn compile_workspace(
         }
     }
 
-    let mut compiled = (0..inputs.len()).map(|_| None).collect::<Vec<_>>();
+    let mut jobs = Vec::with_capacity(prepared.len());
     for unit in &prepared {
         let analysis = analyses[unit.input_index]
             .take()
@@ -444,8 +507,36 @@ pub fn compile_workspace(
         let model = interface_models
             .remove(&unit.module_name)
             .expect("every workspace module has an interface model");
-        let (result, _) =
-            finish_compile_with_model(analysis, inputs[unit.input_index].options, Some(model));
+        jobs.push((unit.input_index, analysis, model));
+    }
+    let results = if emit {
+        jobs.into_par_iter()
+            .map(|(input_index, analysis, model)| {
+                (
+                    input_index,
+                    finish_compile_with_model(analysis, inputs[input_index].options, Some(model)).0,
+                )
+            })
+            .collect::<Vec<_>>()
+    } else {
+        jobs.into_iter()
+            .map(|(input_index, analysis, _)| {
+                (
+                    input_index,
+                    CompileResult {
+                        build_hash: analysis.cache_key.clone(),
+                        analysis,
+                        python: None,
+                        interface: None,
+                        source_map: None,
+                        records: None,
+                    },
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut compiled = (0..inputs.len()).map(|_| None).collect::<Vec<_>>();
+    for (input_index, result) in results {
         if result.has_errors() {
             let mut diagnostics = result
                 .analysis
@@ -453,7 +544,7 @@ pub fn compile_workspace(
                 .iter()
                 .cloned()
                 .map(|diagnostic| LocatedDiagnostic {
-                    input_index: unit.input_index,
+                    input_index,
                     diagnostic,
                 })
                 .collect::<Vec<_>>();
@@ -463,7 +554,7 @@ pub fn compile_workspace(
                 diagnostics,
             };
         }
-        compiled[unit.input_index] = Some(result);
+        compiled[input_index] = Some(result);
     }
 
     WorkspaceCompileResult {

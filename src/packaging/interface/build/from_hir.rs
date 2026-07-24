@@ -72,20 +72,39 @@ pub fn from_hir(typed: &hir::Module) -> InterfaceResult<Interface> {
                 spelling: alias.spelling.clone(),
                 canonical: alias.canonical.clone(),
                 target: alias.target.as_str().to_owned(),
+                role: match alias.role {
+                    hir::AliasRole::Preferred => PublicAliasRole::Preferred,
+                    hir::AliasRole::Migration | hir::AliasRole::LocalRename => {
+                        PublicAliasRole::Migration
+                    }
+                },
             })
         })
         .collect::<InterfaceResult<Vec<_>>>()?;
     for binding in &bindings {
-        for alias in metadata_aliases(&binding.metadata, &binding.canonical) {
+        for (alias, role) in metadata_alias_spellings(&binding.metadata, &binding.canonical) {
             aliases.push(PublicAlias {
                 spelling: alias.clone(),
                 canonical: alias,
                 target: binding.id.clone(),
+                role: match role {
+                    MetadataAliasRole::Preferred => PublicAliasRole::Preferred,
+                    MetadataAliasRole::Migration => PublicAliasRole::Migration,
+                },
             });
         }
     }
     aliases.sort_by(|left, right| {
-        (&left.canonical, &left.target).cmp(&(&right.canonical, &right.target))
+        (
+            &left.canonical,
+            &left.target,
+            public_alias_role_rank(left.role),
+        )
+            .cmp(&(
+                &right.canonical,
+                &right.target,
+                public_alias_role_rank(right.role),
+            ))
     });
     aliases
         .dedup_by(|left, right| left.canonical == right.canonical && left.target == right.target);

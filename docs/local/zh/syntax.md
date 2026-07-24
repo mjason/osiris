@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 4
+revision: 8
 source: ../../syntax.md
-source-revision: 4
+source-revision: 8
 translation-status: Current
 ---
 
@@ -56,11 +56,11 @@ Phase 1 reader 形式包括：
 名称可以使用 Unicode。名称身份使用 Unicode NFC，诊断仍保留作者拼写。常见形式有：
 
 ```clojure
-rolling-mean          ; Lisp 风格名称
+format-message        ; Lisp 风格名称
 ready?                ; 谓词命名惯例
-series/rolling-mean   ; 限定 Osiris 名称
+text/format-message   ; 限定 Osiris 名称
 row.value             ; 静态字段或 Python 属性
-时序均值               ; Unicode 源码名称
+格式化文本             ; Unicode 源码名称
 ```
 
 本地化名称是同一个 canonical binding 的别名，不是独立定义。Locale 不会改变名称解析。
@@ -77,14 +77,15 @@ row.value             ; 静态字段或 Python 属性
 (py/import math :as math)
 
 (export [normalize summarize])
-(alias 汇总 summarize)
+(alias 旧汇总 summarize)
 ```
 
 - `import` 读取另一个 Osiris 模块的 `.osri` 接口。
 - `import-for-syntax` 导入宏和 phase-1 helper。
 - `py/import` 生成 Python runtime import；编译时不会执行 Python。
 - `export` 定义模块的公开接口。
-- `alias` 为已有 binding 增加另一个可解析拼写。
+- `alias` 为已有 binding 保留迁移拼写；引用仍然有效，但会收到不阻断编译的替换提示。
+  推荐的本地化拼写应使用带 `:preferred` 的 `:osiris/names`。
 
 项目配置把源码路径映射成模块名。源码中的 `module` 声明必须与该映射一致。
 
@@ -162,6 +163,50 @@ node：
 不要在一个 string 中写转义换行。外层 vector 区分多个 example，内层 vector 保留经过
 统一格式化的源码行。LSP、LSC、package interface 和面向 Agent 的 JSON 使用同一份
 metadata。
+
+`:osiris/names` 也可以直接附着到函数参数。这样声明的本地化 keyword spelling 属于
+该函数的静态签名：
+
+```clojure
+(extern python "text_runtime.format"
+  ^{:doc {:default "Format a message for display."
+          "zh-CN" "格式化用于显示的文本。"}
+    :osiris/names
+    {"zh-CN" {:preferred 格式化文本
+               :aliases [渲染文本]}}}
+  (defn ^Str format-message
+    [^Str template
+     ^{:type Str
+       :osiris/names {"zh-CN" {:preferred 名称
+                                :aliases [显示名称]}}}
+     name
+     [^{:type Bool
+        :osiris/names {"zh-CN" {:preferred 转为大写
+                                 :aliases [大写 使用大写]}}}
+      uppercase = false]]))
+```
+
+调用目标具有静态签名时，可以使用本地化参数名作为 keyword argument：
+
+```clojure
+(format-message "Hello, {name}!" :显示名称 "Osiris" :大写 true)
+(格式化文本 "Hello, {name}!" :名称 "Osiris")
+```
+
+参数的 locale entry 与声明的结构完全相同：`:preferred` 是一个 Symbol，可选的
+`:aliases` 是 Symbol vector。正常使用的本地化拼写应该写在 `:preferred`；
+`:aliases` 只保留源码迁移期间仍需兼容的旧拼写，不表示多个同等推荐的翻译。工具和
+编译器看到源码使用 alias 时，应该建议改成当前 locale 的 preferred spelling；没有
+preferred 时回退到 canonical name。
+
+参数别名只属于声明它的函数签名，不是全局 keyword 替换。编译器先把 preferred name
+和 alias 解析到 canonical parameter identity，再检查参数缺失、未知、重复和类型错误。
+`:uppercase`、`:转为大写`、`:大写` 和 `:使用大写` 都指向同一个参数；任意两个同时
+传入都会产生重复参数诊断。示例中的 `:大写` 仍能正常编译，但属于迁移用法，应该产生
+不阻断编译的替换提示。无论源码使用哪种 spelling 或 display locale，生成的 Python
+始终使用 canonical Python parameter name。
+通过 `Any` 或 untyped Python boundary 调用时不存在静态签名，因此不能自动翻译其
+keyword name。
 
 Phase 1 可以用 `meta`、`with-meta` 和 `vary-meta` 读取并以不可变方式更新 metadata。
 Metadata 不能冒充编译器验证过的类型、effect、temporal 或 data fact。

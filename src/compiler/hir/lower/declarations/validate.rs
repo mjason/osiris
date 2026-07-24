@@ -65,6 +65,17 @@ impl<'a> Lowerer<'a> {
                 self.exports.insert(id);
             }
         }
+        for alias in &mut self.aliases {
+            if self.exports.contains(&alias.target)
+                && self.bindings.get(&alias.target).is_some_and(|binding| {
+                    metadata_alias_spellings(&binding.metadata, &binding.name.canonical)
+                        .iter()
+                        .any(|(spelling, _)| spelling == &alias.canonical)
+                })
+            {
+                alias.public = true;
+            }
+        }
     }
 
     pub(in crate::hir) fn validate_boundary_signatures(&mut self, module: &ast::Module) {

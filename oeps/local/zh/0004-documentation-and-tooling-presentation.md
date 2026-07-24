@@ -13,10 +13,10 @@ areas:
   - Packaging
 created: 2026-07-24
 updated: 2026-07-24
-revision: 1
+revision: 2
 language: zh-CN
 source: ../../0004-documentation-and-tooling-presentation.md
-source-revision: 1
+source-revision: 2
 translation-status: Current
 requires: [0, 1, 2, 3]
 replaces: []

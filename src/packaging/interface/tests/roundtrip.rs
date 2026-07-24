@@ -237,10 +237,39 @@ fn canonical_interface_round_trips() {
             .any(|alias| alias.canonical == "距离")
     );
     assert!(decoded.aliases.iter().any(|alias| alias.canonical == "米"));
+    assert!(decoded.aliases.iter().any(|alias| {
+        alias.canonical == "距离" && alias.role == super::PublicAliasRole::Preferred
+    }));
+    assert!(decoded.aliases.iter().any(|alias| {
+        alias.canonical == "米" && alias.role == super::PublicAliasRole::Migration
+    }));
     assert_eq!(decoded.functions[0].parameters[0].aliases, ["点位"]);
     assert_eq!(decoded.structs[0].type_parameters, ["T"]);
     assert_eq!(decoded.structs[0].fields[1].aliases, ["最大值"]);
     assert!(!encoded.contains("private-value"));
+}
+
+#[test]
+fn alias_roles_and_signature_alias_tables_must_match_rich_metadata() {
+    let (surface, typed) = modules();
+    let model = build(&typed, &surface).expect("interface model");
+
+    let mut role_mismatch = model.clone();
+    role_mismatch
+        .aliases
+        .iter_mut()
+        .find(|alias| alias.canonical == "距离")
+        .expect("preferred alias")
+        .role = super::PublicAliasRole::Migration;
+    let error = render(&role_mismatch).expect_err("alias role mismatch must fail");
+    assert_eq!(error.code, "OSR-I0086");
+
+    let mut parameter_mismatch = model;
+    parameter_mismatch.functions[0].parameters[0]
+        .aliases
+        .clear();
+    let error = render(&parameter_mismatch).expect_err("parameter alias mismatch must fail");
+    assert_eq!(error.code, "OSR-I0086");
 }
 
 #[test]

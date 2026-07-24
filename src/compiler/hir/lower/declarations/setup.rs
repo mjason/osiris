@@ -19,10 +19,12 @@ impl<'a> Lowerer<'a> {
             struct_type_parameters: BTreeMap::new(),
             phase_one_names: BTreeSet::new(),
             aliases: Vec::new(),
+            migration_alias_profiles: BTreeMap::new(),
             exports: BTreeSet::new(),
             extern_functions: Vec::new(),
             items: Vec::new(),
             diagnostics: Vec::new(),
+            migration_advisories: Vec::new(),
             types: TypeContext::new(),
             next_scope: 0,
             interfaces,
@@ -53,6 +55,20 @@ impl<'a> Lowerer<'a> {
     }
 
     pub(in crate::hir) fn finish(self, source: &ast::Module) -> LowerResult {
+        let mut migration_advisories = self.migration_advisories;
+        migration_advisories.sort_by(|left, right| {
+            (left.span.start, left.span.end, &left.alias, &left.canonical).cmp(&(
+                right.span.start,
+                right.span.end,
+                &right.alias,
+                &right.canonical,
+            ))
+        });
+        migration_advisories.dedup_by(|left, right| {
+            left.span == right.span
+                && left.alias == right.alias
+                && left.canonical == right.canonical
+        });
         LowerResult {
             module: Module {
                 name: self.module_name,
@@ -66,6 +82,7 @@ impl<'a> Lowerer<'a> {
                 items: self.items,
             },
             diagnostics: self.diagnostics,
+            migration_advisories,
         }
     }
 

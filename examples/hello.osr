@@ -28,8 +28,8 @@
 
 ;; Rich Metadata 同时服务于编译器、LSP 和 Agent。:doc 的 :default 是无语言标签的
 ;; authored fallback（可复用包推荐英文），其他 BCP 47 key 是内嵌翻译。
-;; :osiris/names 发布的是同一 binding 的其他拼写，
-;; 不会生成 wrapper 或第二份 Python 函数。
+;; :preferred 是推荐的本地化拼写；:aliases 只保留迁移期兼容的旧拼写，
+;; 使用旧拼写会得到替换提示。两者都不会生成 wrapper 或第二份 Python 函数。
 ^{:doc
   {:default "Increment every integer." "zh-CN" "将每个整数加一。"}
   :examples [["(increment-all [1 2 3])" ";; => [2 3 4]"]]

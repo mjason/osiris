@@ -121,6 +121,15 @@ fn dispatch(
                 .map_or(Ok(JsonValue::Null), serialize_value)?;
             Ok(result_outcome(result))
         }
+        "textDocument/codeAction" => {
+            let params: CodeActionParams = decode_params(params)?;
+            ensure_document(state, &params.text_document.uri)?;
+            let result = serialize_value(state.code_actions(
+                &params.text_document.uri,
+                params.range,
+            ))?;
+            Ok(result_outcome(result))
+        }
         "textDocument/definition" => {
             let params: PositionParams = decode_params(params)?;
             ensure_document(state, &params.text_document.uri)?;
