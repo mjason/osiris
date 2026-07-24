@@ -170,10 +170,41 @@ impl SemanticDocument {
             })
             .min_by_key(|(width, _)| *width);
         match (occurrence, operation) {
-            (Some(left), Some(right)) => Some(if left.0 <= right.0 { left.1 } else { right.1 }),
+            (Some(left), Some(right)) => Some(if left.0 < right.0 { left.1 } else { right.1 }),
             (Some((_, symbol)), None) | (None, Some((_, symbol))) => Some(symbol),
             (None, None) => None,
         }
+    }
+
+    #[must_use]
+    pub fn symbol_at_source(&self, offset: usize, source: &str) -> Option<&SemanticSymbol> {
+        fn identifier_char(character: char) -> bool {
+            character.is_alphanumeric() || matches!(character, '_' | '-' | '?' | '!')
+        }
+        let offset = offset.min(source.len());
+        let left = source
+            .get(..offset)
+            .and_then(|prefix| {
+                prefix
+                    .rsplit(|character| !identifier_char(character))
+                    .next()
+            })
+            .unwrap_or_default();
+        let right = source
+            .get(offset..)
+            .and_then(|suffix| suffix.split(|character| !identifier_char(character)).next())
+            .unwrap_or_default();
+        let token = format!("{left}{right}");
+        let exact = self.symbols.iter().find(|symbol| {
+            symbol
+                .occurrences
+                .iter()
+                .any(|span| contains(*span, offset))
+                && (symbol.canonical == token
+                    || symbol.source_spelling == token
+                    || symbol.aliases.iter().any(|alias| alias.spelling == token))
+        });
+        exact.or_else(|| self.symbol_at(offset))
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {

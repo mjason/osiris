@@ -163,7 +163,10 @@ Osiris 模块导入与 Python 运行时导入必须在语义上区分。普通 `
 
 `match`、protocol 和 async 语义不进入最小核心，待实际用例证明后再加入。`loop/recur`、Clojure 风格序列操作和 `for`/`forv` 属于显式导入的 `osiris.core` 控制流层：它们通过卫生宏和少量有契约的 Linkable helper 提供，不增加 Reader 的特殊分支。
 
-每个模块必须通过 `(import osiris.core :refer :all ...)` 或精确 `:refer` 显式选择 `osiris.core` binding；`and`、`or`、`cond`、`when`、binding 条件、集合迭代和 threading macros 在 core 中以卫生宏或普通函数提供，不是未声明的编译器语法。`:exclude` 和 `:rename` 在 name lookup 前处理。
+没有显式 core import 的模块自动 refer 完整 `osiris.core` surface；显式
+`(import osiris.core ...)` 则完全覆盖默认规则。`and`、`or`、`cond`、`when`、
+binding 条件、集合迭代和 threading macros 在 core 中以卫生宏或普通函数提供，
+不是未声明的编译器语法。`:refer`、`:exclude` 和 `:rename` 在 name lookup 前处理。
 
 `defn-` 是 `osiris.core` 的声明宏：它展开为普通 `defn` 并附加 `:private true` authored metadata。Osiris 的跨模块可见性仍由显式 `export` 决定，因此该标记用于 Rich Metadata/LSP 展示，不绕过或替代接口导出规则。
 

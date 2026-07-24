@@ -266,6 +266,58 @@ fn collect_standard_core(
 ) {
     let surface = crate::ast::lower_document(document);
     let mut descriptors = Vec::new();
+    if crate::stdlib::uses_implicit_core(&surface.module)
+        && crate::stdlib::document_may_use_implicit_core_macro(document)
+        && !imported_phase_modules
+            .iter()
+            .any(|module| module.namespace == crate::stdlib::CORE_NAMESPACE)
+    {
+        match crate::stdlib::interface_artifact(crate::stdlib::CORE_NAMESPACE) {
+            Ok(interface) => {
+                let visible = interface
+                    .macros
+                    .iter()
+                    .flat_map(|macro_| {
+                        [
+                            (macro_.canonical.clone(), macro_.canonical.clone()),
+                            (
+                                format!("{}/{}", crate::stdlib::CORE_NAMESPACE, macro_.canonical),
+                                macro_.canonical.clone(),
+                            ),
+                            (
+                                format!("{}.{}", crate::stdlib::CORE_NAMESPACE, macro_.canonical),
+                                macro_.canonical.clone(),
+                            ),
+                        ]
+                    })
+                    .collect();
+                descriptors.push(
+                    ImportedPhaseModule::new(
+                        crate::stdlib::CORE_NAMESPACE,
+                        interface.imported_phase_forms(),
+                        visible,
+                    )
+                    .with_definition_names(
+                        interface
+                            .bindings
+                            .iter()
+                            .map(|binding| (binding.canonical.clone(), binding.canonical.clone()))
+                            .chain(
+                                interface.macros.iter().map(|macro_| {
+                                    (macro_.canonical.clone(), macro_.canonical.clone())
+                                }),
+                            )
+                            .collect(),
+                    ),
+                );
+            }
+            Err(error) => expander.diagnostics.push(Diagnostic::error(
+                "OSR-M0010",
+                format!("cannot load embedded standard interface: {error}"),
+                surface.module.span,
+            )),
+        }
+    }
     for item in &surface.module.items {
         let crate::ast::ItemKind::Import(import) = &item.kind else {
             continue;

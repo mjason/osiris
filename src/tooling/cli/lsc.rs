@@ -202,7 +202,7 @@ fn hover(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
             let hover = state.hover(uri, position, locale);
             let text = hover
                 .as_ref()
-                .map(|hover| format!("{}\n", hover.contents.value))
+                .map(|hover| markdown_hover_to_plain(&hover.contents.value))
                 .unwrap_or_default();
             let symbol = state
                 .semantic_symbol_at(uri, position)
@@ -360,21 +360,59 @@ fn render_standard_api(
 ) -> Result<(JsonValue, String, bool), String> {
     let mut text = String::new();
     for record in &records {
+        let locale = record
+            .resolved_locale
+            .as_deref()
+            .or(record.requested_locale.as_deref())
+            .unwrap_or("default");
+        let chinese = locale == "zh" || locale.starts_with("zh-");
         if signatures_only {
             for shape in &record.api.call_shapes {
                 let _ = writeln!(text, "{shape}");
             }
             let _ = writeln!(text, "type: {}", record.api.signature);
         } else {
-            let _ = writeln!(text, "{} ({})", record.label, record.api.canonical);
-            let _ = writeln!(text, "{}", record.selected_documentation);
-            let _ = writeln!(text, "binding: {}", record.api.binding_id);
-            let _ = writeln!(text, "type: {}", record.api.signature);
-            let _ = writeln!(text, "evaluation: {}", record.api.evaluation);
+            let kind = if chinese && record.api.kind == crate::name::BindingKind::Function {
+                "函数".to_owned()
+            } else {
+                format!("{:?}", record.api.kind)
+            };
+            let _ = writeln!(text, "{} · {}", record.label, kind);
+            let _ = writeln!(text, "\n{}", record.selected_documentation);
+            if !record.api.call_shapes.is_empty() {
+                text.push_str(if chinese { "\n用法\n" } else { "\nUsage\n" });
+                for shape in &record.api.call_shapes {
+                    let _ = writeln!(text, "  {shape}");
+                }
+            }
+            if !record.api.examples.is_empty() {
+                text.push_str(if chinese {
+                    "\n示例\n"
+                } else {
+                    "\nExamples\n"
+                });
+                for example in &record.api.examples {
+                    for line in example {
+                        let _ = writeln!(text, "  {line}");
+                    }
+                    text.push('\n');
+                }
+            }
+            let type_heading = if chinese { "类型" } else { "Type" };
+            let _ = writeln!(text, "{type_heading}\n  {}", record.api.signature);
+            if let Some(behavior) = lsc_evaluation_behavior(record.api.evaluation, chinese) {
+                let heading = if chinese { "行为" } else { "Behavior" };
+                let _ = writeln!(text, "\n{heading}\n  {behavior}");
+            }
+            let canonical_heading = if chinese {
+                "规范名称"
+            } else {
+                "Canonical name"
+            };
             let _ = writeln!(
                 text,
-                "source: {}:{}:{}",
-                record.api.source.uri, record.api.source.line, record.api.source.column
+                "\n{canonical_heading}\n  {}/{}",
+                record.api.namespace, record.api.canonical
             );
         }
         if records.len() > 1 {
@@ -384,6 +422,34 @@ fn render_standard_api(
     serde_json::to_value(records)
         .map(|value| (value, text, false))
         .map_err(|error| error.to_string())
+}
+
+fn lsc_evaluation_behavior(evaluation: &str, chinese: bool) -> Option<&'static str> {
+    match (evaluation, chinese) {
+        ("consumer", true) => Some("立即消费输入集合。"),
+        ("consumer", false) => Some("Consumes its input eagerly."),
+        ("lazy", true) => Some("按需生成结果。"),
+        ("lazy", false) => Some("Produces results lazily."),
+        _ => None,
+    }
+}
+
+fn markdown_hover_to_plain(markdown: &str) -> String {
+    let mut plain = String::new();
+    let mut in_code = false;
+    for line in markdown.lines() {
+        if line.starts_with("```") {
+            in_code = !in_code;
+            continue;
+        }
+        let line = line.replace("**", "").replace('`', "");
+        if in_code && !line.is_empty() {
+            plain.push_str("  ");
+        }
+        plain.push_str(&line);
+        plain.push('\n');
+    }
+    plain
 }
 
 fn positioned<F>(request: &LscRequest, query: F) -> Result<(JsonValue, String, bool), String>

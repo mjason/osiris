@@ -18,9 +18,9 @@ use super::{CORE_NAMESPACE, NAMESPACES, StandardBinding};
 
 mod source;
 
-pub(crate) use source::binding_metadata;
 #[cfg(test)]
 pub(super) use source::compilation_source_artifact;
+pub(crate) use source::{binding_metadata, facade_macro_names};
 use source::{compilation_sources, sources};
 pub use source::{source_artifact, source_artifact_by_uri};
 
@@ -45,6 +45,7 @@ pub struct EmbeddedStandardArtifacts {
 
 static ARTIFACTS: OnceLock<Result<EmbeddedStandardArtifacts, String>> = OnceLock::new();
 static INTERFACES: OnceLock<Result<BTreeMap<String, Interface>, String>> = OnceLock::new();
+static CORE_INTERFACE: OnceLock<Result<Interface, String>> = OnceLock::new();
 static COMPILED_SOURCES: OnceLock<Result<Vec<crate::compiler::CompileResult>, String>> =
     OnceLock::new();
 
@@ -109,6 +110,9 @@ pub fn validate_embedded_artifacts() -> Result<(), String> {
 }
 
 pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
+    if namespace == CORE_NAMESPACE {
+        return CORE_INTERFACE.get_or_init(compile_core_interface).clone();
+    }
     let interfaces = INTERFACES.get_or_init(|| {
         validate_embedded_artifacts()?;
         let artifacts = embedded_artifacts()?;
@@ -131,6 +135,51 @@ pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
         .get(namespace)
         .cloned()
         .ok_or_else(|| format!("embedded standard interface `{namespace}` is missing"))
+}
+
+fn compile_core_interface() -> Result<Interface, String> {
+    let compilation_sources = compilation_sources();
+    let namespaces = ["osiris.core.kernel", CORE_NAMESPACE];
+    let options = namespaces
+        .iter()
+        .map(|namespace| {
+            CompileOptions::new(*namespace, crate::types::PythonVersion::DEFAULT_TARGET)
+                .with_source_name(format!("stdlib/src/{}.osr", namespace.replace('.', "/")))
+                .with_expected_module_name(*namespace)
+                .with_provider("osiris-stdlib", crate::version())
+        })
+        .collect::<Vec<_>>();
+    let inputs = namespaces
+        .iter()
+        .zip(&options)
+        .map(|(namespace, options)| {
+            CompileInput::new(&compilation_sources[namespace].text, options)
+        })
+        .collect::<Vec<_>>();
+    let compiled = compiler::compile_workspace(&inputs, &BTreeMap::new());
+    if compiled.has_errors() {
+        let diagnostics = compiled
+            .diagnostics
+            .iter()
+            .map(|located| {
+                format!(
+                    "error[{}]: {}",
+                    located.diagnostic.code, located.diagnostic.message
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "could not compile embedded core interface:\n{diagnostics}"
+        ));
+    }
+    let encoded = compiled
+        .units
+        .into_iter()
+        .find(|result| result.analysis.hir.name == CORE_NAMESPACE)
+        .and_then(|result| result.interface)
+        .ok_or_else(|| "core compilation produced no interface".to_owned())?;
+    interface::read(&encoded).map_err(|error| format!("invalid embedded core interface: {error}"))
 }
 
 fn build_artifacts() -> Result<EmbeddedStandardArtifacts, String> {

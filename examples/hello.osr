@@ -2,8 +2,6 @@
 
 ;; 标准库不会隐式污染模块名称空间。这里显式引入 osiris.core 的全部公开
 ;; binding；也可以用 :exclude 和 :rename 处理冲突。
-(import osiris.core :refer :all)
-
 ;; hello.osr 位于 osiris.jsonc source = ["examples"] 的根目录，所以模块名是
 ;; hello。子目录会用点号连接，例如 tutorial/app.osr 对应 tutorial.app。
 ;; 顶层定义默认只在当前模块可见。只有 export 中的名称才能被其他 .osr

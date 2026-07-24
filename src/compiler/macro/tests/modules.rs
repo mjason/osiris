@@ -15,14 +15,11 @@ fn expanded(source: &str) -> String {
         "{:?}",
         result.document.diagnostics
     );
-    let mut document = result.document;
-    document.forms.remove(0);
-    render_document_text(&document)
+    render_document_text(&result.document)
 }
 
 fn expand_core(source: &str) -> super::ExpansionResult {
-    let source = format!("(import osiris.core :refer :all)\n{source}");
-    expand(&read(&source), ExpansionOptions::default())
+    expand(&read(source), ExpansionOptions::default())
 }
 
 fn expanded_concurrent(source: &str) -> String {

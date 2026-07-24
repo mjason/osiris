@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-24
-revision: 9
+revision: 10
 requires: [0, 1, 2]
 replaces: []
 superseded-by: null
@@ -28,9 +28,9 @@ translations:
 This proposal defines the architecture and public contract of the Osiris
 standard library. It separates the compile-time bootstrap environment, the
 user-facing `osiris.core` namespace, explicit standard modules, and private
-Linkable helpers. It also defines macro phase boundaries, explicit core
-imports, sequence semantics, type and contract visibility, distributed
-artifacts, localization metadata, and tooling behavior.
+Linkable helpers. It also defines macro phase boundaries, implicit core
+referral and explicit overrides, sequence semantics, type and contract
+visibility, distributed artifacts, localization metadata, and tooling behavior.
 
 It also fixes the initial callable and macro catalog. Names alone are not an API
 contract: this proposal specifies source call shapes, evaluation strategy,
@@ -305,11 +305,14 @@ Pandas, Polars, or NumPy runtime types.
 in source and typed HIR. It MUST NOT provide a compile-time reflection escape
 hatch or implicitly import arbitrary Python modules.
 
-### Explicit core import contract
+### Implicit core referral contract
 
-**OEP-0003-R020:** An ordinary Osiris module MUST explicitly import every
-`osiris.core` binding it uses. The compiler MUST NOT make `osiris.core`
-bindings visible through an implicit or automatic refer policy.
+**OEP-0003-R020:** An ordinary Osiris module that has no explicit
+`osiris.core` import MUST receive the public `osiris.core` surface as an
+implicit `:refer :all`. This policy MUST apply identically to runtime bindings,
+types, and phase-1 macros. It MUST preserve each binding's canonical
+`osiris.core` identity and MUST NOT create a runtime import of the compiler or
+standard package.
 
 **OEP-0003-R021:** The initial core export manifest MUST contain these macro
 bindings:
@@ -358,7 +361,8 @@ to distinguish values after a target representation has erased that identity.
 core export is a semantic compatibility change and MUST change the
 standard-library semantic hash.
 
-**OEP-0003-R024:** The normative all-core import shape is:
+**OEP-0003-R024:** An explicit `osiris.core` import is a complete override of
+the implicit referral policy. Its normative configurable shape is:
 
 ```clojure
 (import osiris.core
@@ -374,6 +378,21 @@ export names to local names. Unknown, duplicate, excluded-and-renamed, or
 locally colliding names MUST produce deterministic diagnostics. These clauses
 MUST be resolved before ordinary name lookup so binding identity does not
 depend on import order.
+
+When no explicit core import exists, a local declaration or local macro with
+the same spelling MUST shadow only that implicitly referred spelling; qualified
+`osiris.core/name` lookup MUST remain available. An explicit core import keeps
+the ordinary import collision rules and MUST diagnose a conflicting local
+name. A module that needs a restricted surface MUST express it with an explicit
+`:refer`, or with `:refer :all` plus `:exclude` and `:rename`. Multiple explicit
+runtime imports of `osiris.core` remain invalid rather than being merged.
+
+The reserved standard-package bootstrap namespaces (`osiris.core` and the
+standard namespaces and implementation descendants listed by this OEP) MUST
+author their core dependencies explicitly. They MUST NOT receive implicit core
+referral while the compiler is constructing the embedded standard interfaces;
+this exception prevents an interface-initialization cycle and is not available
+to ordinary packages.
 
 ### Initial module contracts
 
@@ -996,6 +1015,10 @@ This OEP cannot become Final while any required initial namespace is missing.
 
 ## Change History
 
+- Revision 10, 2026-07-24: Restored Clojure-style implicit `osiris.core`
+  referral, defined explicit core imports as complete overrides, and specified
+  local shadowing, qualified lookup, and identical runtime/type/macro-phase
+  visibility.
 - Revision 9, 2026-07-24: Required every public standard module to isolate its
   typed target boundary in `<namespace>.kernel`, and specified parsed
   `:osiris/facade-modules`/`:osiris/facade-macros` composition for a split

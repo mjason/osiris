@@ -62,6 +62,119 @@ pub fn is_standard_namespace(namespace: &str) -> bool {
     NAMESPACES.contains(&namespace)
 }
 
+/// Whether an ordinary source module receives the default `osiris.core`
+/// referral. Standard implementation modules opt out through authored
+/// `:osiris/internal true` metadata, and the core facade cannot refer itself.
+#[must_use]
+pub(crate) fn uses_implicit_core(module: &ast::Module) -> bool {
+    let is_standard_bootstrap = module.name.as_ref().is_some_and(|name| {
+        NAMESPACES.iter().any(|namespace| {
+            name.canonical == *namespace
+                || name
+                    .canonical
+                    .strip_prefix(namespace)
+                    .is_some_and(|suffix| suffix.starts_with('.'))
+        })
+    });
+    let is_internal = module.metadata.iter().any(|entry| {
+        matches!(&entry.key.kind, crate::syntax::FormKind::Keyword(name)
+            if name.canonical.trim_start_matches(':') == "osiris/internal")
+            && matches!(entry.value.kind, crate::syntax::FormKind::Bool(true))
+    });
+    let has_explicit_core = module.items.iter().any(|item| {
+        matches!(&item.kind, ast::ItemKind::Import(import)
+            if import.module.canonical == CORE_NAMESPACE)
+    });
+    !is_standard_bootstrap && !is_internal && !has_explicit_core
+}
+
+/// Avoid initializing the typed core interface for modules that cannot use an
+/// implicitly referred name. This keeps no-core CLI builds fast while name
+/// resolution remains exact for every authored or macro-generated reference.
+#[must_use]
+pub(crate) fn needs_implicit_core(module: &ast::Module) -> bool {
+    if !uses_implicit_core(module) {
+        return false;
+    }
+    let names = exports(CORE_NAMESPACE)
+        .map(|binding| binding.canonical)
+        .collect::<BTreeSet<_>>();
+    let Ok(value) = serde_json::to_value(module) else {
+        return true;
+    };
+    contains_core_name(&value, &names)
+}
+
+fn contains_core_name(value: &serde_json::Value, names: &BTreeSet<&str>) -> bool {
+    match value {
+        serde_json::Value::Object(object) => {
+            if object
+                .get("canonical")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|name| {
+                    names.contains(name)
+                        || name
+                            .strip_prefix("osiris.core/")
+                            .or_else(|| name.strip_prefix("osiris.core."))
+                            .is_some_and(|name| names.contains(name))
+                })
+            {
+                return true;
+            }
+            object
+                .values()
+                .any(|value| contains_core_name(value, names))
+        }
+        serde_json::Value::Array(values) => {
+            values.iter().any(|value| contains_core_name(value, names))
+        }
+        _ => false,
+    }
+}
+
+#[must_use]
+pub(crate) fn document_may_use_implicit_core_macro(document: &crate::syntax::Document) -> bool {
+    let names = artifacts::facade_macro_names();
+    document
+        .forms
+        .iter()
+        .any(|form| form_may_call_core_macro(form, &names))
+}
+
+fn form_may_call_core_macro(form: &crate::syntax::Form, names: &BTreeSet<String>) -> bool {
+    use crate::syntax::FormKind;
+
+    let children = match &form.kind {
+        FormKind::List(items) => {
+            if items
+                .first()
+                .and_then(|head| match &head.kind {
+                    FormKind::Symbol(name) => Some(name.canonical.as_str()),
+                    _ => None,
+                })
+                .is_some_and(|name| {
+                    names.contains(name)
+                        || name
+                            .strip_prefix("osiris.core/")
+                            .or_else(|| name.strip_prefix("osiris.core."))
+                            .is_some_and(|name| names.contains(name))
+                })
+            {
+                return true;
+            }
+            items.as_slice()
+        }
+        FormKind::Vector(items) | FormKind::Map(items) | FormKind::Set(items) => items.as_slice(),
+        FormKind::ReaderMacro { form, .. } => {
+            return form_may_call_core_macro(form, names);
+        }
+        _ => return false,
+    };
+    children
+        .iter()
+        .any(|child| form_may_call_core_macro(child, names))
+}
+
 pub fn exports(namespace: &str) -> impl Iterator<Item = StandardBinding> {
     source_catalog()
         .get(namespace)

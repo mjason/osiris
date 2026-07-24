@@ -266,7 +266,11 @@ fn standard_hover_definition_and_virtual_source_share_one_artifact() {
         hover_text.contains("立即提交映射任务，保持结果顺序，并传播解引用失败。"),
         "{hover_text}"
     );
-    assert!(hover_text.contains("osiris.concurrent::function::pmap"));
+    assert!(hover_text.contains("osiris.concurrent/pmap"));
+    assert!(hover_text.contains("(pmap function collections...)"));
+    assert!(!hover_text.contains("Effects:"));
+    assert!(!hover_text.contains("Temporal:"));
+    assert!(!hover_text.contains("Data:"));
 
     let definition = machine.handle(
         &json!({

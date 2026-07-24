@@ -245,6 +245,44 @@ fn lsc_position_hover_preserves_authored_metadata_and_default_language() {
 }
 
 #[test]
+fn lsc_standard_hover_uses_progressive_human_and_machine_projections() {
+    let text = osr(&["lsc", "hover", "osiris.core/reduce", "--locale", "zh-CN"]);
+    assert!(
+        text.status.success(),
+        "{}",
+        String::from_utf8_lossy(&text.stderr)
+    );
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("reduce · 函数"), "{text}");
+    assert!(text.contains("(reduce + 0 [1 2 3 4])"), "{text}");
+    assert!(text.contains(";; => 10"), "{text}");
+    assert!(text.contains("立即消费输入集合。"), "{text}");
+    assert!(text.contains("osiris.core/reduce"), "{text}");
+    for internal in ["Binding:", "Source:", "Evaluation:", "Any"] {
+        assert!(!text.contains(internal), "{text}");
+    }
+
+    let json = osr(&["lsc", "hover", "osiris.core/reduce", "--format", "json"]);
+    assert!(
+        json.status.success(),
+        "{}",
+        String::from_utf8_lossy(&json.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    let reduce = &json["result"][0];
+    assert_eq!(reduce["schema"], "osiris.standard-api/v2");
+    assert_eq!(reduce["examples"][0][0], "(reduce + 0 [1 2 3 4])");
+    assert_eq!(reduce["examples"][0][1], ";; => 10");
+    assert_eq!(reduce["evaluation"], "consumer");
+    assert_eq!(reduce["bindingId"], "osiris.core::function::reduce");
+    assert_eq!(
+        reduce["source"]["uri"],
+        "osiris-stdlib:///osiris/core/transform.osr"
+    );
+    assert!(reduce["effects"].is_object());
+}
+
+#[test]
 fn lsc_syntax_keeps_recovered_document_on_error() {
     let fixture = SourceFixture::new("^{:doc \"incomplete\"} (defn value [x]\n");
     let output = osr(&[

@@ -205,5 +205,8 @@ impl<'a> Lowerer<'a> {
                 | AstItemKind::Error(_) => {}
             }
         }
+        if crate::stdlib::needs_implicit_core(module) {
+            self.predeclare_implicit_core(module.span);
+        }
     }
 }

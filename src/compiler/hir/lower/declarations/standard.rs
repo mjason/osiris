@@ -2,6 +2,34 @@ use super::super::super::*;
 
 impl<'a> Lowerer<'a> {
     pub(in crate::hir) fn predeclare_standard_import(&mut self, import: &ast::Import) {
+        self.predeclare_standard_import_with_policy(import, false);
+    }
+
+    pub(in crate::hir) fn predeclare_implicit_core(&mut self, span: Span) {
+        self.predeclare_standard_import_with_policy(
+            &ast::Import {
+                span,
+                metadata: Vec::new(),
+                module: Name {
+                    spelling: crate::stdlib::CORE_NAMESPACE.to_owned(),
+                    canonical: crate::stdlib::CORE_NAMESPACE.to_owned(),
+                },
+                alias: None,
+                members: Vec::new(),
+                refer_all: true,
+                excluded: Vec::new(),
+                renamed: Vec::new(),
+                phase: ast::ImportPhase::Runtime,
+            },
+            true,
+        );
+    }
+
+    fn predeclare_standard_import_with_policy(
+        &mut self,
+        import: &ast::Import,
+        allow_local_shadowing: bool,
+    ) {
         let namespace = import.module.canonical.as_str();
         let interface = match crate::stdlib::interface_artifact(namespace) {
             Ok(interface) => interface,
@@ -69,6 +97,9 @@ impl<'a> Lowerer<'a> {
                 continue;
             };
             if let Some(existing) = self.globals.get(&local) {
+                if allow_local_shadowing {
+                    continue;
+                }
                 self.error(
                     "OSR-N0003",
                     format!(

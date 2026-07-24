@@ -12,6 +12,23 @@ fn thread_last_inserts_at_the_end() {
 }
 
 #[test]
+fn local_macros_shadow_implicit_core_macros() {
+    let output = expanded("(defmacro when [value] `(local-when ~value))\n(when 1)");
+    assert!(output.ends_with("(local-when 1)\n"), "{output}");
+}
+
+#[test]
+fn explicit_core_import_replaces_implicit_macro_referral() {
+    let result = expand(
+        &read("(import osiris.core :refer [reduce])\n(-> value (f))"),
+        ExpansionOptions::default(),
+    );
+    assert!(result.document.diagnostics.is_empty());
+    let output = crate::printer::render_document_text(&result.document);
+    assert!(output.ends_with("(-> value (f))\n"), "{output}");
+}
+
+#[test]
 fn phase_one_reduce_honors_reduced_values() {
     let output = expanded(
         r#"(defmacro prefix [& values]

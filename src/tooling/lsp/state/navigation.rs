@@ -3,7 +3,7 @@ impl LspState {
     pub fn definition(&self, uri: &str, position: Position) -> Option<Location> {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
-        let symbol = document.semantic.symbol_at(offset)?;
+        let symbol = document.semantic.symbol_at_source(offset, &document.text)?;
         document
             .workspace_symbols
             .definitions
@@ -38,7 +38,7 @@ impl LspState {
         let Some(offset) = position_to_offset(&document.text, position) else {
             return Vec::new();
         };
-        let Some(symbol) = document.semantic.symbol_at(offset) else {
+        let Some(symbol) = document.semantic.symbol_at_source(offset, &document.text) else {
             return Vec::new();
         };
         document

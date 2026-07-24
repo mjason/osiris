@@ -76,7 +76,7 @@ pub(crate) fn compilation_source_artifact(namespace: &str) -> Option<String> {
 
 #[must_use]
 pub fn source_artifact_by_uri(uri: &str) -> Option<String> {
-    sources()
+    compilation_sources()
         .values()
         .find(|source| source.uri == uri)
         .map(|source| source.text.clone())
@@ -85,6 +85,22 @@ pub fn source_artifact_by_uri(uri: &str) -> Option<String> {
 pub(super) fn binding_source_location(
     binding: StandardBinding,
 ) -> super::super::StandardSourceLocation {
+    if binding.namespace == CORE_NAMESPACE {
+        for (namespace, text) in CORE_FACADE_SOURCES {
+            let source = StandardSource {
+                uri: format!("osiris-stdlib:///{}.osr", namespace.replace('.', "/")),
+                text: (*text).to_owned(),
+                lines: declaration_lines(CORE_NAMESPACE, text),
+            };
+            if let Some(line) = source.lines.get(binding.id().as_str()) {
+                return super::super::StandardSourceLocation {
+                    uri: source.uri,
+                    line: *line,
+                    column: 1,
+                };
+            }
+        }
+    }
     let source = sources()
         .get(binding.namespace)
         .expect("standard namespace has embedded source");

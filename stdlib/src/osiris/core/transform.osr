@@ -23,6 +23,7 @@
   {:default "Eagerly map a function left to right into a Vector, stopping at the shortest input."
    "zh-CN" "从左到右立即映射函数到 Vector，并在最短输入处停止。"}
   :category "core"
+  :examples [["(mapv (fn [value] (* value 2)) [1 2 3])" ";; => [2 4 6]"]]
   :since "0.3.0"
   :deprecated false
   :type-params [A B C]}
@@ -100,6 +101,7 @@
   {:default "Eagerly reduce in order, supporting zero-arity empty reduction and Reduced termination."
    "zh-CN" "按顺序立即归约，支持空输入的零参数 reducer 与 Reduced 提前终止。"}
   :category "core"
+  :examples [["(reduce + 0 [1 2 3 4])" ";; => 10"] ["(reduce + [1 2 3 4])" ";; => 10"]]
   :since "0.3.0"
   :deprecated false
   :type-params [A B C]}

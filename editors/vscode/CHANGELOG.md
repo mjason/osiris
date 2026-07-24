@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+- Improve standard-library hover and LSC output with task-oriented examples.
+- Resolve implicit core symbols correctly during hover and navigation.
+- Open exact split standard-library source files from definitions.
+
 ## 0.2.0
 
 - Require the compatible Osiris 0.3 language server before starting the client.

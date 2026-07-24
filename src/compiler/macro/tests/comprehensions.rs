@@ -180,5 +180,5 @@ fn malformed_threading_call_is_recoverable() {
             .iter()
             .any(|diagnostic| diagnostic.code == "OSR-M0007")
     );
-    assert_eq!(result.document.forms.len(), 3);
+    assert_eq!(result.document.forms.len(), 2);
 }

@@ -48,6 +48,10 @@ fn state_reuses_one_analysis_for_all_queries() {
         .hover(URI, position, Some("zh-CN"))
         .expect("hover on alias");
     assert!(hover.contents.value.contains("add-one"));
+    assert!(hover.contents.value.contains("函数"));
+    assert!(!hover.contents.value.contains("Effects:"));
+    assert!(!hover.contents.value.contains("Temporal:"));
+    assert!(!hover.contents.value.contains("Data:"));
     let definition = state
         .definition(URI, position)
         .expect("definition from alias");
@@ -67,7 +71,41 @@ fn state_reuses_one_analysis_for_all_queries() {
         .find(|item| item.label == "加一")
         .expect("Chinese alias completion");
     assert_eq!(localized.insert_text, "加一");
+    assert!(
+        completion.iter().any(|item| item.label == "mapv"),
+        "implicit core bindings should participate in completion"
+    );
     assert_eq!(state.analysis_runs(), 1);
+}
+
+#[test]
+fn standard_hover_prefers_usage_examples_and_public_behavior() {
+    let uri = "file:///workspace/reduce-hover.osr";
+    let mut state = LspState::new();
+    state.did_open(
+        uri,
+        1,
+        "(module reduce-hover)\n(import osiris.core :refer [reduce])\n(def total (reduce + 0 [1 2 3 4]))\n",
+    );
+    let hover = state
+        .hover(
+            uri,
+            Position {
+                line: 1,
+                character: 30,
+            },
+            Some("zh-CN"),
+        )
+        .expect("standard reduce hover");
+    let value = hover.contents.value;
+    assert!(value.contains("**reduce** · 函数"), "{value}");
+    assert!(value.contains("(reduce + 0 [1 2 3 4])"), "{value}");
+    assert!(value.contains(";; => 10"), "{value}");
+    assert!(value.contains("**行为**  立即消费输入集合。"), "{value}");
+    assert!(value.contains("osiris.core/reduce"), "{value}");
+    for internal in ["Binding:", "Source:", "Evaluation:", "Any"] {
+        assert!(!value.contains(internal), "{value}");
+    }
 }
 
 #[test]

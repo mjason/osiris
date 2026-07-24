@@ -3,8 +3,7 @@ use super::*;
 #[test]
 fn run_executes_fully_expanded_threading_pipeline() {
     let fixture = SourceFixture::new(
-        "(import osiris.core :refer [->])\n\
-         (py/import builtins :as py)\n\
+        "(py/import builtins :as py)\n\
          (defn ^Int calculate [^Int x] (-> x (+ 1) (* 2)))\n\
          (py.print (calculate 20))\n",
     );
@@ -16,6 +15,23 @@ fn run_executes_fully_expanded_threading_pipeline() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n");
+}
+
+#[test]
+fn run_stages_reachable_standard_library_support() {
+    let fixture = SourceFixture::new(
+        "(py/import builtins :as py)\n\
+         (def values (mapv (fn [^Int value] (+ value 1)) [1 2 3]))\n\
+         (py.print (reduce (fn [^Int total ^Int value] (+ total value)) 0 values))\n",
+    );
+    let output = osr(&["run", path_argument(&fixture.path)]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "9\n");
 }
 
 #[test]

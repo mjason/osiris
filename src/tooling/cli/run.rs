@@ -93,6 +93,7 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
         );
     }
     let mut entry_path = None;
+    let mut runtime_packages = BTreeMap::<String, crate::backend::RuntimeSupport>::new();
     for (index, result) in workspace.units.into_iter().enumerate() {
         let module_name = &result.analysis.hir.name;
         let Some(generated) = result.python else {
@@ -103,6 +104,19 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
                 format!("osr: compiler produced no Python output for `{module_name}`\n"),
             );
         };
+        if let Some(runtime) = generated.runtime_support.as_ref() {
+            let support = runtime_packages
+                .entry(runtime.package.clone())
+                .or_insert_with(|| crate::backend::RuntimeSupport {
+                    package: runtime.package.clone(),
+                    helpers: BTreeSet::new(),
+                    binding_ids: BTreeSet::new(),
+                });
+            support.helpers.extend(runtime.helpers.iter().cloned());
+            support
+                .binding_ids
+                .extend(runtime.binding_ids.iter().cloned());
+        }
         let generated_path = temporary.join(python_module_path(module_name));
         let Some(parent) = generated_path.parent() else {
             let _ = fs::remove_dir_all(&temporary);
@@ -124,6 +138,41 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
         }
         if index == sources.entry_index {
             entry_path = Some(generated_path);
+        }
+    }
+    for support in runtime_packages.values() {
+        let files = match crate::backend::runtime_distribution_files(
+            support,
+            context.options.target_python,
+        ) {
+            Ok(files) => files,
+            Err(message) => {
+                let _ = fs::remove_dir_all(&temporary);
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    format!("osr: could not link runtime support: {message}\n"),
+                );
+            }
+        };
+        for (path, source) in files {
+            let path = temporary.join(path);
+            let Some(parent) = path.parent() else {
+                let _ = fs::remove_dir_all(&temporary);
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    "osr: invalid runtime support path\n".to_owned(),
+                );
+            };
+            if let Err(error) = fs::create_dir_all(parent).and_then(|()| fs::write(&path, source)) {
+                let _ = fs::remove_dir_all(&temporary);
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    format!("osr: could not write runtime support: {error}\n"),
+                );
+            }
         }
     }
     let Some(entry_path) = entry_path else {

@@ -1,8 +1,6 @@
 (module tutorial.transforms)
 
 ;; mapv、reduce 和 forv 来自显式导入的标准 core namespace。
-(import osiris.core :refer :all)
-
 ;; 文件路径必须与模块名对应：
 ;;   examples/tutorial/transforms.osr -> tutorial.transforms
 ;; 因为项目的 pyproject.toml 将 examples 配置为 Osiris source root。

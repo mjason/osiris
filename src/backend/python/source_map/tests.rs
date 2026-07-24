@@ -73,6 +73,6 @@ fn standard_macro_definitions_remain_navigable_from_generated_python() {
 
     let origin = &map.mappings[0].macro_definitions[0];
     assert_eq!(origin.binding_id, binding.id().as_str());
-    assert_eq!(origin.source, "osiris-stdlib:///osiris/core.osr");
+    assert_eq!(origin.source, "osiris-stdlib:///osiris/core/control.osr");
     assert!(origin.line > 0);
 }

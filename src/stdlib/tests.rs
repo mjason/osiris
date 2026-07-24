@@ -120,6 +120,19 @@ fn source_dispatched_functions_publish_their_exact_call_shapes() {
             "(reduce function initial collection)",
         ]
     );
+    assert_eq!(
+        reduce.examples,
+        [
+            vec!["(reduce + 0 [1 2 3 4])".to_owned(), ";; => 10".to_owned()],
+            vec!["(reduce + [1 2 3 4])".to_owned(), ";; => 10".to_owned()],
+        ]
+    );
+    assert!(!reduce.signature.contains("Any"));
+    assert_eq!(
+        reduce.source.uri,
+        "osiris-stdlib:///osiris/core/transform.osr"
+    );
+    assert!(source_artifact_by_uri(&reduce.source.uri).is_some());
     let partition = api_record(find("osiris.sequence", "partition").expect("sequence partition"));
     assert_eq!(partition.call_shapes.len(), 3);
     assert_eq!(partition.call_shapes[0], "(partition size collection)");

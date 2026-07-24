@@ -265,8 +265,17 @@ compile-time dependency. Use `osr expand <path>` to inspect expansion.
 
 ## Threading and Control Macros
 
-Standard bindings are explicit imports. Import the complete `osiris.core`
-surface, optionally excluding or renaming conflicting local spellings:
+The public `osiris.core` surface is referred automatically when a module has no
+explicit core import. Threading and control forms therefore work directly:
+
+```clojure
+(->> events
+     (map event-value)
+     (reduce add 0))
+```
+
+An explicit core import completely replaces that default. Use it to select a
+smaller surface, or to exclude and rename conflicting spellings:
 
 ```clojure
 (import osiris.core
@@ -275,7 +284,9 @@ surface, optionally excluding or renaming conflicting local spellings:
   :rename {reduce fold-left})
 ```
 
-An omitted `:exclude` or `:rename` is empty. The imported core supplies
+An omitted `:exclude` or `:rename` is empty. Local declarations shadow only
+implicit core spellings; `osiris.core/map` remains available through its
+qualified name. Explicit imports diagnose local collisions. Core supplies
 Clojure-style threading macros:
 
 ```clojure

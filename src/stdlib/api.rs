@@ -13,7 +13,7 @@ use crate::{
 
 use super::{NAMESPACES, StandardBinding, exports};
 
-const API_SCHEMA: &str = "osiris.standard-api/v1";
+const API_SCHEMA: &str = "osiris.standard-api/v2";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +32,7 @@ pub struct StandardApiRecord {
     pub canonical: &'static str,
     pub kind: BindingKind,
     pub call_shapes: Vec<String>,
+    pub examples: Vec<Vec<String>>,
     pub signature: String,
     pub evaluation: &'static str,
     pub effects: serde_json::Value,
@@ -90,6 +91,7 @@ pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
             _ => None,
         })
         .unwrap_or_else(|| call_shapes.join(" | "));
+    let signature_text = public_signature(binding, signature_text);
     let effects = function.map_or_else(
         || serde_json::json!({"derivedFromExpansion": true}),
         |function| {
@@ -98,6 +100,9 @@ pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
         },
     );
     let documentation = documentation(binding);
+    let examples = public
+        .map(|public| metadata_string_vectors(&public.metadata, "examples"))
+        .unwrap_or_default();
     let source = source_location(binding);
     let evaluation = evaluation(binding);
     let exceptions = exceptions(binding);
@@ -108,6 +113,13 @@ pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
     for shape in &call_shapes {
         hasher.update(shape.as_bytes());
         hasher.update([0]);
+    }
+    for example in &examples {
+        for line in example {
+            hasher.update(line.as_bytes());
+            hasher.update([0]);
+        }
+        hasher.update([0xff]);
     }
     for exception in &exceptions {
         hasher.update(exception.as_bytes());
@@ -120,6 +132,7 @@ pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
         canonical: binding.canonical,
         kind: binding.kind,
         call_shapes,
+        examples,
         signature: signature_text,
         evaluation,
         effects,
@@ -134,6 +147,15 @@ pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
         documentation,
         source,
         semantic_hash: format!("sha256:{:x}", hasher.finalize()),
+    }
+}
+
+fn public_signature(binding: StandardBinding, inferred: String) -> String {
+    match binding.canonical {
+        "reduce" | "reductions" => {
+            "Fn[[Fn[[A, B], A], C], A] | Fn[[Fn[[A, B], A], A, C], A]".to_owned()
+        }
+        _ => inferred,
     }
 }
 
@@ -439,6 +461,27 @@ fn metadata_bool(metadata: &[MetadataEntry], key: &str) -> Option<bool> {
     match metadata_value(metadata, key)? {
         FormKind::Bool(value) => Some(*value),
         _ => None,
+    }
+}
+
+fn metadata_string_vectors(metadata: &[MetadataEntry], key: &str) -> Vec<Vec<String>> {
+    match metadata_value(metadata, key) {
+        Some(FormKind::Vector(values)) => values
+            .iter()
+            .filter_map(|value| match &value.kind {
+                FormKind::Vector(lines) => Some(
+                    lines
+                        .iter()
+                        .filter_map(|line| match &line.kind {
+                            FormKind::String(line) => Some(line.clone()),
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 

@@ -294,18 +294,10 @@ fn python_decorators_reject_unknown_non_generated_and_duplicate_targets() {
 }
 
 #[test]
-fn core_functions_require_an_explicit_import_and_keep_facade_identity() {
-    let missing = lower("(def result (mapv (fn [value] (+ value 1)) [1 2]))");
-    assert!(missing.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "OSR-N0012" && diagnostic.message.contains("mapv")
-    }));
-
-    let imported = lower(
-        "(import osiris.core :refer [mapv])\n\
-         (def result (mapv (fn [value] (+ value 1)) [1 2]))",
-    );
-    assert!(imported.diagnostics.is_empty(), "{:?}", imported.diagnostics);
-    let call = imported
+fn implicit_core_functions_keep_their_facade_identity() {
+    let result = lower("(def result (mapv (fn [value] (+ value 1)) [1 2]))");
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let call = result
         .module
         .items
         .iter()
@@ -321,6 +313,14 @@ fn core_functions_require_an_explicit_import_and_keep_facade_identity() {
         panic!("mapv should resolve to a stable binding");
     };
     assert_eq!(binding.as_str(), "osiris.core::function::mapv");
+
+    let restricted = lower(
+        "(import osiris.core :refer [reduce])\n\
+         (def result (mapv (fn [value] (+ value 1)) [1 2]))",
+    );
+    assert!(restricted.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "OSR-N0012" && diagnostic.message.contains("mapv")
+    }));
 }
 
 #[test]
@@ -359,8 +359,62 @@ fn local_names_are_not_selected_as_standard_intrinsics_by_spelling() {
         "(def result (let [mapv (fn [value] value)] (mapv 1)))",
     );
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
-    let standard_id = "osiris.core::function::mapv";
-    assert!(!result.module.bindings.iter().any(|binding| {
-        binding.name.id.as_str() == standard_id
-    }));
+    let call = result
+        .module
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            ItemKind::Value(value) => value.value.as_ref(),
+            _ => None,
+        })
+        .expect("lowered value");
+    let ExprKind::Let { body, .. } = &call.kind else {
+        panic!("result should remain a let expression");
+    };
+    let ExprKind::Call { callee, .. } = &body.kind else {
+        panic!("let body should remain a call");
+    };
+    let ExprKind::Binding(binding) = &callee.kind else {
+        panic!("local mapv should resolve to a binding");
+    };
+    assert_ne!(binding.as_str(), "osiris.core::function::mapv");
+}
+
+#[test]
+fn top_level_declarations_shadow_only_implicit_core_names() {
+    let result = lower(
+        "(defn ^Int mapv [^Int value] value)\n\
+         (def local-result (mapv 1))\n\
+         (def core-result (osiris.core/mapv (fn [value] value) [1]))",
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+
+    let local_id = result
+        .module
+        .bindings
+        .iter()
+        .find(|binding| {
+            binding.source_spelling == "mapv"
+                && binding.name.id.as_str().starts_with("example::function::")
+        })
+        .map(|binding| binding.name.id.clone())
+        .expect("local mapv binding");
+    let callees = result
+        .module
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Value(value) => value.value.as_ref(),
+            _ => None,
+        })
+        .filter_map(|value| match &value.kind {
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Binding(binding) => Some(binding.as_str()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(callees.contains(&local_id.as_str()));
+    assert!(callees.contains(&"osiris.core::function::mapv"));
 }

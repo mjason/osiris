@@ -1,8 +1,6 @@
 (module tutorial.app)
 
 ;; Core 宏同样通过普通 import 显式进入当前模块。
-(import osiris.core :refer :all)
-
 ;; 普通 import 加载另一个 Osiris 模块的公开 .osri 接口：
 ;; - :as transforms 允许写 transforms/increment-all；
 ;; - :refer [sum-values] 把指定公开名称直接引入当前模块；
