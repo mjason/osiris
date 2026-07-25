@@ -6,6 +6,8 @@
 ;; 两种方式可以在同一条 import 中同时使用。
 (import tutorial.transforms :as transforms :refer [sum-values])
 
+(import tutorial.embedded :refer [normalize])
+
 ;; import-for-syntax 专门建立编译期依赖。宏在生成 Python 之前就会展开，因此它
 ;; 不会变成 Python import。这里同时演示限定调用和 :refer 调用。
 (import-for-syntax tutorial.macros :as macros :refer [unless])
@@ -16,53 +18,96 @@
 
 (export
   [incremented-total positive-combinations waiting-label
-   double-after-increment square-root])
+   double-after-increment square-root normalized-greeting])
 
 ;; transforms/全部加一 是 increment-all 通过 Rich Metadata 发布的中文名称。
 ;; 它与 canonical 名称具有同一个 binding id，生成 Python 时仍调用
 ;; transforms.increment_all，不会多生成一层中文 wrapper。
+~osiris<incremented-total-example>
+(incremented-total [1 2 3])
+;; => 9
+</incremented-total-example>
+
 ^{:doc
   {:default "Increment every input value, then sum the results."
    "zh-CN" "将输入逐项加一，然后求和。"}
-  :examples [["(incremented-total [1 2 3])" ";; => 9"]]}
+  :examples [incremented-total-example]}
 (defn ^Int incremented-total [^{:type (Vector Int)} values]
   (-> values
       (transforms/全部加一)
       (sum-values)))
 
 ;; 限定名称让代码读者能直接看出函数来自哪个 Osiris 模块。
+~osiris<positive-combinations-example>
+(positive-combinations [-2 1] [1 3])
+;; => [1 2 4]
+</positive-combinations-example>
+
 ^{:doc
   {:default "Return the positive Cartesian sums of two integer vectors."
    "zh-CN" "返回两组整数产生的正数笛卡尔和。"}
-  :examples [["(positive-combinations [-2 1] [1 3])" ";; => [1 2 4]"]]}
+  :examples [positive-combinations-example]}
 (defn ^{:type (Vector Int)} positive-combinations
   [^{:type (Vector Int)} left-values ^{:type (Vector Int)} right-values]
   (transforms/positive-pair-sums left-values right-values))
 
 ;; :refer 导入的宏可以直接使用。unless 展开为 if/do/none，所以函数可能返回
 ;; Str 或 none，对应 Option[Str]。
+~osiris<waiting-label-false-example>
+(waiting-label false)
+;; => "waiting"
+</waiting-label-false-example>
+
+~osiris<waiting-label-true-example>
+(waiting-label true)
+;; => none
+</waiting-label-true-example>
+
 ^{:doc
   {:default "Return a waiting label when not ready, otherwise none."
    "zh-CN" "未就绪时返回等待提示，否则返回 none。"}
-  :examples [["(waiting-label false)" ";; => \"waiting\""]
-             ["(waiting-label true)" ";; => none"]]}
+  :examples [waiting-label-false-example waiting-label-true-example]}
 (defn ^{:type (Option Str)} waiting-label [^Bool ready]
   (unless ready "waiting"))
 
 ;; 通过 :as 导入的宏使用限定名称。twice 内部的 value# 是卫生 binding，所以
 ;; (+ value 1) 只求值一次，也不会捕获调用方局部变量。
+~osiris<double-after-increment-example>
+(double-after-increment 4)
+;; => 10
+</double-after-increment-example>
+
 ^{:doc
   {:default "Increment once, then add the result to itself."
    "zh-CN" "先加一，再把结果与自身相加。"}
-  :examples [["(double-after-increment 4)" ";; => 10"]]}
+  :examples [double-after-increment-example]}
 (defn ^Int double-after-increment [^Int value]
   (macros/twice (+ value 1)))
 
 ;; Python 动态边界的返回值目前是 Any，因此公开函数也显式标记为 Any。扩展包
 ;; 可以通过 extern 提供更精确的签名，让调用方继续保持静态类型。
+~osiris<square-root-example>
+(square-root 81.0)
+;; => 9.0
+</square-root-example>
+
 ^{:doc
   {:default "Call Python's standard-library math.sqrt."
    "zh-CN" "调用 Python 标准库 math.sqrt。"}
-  :examples [["(square-root 81.0)" ";; => 9.0"]]}
+  :examples [square-root-example]}
 (defn ^Any square-root [^Float value]
   (math.sqrt value))
+
+;; The imported Osiris function owns the embedded Python boundary. Callers
+;; see an ordinary typed Osiris function and do not need to know its backend.
+~osiris<normalized-greeting-example>
+(normalized-greeting "  Hello, Osiris  ")
+;; => "hello, osiris"
+</normalized-greeting-example>
+
+^{:doc
+  {:default "Normalize a greeting through the embedded text module."
+   "zh-CN" "通过嵌入的文本模块规范化问候语。"}
+  :examples [normalized-greeting-example]}
+(defn ^Str normalized-greeting [^Str value]
+  (normalize value))

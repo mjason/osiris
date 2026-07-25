@@ -301,5 +301,6 @@ pub(super) fn form_text(form: &Form) -> String {
             items.iter().map(form_text).collect::<Vec<_>>().join(" ")
         ),
         FormKind::ReaderMacro { form, .. } => form_text(form),
+        FormKind::EmbeddedLanguage { body, .. } => body.clone(),
     }
 }

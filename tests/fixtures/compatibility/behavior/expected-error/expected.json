@@ -1,0 +1,3 @@
+{
+  "stderrContains": "ValueError: invalid value"
+}

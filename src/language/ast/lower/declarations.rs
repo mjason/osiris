@@ -2,6 +2,9 @@ use super::*;
 
 impl Lowerer {
     pub(super) fn lower_item(&mut self, form: &Form) -> Item {
+        if matches!(form.kind, FormKind::EmbeddedLanguage { .. }) {
+            return self.lower_embedded_item(form);
+        }
         let Some(parts) = list_parts(form) else {
             return Item::new(form, ItemKind::Expr(self.lower_expr(form)));
         };

@@ -180,7 +180,9 @@ pub(crate) fn metadata_datum_is_serializable(form: &Form) -> bool {
                 }
                 pending.extend(items);
             }
-            FormKind::ReaderMacro { .. } | FormKind::Error(_) => return false,
+            FormKind::ReaderMacro { .. }
+            | FormKind::EmbeddedLanguage { .. }
+            | FormKind::Error(_) => return false,
         }
     }
     true
@@ -365,6 +367,15 @@ fn normalized_form_local_bytes(form: &Form) -> usize {
             ReaderMacroKind::UnquoteSplicing => 2,
             _ => 1,
         },
+        FormKind::EmbeddedLanguage {
+            language,
+            label,
+            raw_body,
+            ..
+        } => 5_usize
+            .saturating_add(language.len())
+            .saturating_add(label.canonical.len().saturating_mul(2))
+            .saturating_add(raw_body.len()),
         FormKind::Error(message) => 9_usize.saturating_add(message.len()),
     }
 }

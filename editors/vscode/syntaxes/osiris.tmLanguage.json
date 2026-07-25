@@ -3,6 +3,7 @@
   "name": "Osiris",
   "scopeName": "source.osiris",
   "patterns": [
+    { "include": "#embedded-languages" },
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
@@ -15,6 +16,64 @@
     { "include": "#delimiters" }
   ],
   "repository": {
+    "embedded-languages": {
+      "patterns": [
+        {
+          "name": "meta.embedded.block.python.osiris",
+          "begin": "(~python<)([^<>\\r\\n]+)(>)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.embedded.osiris" },
+            "2": { "name": "entity.name.section.embedded.osiris" },
+            "3": { "name": "keyword.operator.embedded.osiris" }
+          },
+          "end": "(</)(\\2)(>)",
+          "endCaptures": {
+            "1": { "name": "keyword.operator.embedded.osiris" },
+            "2": { "name": "entity.name.section.embedded.osiris" },
+            "3": { "name": "keyword.operator.embedded.osiris" }
+          },
+          "contentName": "source.python",
+          "patterns": [{ "include": "source.python" }]
+        },
+        {
+          "name": "meta.embedded.block.osiris.osiris",
+          "begin": "(~osiris<)([^<>\\r\\n]+)(>)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.embedded.osiris" },
+            "2": { "name": "entity.name.section.embedded.osiris" },
+            "3": { "name": "keyword.operator.embedded.osiris" }
+          },
+          "end": "(</)(\\2)(>)",
+          "endCaptures": {
+            "1": { "name": "keyword.operator.embedded.osiris" },
+            "2": { "name": "entity.name.section.embedded.osiris" },
+            "3": { "name": "keyword.operator.embedded.osiris" }
+          },
+          "contentName": "source.osiris",
+          "patterns": [{ "include": "source.osiris" }]
+        },
+        {
+          "name": "meta.embedded.block.markdown.osiris",
+          "begin": "(~markdown<)([^<>\\r\\n]+)(>)",
+          "end": "(</)(\\2)(>)",
+          "contentName": "text.html.markdown",
+          "patterns": [{ "include": "text.html.markdown" }]
+        },
+        {
+          "name": "meta.embedded.block.json.osiris",
+          "begin": "(~json<)([^<>\\r\\n]+)(>)",
+          "end": "(</)(\\2)(>)",
+          "contentName": "source.json",
+          "patterns": [{ "include": "source.json" }]
+        },
+        {
+          "name": "meta.embedded.block.generic.osiris",
+          "begin": "(~[a-z][a-z0-9+-]*<)([^<>\\r\\n]+)(>)",
+          "end": "(</)(\\2)(>)",
+          "contentName": "meta.embedded.raw.osiris"
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {

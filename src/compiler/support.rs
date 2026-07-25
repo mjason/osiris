@@ -80,17 +80,15 @@ pub(super) fn install_module_identity(
     options: &CompileOptions,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let Some(name) = &module.name else {
+    if module.name.is_none() {
         module.name = Some(Name {
             spelling: options.fallback_module_name.clone(),
             canonical: options.fallback_module_name.clone(),
         });
-        return;
-    };
-    let Some(expected) = &options.expected_module_name else {
-        return;
-    };
-    if name.canonical != *expected {
+    }
+    if let (Some(name), Some(expected)) = (&module.name, &options.expected_module_name)
+        && name.canonical != *expected
+    {
         diagnostics.push(Diagnostic::error(
             "OSR-G0011",
             format!(
@@ -100,6 +98,7 @@ pub(super) fn install_module_identity(
             module.span,
         ));
     }
+    super::embedded::resolve_provider_names(module, options, diagnostics);
 }
 
 pub(super) fn imported_phase_modules(

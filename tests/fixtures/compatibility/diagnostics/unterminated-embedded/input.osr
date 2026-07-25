@@ -1,0 +1,3 @@
+(module compat.diagnostics)
+~json<settings>
+{"theme": "dark"}

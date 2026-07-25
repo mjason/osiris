@@ -79,6 +79,21 @@ pub struct Module {
     pub metadata: Metadata,
     pub name: Option<Name>,
     pub items: Vec<Item>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub embedded_content_references: Vec<EmbeddedContentReference>,
+}
+
+/// One statically resolved Rich Metadata reference to an embedded text block.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct EmbeddedContentReference {
+    pub field: String,
+    pub reference_span: Span,
+    pub language: String,
+    pub label: String,
+    pub content: String,
+    pub source_span: Span,
+    pub body_span: Span,
+    pub content_hash: String,
 }
 
 impl Module {
@@ -113,6 +128,8 @@ pub enum ItemKind {
     Defstruct(Defstruct),
     DefstaticSchema(DefstaticSchema),
     StaticRecord(StaticRecord),
+    EmbeddedText(EmbeddedText),
+    EmbeddedPython(EmbeddedPython),
     Extern(Extern),
     Defmacro(Macro),
     DefnForSyntax(Function),
@@ -324,12 +341,35 @@ pub struct StaticRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct EmbeddedText {
+    pub span: Span,
+    pub body_span: Span,
+    pub language: String,
+    pub label: Name,
+    pub body: String,
+    pub runtime_reachable: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct EmbeddedPython {
+    pub span: Span,
+    pub body_span: Span,
+    pub handle: Name,
+    pub raw_body: String,
+    pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_module: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Extern {
     pub span: Span,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub metadata: Metadata,
     pub backend: Name,
     pub module: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_handle: Option<Name>,
     pub items: Vec<Item>,
 }
 

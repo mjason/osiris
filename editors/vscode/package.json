@@ -97,6 +97,15 @@
           "scope": "window",
           "description": "Locale used for Rich Metadata names and documentation. Empty uses the VS Code UI locale."
         },
+        "osiris.embeddedLanguages": {
+          "type": "object",
+          "default": {},
+          "scope": "window",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional mapping from Osiris embedded-language tags to installed VS Code language identifiers."
+        },
         "osiris.trace.server": {
           "type": "string",
           "enum": [

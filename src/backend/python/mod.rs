@@ -159,6 +159,19 @@ fn render_formatted_module(module: &py::Module) -> Result<String, BackendError> 
         })
 }
 
+/// Format one authored embedded Python module with the exact profile used for
+/// generated Python. Parsing and formatting stay in-process.
+pub fn format_embedded_module(source: &str) -> Result<String, BackendError> {
+    format_module_source(source, PyFormatOptions::default())
+        .map(|formatted| formatted.into_code())
+        .map_err(|error| {
+            BackendError::new(
+                format!("could not format embedded Python with Ruff: {error}"),
+                None,
+            )
+        })
+}
+
 struct Backend<'hir> {
     target: PythonVersion,
     bindings: BTreeMap<crate::name::BindingId, &'hir hir::Binding>,

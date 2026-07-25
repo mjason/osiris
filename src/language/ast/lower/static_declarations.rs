@@ -310,11 +310,15 @@ impl Lowerer {
             }
         }
         .unwrap_or_else(error_name);
+        let mut provider_handle = None;
         let module = parts
             .get(2)
             .and_then(|part| match &part.kind {
                 FormKind::String(value) => Some(value.clone()),
-                FormKind::Symbol(name) => Some(name.spelling.clone()),
+                FormKind::Symbol(name) => {
+                    provider_handle = Some(name.clone());
+                    Some(String::new())
+                }
                 _ => {
                     self.error(
                         AST_INVALID_NAME,
@@ -353,6 +357,7 @@ impl Lowerer {
             metadata: info.metadata,
             backend,
             module,
+            provider_handle,
             items,
         }
     }

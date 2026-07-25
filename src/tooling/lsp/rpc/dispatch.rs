@@ -211,6 +211,15 @@ fn dispatch(
                 "nodes": &document.analysis.document.nodes,
             })))
         }
+        "osiris/embeddedRegions" => {
+            let uri = required_uri(params)?;
+            let document = state.document(uri).ok_or_else(|| document_not_found(uri))?;
+            Ok(result_outcome(json!({
+                "schema": "osiris.embedded-regions/v1",
+                "documentVersion": document.version,
+                "regions": embedded_regions(document),
+            })))
+        }
         "osiris/symbol" => {
             let uri = required_uri(params)?;
             ensure_document(state, uri)?;
@@ -240,4 +249,61 @@ fn dispatch(
             format!("method not found: {method}"),
         )),
     }
+}
+
+fn embedded_regions(document: &OpenDocument) -> Vec<JsonValue> {
+    fn collect(form: &Form, source: &str, regions: &mut Vec<JsonValue>) {
+        for entry in &form.metadata {
+            collect(&entry.key, source, regions);
+            collect(&entry.value, source, regions);
+        }
+        match &form.kind {
+            FormKind::EmbeddedLanguage {
+                language,
+                label,
+                raw_body,
+                body,
+                body_span,
+            } => {
+                let line_offsets = reader::embedded_line_source_offsets(raw_body, *body_span);
+                let line_map = line_offsets
+                    .into_iter()
+                    .enumerate()
+                    .map(|(embedded_line, offset)| {
+                        let position = offset_to_position(source, offset);
+                        json!({
+                            "embeddedLine": embedded_line,
+                            "hostLine": position.line,
+                            "hostCharacter": position.character,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                regions.push(json!({
+                    "id": format!("{}:{}", form.span.start, form.span.end),
+                    "language": language,
+                    "label": label.spelling,
+                    "hostSpan": form.span,
+                    "bodySpan": body_span,
+                    "text": body,
+                    "lineMap": line_map,
+                }));
+            }
+            FormKind::List(items)
+            | FormKind::Vector(items)
+            | FormKind::Map(items)
+            | FormKind::Set(items) => {
+                for item in items {
+                    collect(item, source, regions);
+                }
+            }
+            FormKind::ReaderMacro { form, .. } => collect(form, source, regions),
+            _ => {}
+        }
+    }
+
+    let mut regions = Vec::new();
+    for form in &document.analysis.document.forms {
+        collect(form, &document.text, &mut regions);
+    }
+    regions
 }

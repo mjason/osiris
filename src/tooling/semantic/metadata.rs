@@ -213,6 +213,7 @@ pub(super) fn form_name(form: &Form) -> Option<String> {
 pub(super) fn metadata_entries(metadata: &[MetadataEntry]) -> Vec<AuthoredMetadata> {
     metadata
         .iter()
+        .filter(|entry| form_name(&entry.key).as_deref() != Some(":osiris/content-references"))
         .map(|entry| AuthoredMetadata {
             key: form_json(&entry.key),
             value: form_json(&entry.value),
@@ -276,6 +277,7 @@ pub(super) fn collect_form_authored(form: &Form, authored: &mut Vec<AuthoredMeta
             }
         }
         FormKind::ReaderMacro { form, .. } => collect_form_authored(form, authored),
+        FormKind::EmbeddedLanguage { .. } => {}
         FormKind::None
         | FormKind::Bool(_)
         | FormKind::Integer(_)
@@ -338,7 +340,7 @@ pub(super) fn declared_facts(metadata: &[MetadataEntry], span: Span) -> Vec<Sema
                         | "temporal"
                         | "data"
                 );
-            semantic.then(|| SemanticFact {
+            (semantic && normalized != "osiris/content-references").then(|| SemanticFact {
                 kind: key,
                 value: form_json(&entry.value),
                 provenance: vec![FactOrigin {

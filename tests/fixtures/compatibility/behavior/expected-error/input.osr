@@ -1,0 +1,5 @@
+(module compat.expected-error)
+(py/import builtins :as py)
+(defn ^None main []
+  (raise (py.ValueError "invalid value")))
+(main)

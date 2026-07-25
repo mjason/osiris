@@ -1,0 +1,5 @@
+(module compat.map-basic)
+(py/import builtins :as py)
+(defn ^{:type (Vector Int)} doubled []
+  (mapv (fn [^Int value] (* value 2)) [1 2 3]))
+(py.print (doubled))

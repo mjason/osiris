@@ -1,0 +1,5 @@
+{
+  "language": "json",
+  "label": "settings",
+  "body": "{\n  \"theme\": \"dark\"\n}"
+}

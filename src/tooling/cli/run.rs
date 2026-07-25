@@ -96,6 +96,27 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
     let mut runtime_packages = BTreeMap::<String, crate::backend::RuntimeSupport>::new();
     for (index, result) in workspace.units.into_iter().enumerate() {
         let module_name = &result.analysis.hir.name;
+        for embedded in &result.analysis.embedded_python {
+            let path = temporary.join(python_module_path(&embedded.logical_module));
+            let Some(parent) = path.parent() else {
+                let _ = fs::remove_dir_all(&temporary);
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    "osr: invalid embedded Python module path\n".to_owned(),
+                );
+            };
+            if let Err(error) =
+                fs::create_dir_all(parent).and_then(|()| fs::write(&path, &embedded.source))
+            {
+                let _ = fs::remove_dir_all(&temporary);
+                return CliOutcome::failure(
+                    1,
+                    String::new(),
+                    format!("osr: could not stage embedded Python module: {error}\n"),
+                );
+            }
+        }
         let Some(generated) = result.python else {
             let _ = fs::remove_dir_all(&temporary);
             return CliOutcome::failure(

@@ -35,6 +35,32 @@ fn run_stages_reachable_standard_library_support() {
 }
 
 #[test]
+fn run_stages_and_imports_reachable_embedded_python() {
+    let fixture = SourceFixture::new(
+        r#"(py/import builtins :as py)
+
+~python<text-backend>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+
+(py.print (normalize "  Hello  "))
+"#,
+    );
+    let output = osr(&["run", path_argument(&fixture.path)]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "hello\n");
+}
+
+#[test]
 fn run_compiles_the_project_workspace_before_executing_the_entry() {
     let fixture = SourceFixture::new("(def ignored 0)\n");
     let app = fixture.write(

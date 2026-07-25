@@ -1,0 +1,11 @@
+(module compat.embedded-python)
+(py/import builtins :as py)
+
+~python<text-backend>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+(py.print (normalize "  Hello  "))

@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 8
+revision: 10
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -80,6 +80,14 @@ This proposal does not specify:
 - **Artifact set**: all outputs produced for one module graph and target.
 - **Extension distribution**: a Python distribution whose wheel carries an
   Osiris marker and at least one public `.osri` interface.
+- **Package**: an ordinary Python distribution created with `osr init
+  --package`; it may expose one or more public Osiris modules and is then an
+  extension distribution.
+- **Linkable backend**: a package-owned, non-public Osiris runtime closure that
+  can be selected by macro expansion and copied into a consumer artifact. It
+  is not an installed shared Python runtime.
+- **Runtime closure**: the transitive set of linkable backend bindings and
+  modules required by one generated artifact after macro expansion.
 - **Marker**: static `dist-info/osiris.toml` data listing extension artifacts.
 - **Effective dependency graph**: the locked runtime dependency closure used by
   a project build.
@@ -181,11 +189,13 @@ to add the compiler dependency and update the lock. A failed uv operation MUST
 be reported and MUST NOT leave a configuration that claims successful setup
 while the dependency update is incomplete.
 
-**OEP-0002-R015:** `osr init --extension <project>` and
-`osr init --existing --extension [directory]` MUST configure the project to
-build a Python distribution with `osiris_build`, a canonical import package,
+**OEP-0002-R015:** `osr init --package <project>` and
+`osr init --existing --package [directory]` MUST configure the project to
+build a Python distribution with `osiris_build`, a canonical Osiris namespace,
 and at least one public Osiris module. Converting an existing project MUST
-refuse an incompatible build backend rather than silently replace it.
+refuse an incompatible build backend rather than silently replace it. A package
+is the author-facing lifecycle concept; an extension distribution is the
+compiler discovery classification for a package exposing public interfaces.
 
 ### Modules and project commands
 
@@ -266,13 +276,13 @@ interface hashes, target, or declared dependencies disagree, compilation MUST
 fail with a stable diagnostic. Discovery MUST NOT select a best effort package
 by filesystem order or import precedence.
 
-### Extension build and artifacts
+### Package build, linkable backend, and artifacts
 
 **OEP-0002-R031:** `osiris_build` MUST be a PEP 517 build backend distributable
-with Osiris. An extension project's `[build-system]` MUST pin a compatible
+with Osiris. An Osiris package's `[build-system]` MUST pin a compatible
 `osiris-lang` build requirement and name `osiris_build` as its backend.
 
-**OEP-0002-R032:** Building an extension sdist MUST include `pyproject.toml`,
+**OEP-0002-R032:** Building an Osiris package sdist MUST include `pyproject.toml`,
 `osiris.jsonc`, all required `.osr` source, and files needed for a reproducible
 wheel build. An sdist build MUST NOT depend on unlisted files outside the
 project root.
@@ -285,12 +295,90 @@ package's private `__osiris_runtime__` package according to OEP-0003. Runtime
 semantics and dependency compilation MUST use validated `.osri`, not recompile
 packaged source implicitly.
 
+**OEP-0002-R033A:** An extension wheel MUST additionally contain a validated,
+versioned linkable-backend artifact for every package-owned Osiris runtime
+binding reachable through a public interface or exported macro expansion. The
+artifact MUST contain the complete binding and module closure, stable binding
+identities, relocatable internal module edges, source-map identities, and its
+semantic interface dependency hashes. This rule applies equally to an ordinary
+public Osiris function and to a private function introduced by a macro.
+Authored `.osr` source is navigation and audit material only; a consumer MUST
+NOT recompile it to obtain backend behavior.
+
+**OEP-0002-R033B:** A macro interface that can emit a package-private runtime
+binding MUST declare that binding's linkable backend closure in its validated
+macro artifact. Expansion MUST preserve the stable binding identity. It MUST
+fail before code generation when the closure is absent, incompatible, invalid,
+or does not cover every emitted private runtime binding. Macro expansion MUST
+NOT silently turn a private binding into a public interface binding.
+
+**OEP-0002-R033C:** During consumer compilation, the linker MUST take the
+transitive runtime closure selected by expanded HIR and release it only under
+the owning output package's reserved
+`__osiris_runtime__/packages/<provider-id>/` directory. `<provider-id>` MUST
+be deterministic, collision-safe, and derived from the locked provider
+distribution identity and validated artifact hash. All internal backend imports
+MUST be relocated to that directory. Generated consumer Python MUST NOT import
+the provider package's generated Osiris Python module, `osiris-lang`, source
+`.osr`, `.osri`, macro IR, or documentation data at runtime.
+
+**OEP-0002-R033D:** A package MAY provide a package-owned Python backend only as
+an embedded `python` module governed by OEP-0001. Such a module is compiler
+input carried by the linkable artifact, not an import from the provider's
+installed Python namespace. Its private provider handle MUST NOT appear in a
+public interface; only validated `extern` bindings may create downstream
+reachability into it. It MAY import explicitly declared ordinary Python
+dependencies such as `pandas`; those providers remain normal `Requires-Dist`
+dependencies and are never copied into `__osiris_runtime__`. A large, native,
+independently versioned, or generally reusable Python implementation SHOULD be
+a separate Python distribution. Undeclared same-distribution `.py` files MUST
+NOT become runtime providers implicitly.
+
+**OEP-0002-R033E:** A package MAY contain public facade modules, private
+implementation modules, Phase-1 macro helpers, and linkable backend modules.
+Only explicitly exported declarations are public to ordinary downstream source.
+Private declarations, including `defn-`, are available to a package macro only
+through its declared linkable closure and remain unavailable for consumer
+imports, completion, or direct reference.
+
+**OEP-0002-R033F:** Package source layout MUST follow normal module mapping
+under an `osiris.jsonc` source root. For example, `src/acme_text/core.osr` and
+`src/acme_text/backend/normalize.osr` define `acme_text.core` and
+`acme_text.backend.normalize`. The build backend MUST derive linkable closures
+from resolved binding reachability rather than a second backend directory,
+configuration list, filename convention, or consumer source recompilation.
+Generated Python shipped for inspection MUST NOT be selected as the runtime
+provider of those Osiris bindings.
+
+**OEP-0002-R033G:** The provider wheel MUST store its relocatable closure graph
+at `<distribution>.dist-info/osiris/linkable-backend.hir.json`, embedded Python
+modules at `<distribution>.dist-info/osiris/python-runtime/<logical-path>.py`,
+and authored `.osr` files named by the graph at their canonical module paths
+for navigation. `osiris.toml` MUST record `linkable_backend`,
+`linkable_backend_hash`, its schema/ABI, Python target, closure-root binding
+identities, embedded Python module paths and hashes, and source-map identities.
+Files below `dist-info/osiris/` are compiler data, not installed import targets,
+and MUST never be imported or executed during discovery or compilation. The
+consumer linker reads them, selects only reachable closures, emits readable
+formatted `.py` below `__osiris_runtime__/packages/<provider-id>/`, and records
+the selected hashes in the consumer runtime manifest.
+
+**OEP-0002-R033H:** Osiris runtime code MUST be selected at binding-level
+transitive reachability. Embedded Python MUST be selected at module-level
+transitive static-import reachability: if any declared binding provided by one
+embedded module is reachable, the complete normalized module and every
+provider-owned embedded module in its static import closure MUST be released.
+The initial linker MUST NOT attempt Python function-level tree shaking. A
+provider wheel carries its complete validated graph once; each consumer output
+carries only the selected Osiris bindings and embedded Python modules.
+
 **OEP-0002-R034:** The wheel backend MUST generate
 `<distribution>.dist-info/osiris.toml`; authors MUST NOT maintain this marker by
 hand. The marker MUST identify its schema version, provider distribution and
 version, target Python compatibility, every interface and source path, semantic
 hashes, source-map hashes, linked-support manifest and hash, records artifacts,
-and dependency identities needed for deterministic validation.
+the linkable-backend fields from OEP-0002-R033G, and dependency identities
+needed for deterministic validation.
 
 **OEP-0002-R035:** Each `.osri` MUST contain the public module interface needed
 for downstream parsing, macro expansion, name and alias resolution, types,
@@ -307,12 +395,13 @@ before assembling a wheel, and the consumer MUST validate them before use. A
 partial, stale, path-escaping, duplicate, oversized, or hash-mismatched artifact
 MUST cause failure rather than fallback to Python import or source execution.
 
-**OEP-0002-R038:** Public interface dependencies MUST be declared as ordinary
-runtime requirements in `pyproject.toml` so Python wheel metadata preserves the
-same dependency closure. A development-only dependency MUST NOT satisfy a
-published interface reference.
+**OEP-0002-R038:** Public interface dependencies and separately published Python
+providers used by a linkable backend MUST be declared as ordinary runtime
+requirements in `pyproject.toml` so Python wheel metadata preserves the same
+dependency closure. A development-only dependency MUST NOT satisfy a published
+interface reference or a linkable backend import.
 
-**OEP-0002-R039:** Extensions MUST be installed and published with ordinary
+**OEP-0002-R039:** Packages MUST be installed and published with ordinary
 tools, for example `uv add`, `uv build`, and `uv publish`. The compiler MAY
 provide diagnostics and project scaffolding but MUST NOT wrap these operations
 in a second package lifecycle.
@@ -343,12 +432,12 @@ clients and MUST NOT gate check, build, or execution.
 spans against that member. It MUST NOT duplicate authored source text inside
 the map. A consumer MUST validate the member hash before using mapped spans.
 
-**OEP-0002-R044:** Editable extension installation MUST use a standard PEP 660
+**OEP-0002-R044:** Editable package installation MUST use a standard PEP 660
 editable wheel produced by the configured build backend. The compiler MUST NOT
 discover extensions through a custom editable-directory or source-tree scan
 outside the validated wheel metadata contract.
 
-**OEP-0002-R045:** Before stable versioning, generated project and extension
+**OEP-0002-R045:** Before stable versioning, generated project and package
 scaffolds MUST constrain `osiris-lang` to the compiler package's current minor
 release line. The `0.3.0` release therefore generates `osiris-lang>=0.3,<0.4`.
 Artifacts and markers MUST additionally record the exact language, interface,
@@ -399,6 +488,13 @@ Shipping `.osr` in extension wheels enables source navigation and audit while
 `.osri` remains the static compilation authority. This prevents installed
 source from becoming an implicit executable plugin or causing consumer builds
 to depend on the extension author's source layout.
+
+Package-owned backends follow the same deployment direction as the standard
+library: validated, relocatable Osiris closures and small explicit embedded
+Python modules move from provider metadata into the consumer's private
+`__osiris_runtime__`. They are never imported from the provider's installed
+generated namespace. Independently managed Python implementations remain
+ordinary packages and visible dependencies.
 
 One target per invocation keeps the compiler fast and the artifact identity
 clear. Recording the target and avoiding a hard-coded backend enum leaves room
@@ -486,7 +582,7 @@ A conforming implementation provides evidence that:
 - JSONC fixtures cover comments, trailing commas, duplicate keys, minimum
   config, exclusions inside source, and rejected legacy fields;
 - init fixtures cover a new project, an existing uv project, idempotence,
-  extension setup, and rollback on uv failure;
+  package setup, and rollback on uv failure;
 - module mapping and atomic artifact tests cover collisions and stale outputs;
 - cache fixtures prove unchanged reuse, output restoration, source/config/
   target/interface invalidation, corruption fallback, and failed-build safety;
@@ -501,11 +597,29 @@ A conforming implementation provides evidence that:
   importing package code;
 - an sdist can build a deterministic wheel containing source, Python,
   interfaces, maps, records, and a generated marker;
+- a direct public Osiris call and an exported macro that emits a private runtime
+  binding each cause exactly their validated transitive backend closure to be
+  linked below the consumer's `__osiris_runtime__`, with no provider-package or
+  Osiris runtime import;
+- a missing, stale, incompatible, or incomplete linkable closure fails before
+  Python generation, and an undeclared same-distribution Python backend is
+  rejected;
+- an embedded `python` module is copied only when one of its declared bindings is
+  reachable, brings its complete static embedded-module import closure, and
+  leaves ordinary dependencies such as `pandas` outside the runtime package;
 - a consumer installed with uv can import an extension interface and compile a
   dependent project solely from its validated locked artifacts.
 
 ## Change History
 
+- Revision 10, 2026-07-25: Made embedded Python provider handles module-private
+  implementation details and required consumer reachability to begin at their
+  validated Osiris `extern` bindings.
+- Revision 9, 2026-07-25: Distinguished author-facing packages from extension
+  discovery, replaced `init --extension` with `init --package`, specified
+  consumer-owned linkable backend closures, and allowed explicit embedded `python`
+  modules with module-level reachability while external Python dependencies
+  remain ordinary packages.
 - Revision 8, 2026-07-25: Required generated Python to preserve fallback
   docstrings and readable names while removing safe structural boilerplate
   without reconstructing standard macros in the compiler.

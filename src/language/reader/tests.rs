@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{MAX_DEPTH, parse_form, read, read_incremental};
+use super::{MAX_DEPTH, embedded_source_offset, parse_form, read, read_incremental};
 use crate::{
     lexer::lex,
     syntax::{
@@ -42,6 +42,7 @@ fn every_nom_production_preserves_the_following_form() {
         ("~alpha tail", "tail"),
         ("~@alpha tail", "tail"),
         ("^:private alpha tail", "tail"),
+        ("~json<data>{}</data> tail", "tail"),
         ("\"alpha\" tail", "tail"),
         ("alpha tail", "tail"),
         ("# tag", "tag"),
@@ -65,6 +66,29 @@ fn every_nom_production_preserves_the_following_form() {
             "production consumed tokens from the following form in `{source}`"
         );
     }
+}
+
+#[test]
+fn reads_and_normalizes_named_embedded_blocks() {
+    let source = "  ~json<settings>\n  {\n    \"enabled\": true\n  }\n  </settings>\n";
+    let document = read(source);
+    assert!(!document.has_errors(), "{:?}", document.diagnostics);
+    assert_eq!(document.tokens[1].kind, TokenKind::EmbeddedLanguage);
+    let FormKind::EmbeddedLanguage {
+        language,
+        label,
+        raw_body,
+        body,
+        body_span,
+    } = &document.forms[0].kind
+    else {
+        panic!("expected embedded block");
+    };
+    assert_eq!(language, "json");
+    assert_eq!(label.canonical, "settings");
+    assert_eq!(raw_body, "\n  {\n    \"enabled\": true\n  }\n  ");
+    assert_eq!(body, "{\n  \"enabled\": true\n}");
+    assert_eq!(&source[body_span.start..body_span.end], raw_body);
 }
 
 #[test]
@@ -485,4 +509,22 @@ second""#,
         &document.forms[0].kind,
         FormKind::String(value) if value == "a😀firstsecond"
     ));
+}
+
+#[test]
+fn maps_normalized_embedded_offsets_back_through_common_indentation() {
+    let source = "~python<backend>\n  def greet() -> str:\n      return \"😀\"\n  </backend>";
+    let document = read(source);
+    let FormKind::EmbeddedLanguage {
+        raw_body,
+        body,
+        body_span,
+        ..
+    } = &document.forms[0].kind
+    else {
+        panic!("expected embedded block");
+    };
+    let value_offset = body.find("😀").expect("unicode value");
+    let host_offset = embedded_source_offset(raw_body, body, *body_span, value_offset);
+    assert_eq!(&source[host_offset..host_offset + "😀".len()], "😀");
 }

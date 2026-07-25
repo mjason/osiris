@@ -9,6 +9,7 @@ use crate::{
     source::Span,
     syntax::{Token, TokenKind},
 };
+use unicode_normalization::UnicodeNormalization;
 
 /// A lexical result.  Diagnostics are non-fatal so the reader can continue and
 /// provide useful errors for the rest of an incomplete editor buffer.
@@ -28,6 +29,8 @@ const INVALID_ESCAPE: &str = "OSR-L001";
 const UNCLOSED_STRING: &str = "OSR-L002";
 const UNSUPPORTED_DISPATCH: &str = "OSR-L003";
 const LINE_BREAK_IN_STRING: &str = "OSR-L004";
+const INVALID_EMBEDDED_BLOCK: &str = "OSR-L005";
+const UNCLOSED_EMBEDDED_BLOCK: &str = "OSR-L006";
 
 struct Lexer<'a> {
     source: &'a str,
@@ -138,6 +141,10 @@ impl<'a> Lexer<'a> {
                 return;
             }
             '~' => {
+                if self.starts_embedded_block() {
+                    self.lex_embedded_block();
+                    return;
+                }
                 self.advance();
                 if self.peek() == Some('@') {
                     self.advance();
@@ -193,6 +200,106 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
         self.push(TokenKind::Atom, start, self.offset);
+    }
+
+    fn starts_embedded_block(&self) -> bool {
+        let tail = &self.source[self.offset + 1..];
+        let mut saw_language = false;
+        for character in tail.chars() {
+            if !saw_language {
+                if !character.is_ascii_lowercase() {
+                    return false;
+                }
+                saw_language = true;
+                continue;
+            }
+            if character == '<' {
+                return true;
+            }
+            if !(character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '+' | '-'))
+            {
+                return false;
+            }
+        }
+        false
+    }
+
+    fn lex_embedded_block(&mut self) {
+        let start = self.offset;
+        self.advance(); // `~`
+        while self.peek().is_some_and(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '+' | '-')
+        }) {
+            self.advance();
+        }
+        debug_assert_eq!(self.peek(), Some('<'));
+        self.advance();
+        let label_start = self.offset;
+        while let Some(character) = self.peek() {
+            if character == '>' {
+                break;
+            }
+            if matches!(character, '\n' | '\r' | '<') {
+                let end = self.offset.max(label_start + 1);
+                self.error(
+                    INVALID_EMBEDDED_BLOCK,
+                    "embedded block label must be non-empty and remain on one line",
+                    Span::new(label_start, end),
+                );
+                self.recover_embedded_opening(start);
+                return;
+            }
+            self.advance();
+        }
+        if self.peek() != Some('>') {
+            self.error(
+                INVALID_EMBEDDED_BLOCK,
+                "embedded block opening tag is missing `>`",
+                Span::new(start, self.offset),
+            );
+            self.push(TokenKind::Error, start, self.offset);
+            return;
+        }
+        let label_end = self.offset;
+        let label = &self.source[label_start..label_end];
+        self.advance(); // `>`
+        if label.is_empty() || label.trim() != label || label.nfc().collect::<String>() != label {
+            self.error(
+                INVALID_EMBEDDED_BLOCK,
+                "embedded block label must be non-empty NFC text without surrounding whitespace",
+                Span::new(label_start, label_end),
+            );
+            self.recover_embedded_opening(start);
+            return;
+        }
+
+        let closing = format!("</{label}>");
+        let Some(relative_end) = self.source[self.offset..].find(&closing) else {
+            self.offset = self.source.len();
+            self.error(
+                UNCLOSED_EMBEDDED_BLOCK,
+                format!("embedded block is missing closing tag `{closing}`"),
+                Span::new(start, self.offset),
+            );
+            self.push(TokenKind::Error, start, self.offset);
+            return;
+        };
+        self.offset += relative_end + closing.len();
+        self.push(TokenKind::EmbeddedLanguage, start, self.offset);
+    }
+
+    fn recover_embedded_opening(&mut self, start: usize) {
+        while self
+            .peek()
+            .is_some_and(|character| !matches!(character, '\n' | '\r'))
+        {
+            self.advance();
+        }
+        self.push(TokenKind::Error, start, self.offset);
     }
 
     fn lex_string(&mut self) {

@@ -68,6 +68,7 @@ pub enum SyntaxNodeKind {
     Map,
     Set,
     ReaderMacro,
+    EmbeddedLanguage,
     Error,
 }
 
@@ -98,6 +99,7 @@ pub enum TokenKind {
     Unquote,
     UnquoteSplicing,
     Metadata,
+    EmbeddedLanguage,
     String,
     Atom,
     Error,
@@ -168,6 +170,13 @@ pub enum FormKind {
         macro_kind: ReaderMacroKind,
         form: Box<Form>,
     },
+    EmbeddedLanguage {
+        language: String,
+        label: Name,
+        raw_body: String,
+        body: String,
+        body_span: Span,
+    },
     Error(String),
 }
 
@@ -192,6 +201,7 @@ impl Form {
                 | FormKind::Map(_)
                 | FormKind::Set(_)
                 | FormKind::ReaderMacro { .. }
+                | FormKind::EmbeddedLanguage { .. }
         )
     }
 }
@@ -281,6 +291,7 @@ impl From<&FormKind> for SyntaxNodeKind {
             FormKind::Map(_) => Self::Map,
             FormKind::Set(_) => Self::Set,
             FormKind::ReaderMacro { .. } => Self::ReaderMacro,
+            FormKind::EmbeddedLanguage { .. } => Self::EmbeddedLanguage,
             FormKind::Error(_) => Self::Error,
         }
     }

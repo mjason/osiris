@@ -13,6 +13,7 @@ pub(super) fn display_form(form: &Form) -> String {
         FormKind::Map(items) => display_collection("{", "}", items),
         FormKind::Set(items) => display_collection("#{", "}", items),
         FormKind::ReaderMacro { form, .. } => display_form(form),
+        FormKind::EmbeddedLanguage { body, .. } => body.clone(),
         FormKind::Error(message) => format!("#<error:{message}>"),
     }
 }

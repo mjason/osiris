@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-25
-revision: 13
+revision: 15
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 13
+source-revision: 15
 translation-status: Current
 requires: [0]
 replaces: []
@@ -102,8 +102,8 @@ private libSQL table layout、Python AST 库，以及任意 Python 值的运行�
 
 **OEP-0001-R002：** Reader 必须把 list、vector、map、set、symbol、keyword、
 string、number、boolean、`none`、comment、quote、syntax quote、unquote、
-unquote-splicing 和 Rich Metadata prefix 识别为固定 reader form。字符串外的逗号
-必须视为空白。
+unquote-splicing、embedded-language sigil 和 Rich Metadata prefix 识别为固定 reader
+form。字符串外的逗号必须视为空白。
 
 **OEP-0001-R003：** Reader 必须在 lossless source model 中保留原始 spelling、
 trivia 和 byte span，同时暴露规范化 datum。存在确定恢复点时，可恢复 reader error
@@ -120,6 +120,104 @@ spelling，诊断和 source map 则保留 authored spelling。生成 Python 的�
 **OEP-0001-R006：** 每个固定 prefix 与 collection form 必须有显式、可独立测试的
 grammar/recovery contract。Malformed fixed form 不得静默 fallback 成含义不同的 atom，
 也不得通过 atom-token ambiguity 引入领域语法。
+
+**OEP-0001-R006A：** 固定 reader 必须支持以下 embedded-language sigil grammar：
+
+```text
+~<language><label><body></label>
+```
+
+`language` 必须是非空 lowercase ASCII identifier，以字母开头，后续只能是 ASCII letter、
+digit、`+` 或 `-`。`label` 必须提供，必须是非空 NFC UTF-8，不包含 newline、`<` 或 `>`，
+且没有 leading/trailing whitespace。`</label>` 必须使用 opening 中完全相同的 authored
+label 并结束 body。Body 需要该 byte sequence 时必须换一个 label；reader 不提供 escape。
+Sigil body 是 raw data：其中 quote、reader escape、unquote、interpolation、metadata prefix、
+comment 与 collection delimiter 都没有 Osiris 含义。Lossless source model 必须保留
+language、semantic label、authored closing spelling、raw body byte 和每个 embedded
+position 的 byte/line mapping。
+
+**OEP-0001-R006B：** Generic embedded-language sigil 是 top-level named declaration。
+Label 必须是合法 Osiris binding name，并声明一个 value 为 normalized raw body 的 `Str`。
+该 binding 使用普通 module visibility：默认 private，只有显式 `export`/`import` 才能跨
+module。Interface/tooling 必须保留 language/source map：
+
+```clojure
+~markdown<usage>
+# Usage
+
+Pass the value to `render`.
+</usage>
+
+(render usage)
+```
+
+因此 ordinary module rule 允许在其他模块使用显式 export 的 data block：
+
+```clojure
+;; app/resources.osr
+(module app.resources)
+
+~json<default-config>
+{"theme": "dark"}
+</default-config>
+
+(export [default-config])
+```
+
+```clojure
+;; app/main.osr
+(module app.main)
+
+(import app.resources [default-config])
+
+(load-config default-config)
+```
+
+Built-in generic language 必须至少包括 `osiris`、`markdown`、`sql`、`json`、`html`、
+`css`、`javascript`、`typescript`、`toml` 和 `yaml`；未知但合法的 language 仍是有效 raw
+embedded text declaration，且不能加载 compiler code。Package 禁止注册 reader callback、
+lowering callback 或 executable language handler。开放 data identifier space 不会放宽
+OEP-0001-R004。
+
+**OEP-0001-R006C：** `python` 是 built-in embedded Python-module language。Label 必须是
+合法 Osiris binding name，body 只能包含一个 Python module：
+
+```clojure
+~python<text-backend>
+from __future__ import annotations
+
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize
+    [^Str value]))
+```
+
+该 declaration 建立 package-owned linkable Python provider handle；它不求值为 `Str`、不在
+compilation 时执行，也不建立普通 installed-package import。Handle 是 module-private，只能
+出现在接受 embedded provider 的位置，禁止 export、import、传给 function 或生成为 runtime
+value。`extern python <handle>` 必须解析到该 local declaration；`extern python "<module>"`
+继续表示普通 external Python module。Compiler 禁止从 handle fallback 到 installed Python，
+也禁止通过扫描/import Python 猜测 provider。重复 handle 和 Python identifier lowering 后的
+碰撞必须诊断。Compiler 必须从 owning Osiris module 与 handle 确定性派生并暴露可 relocate
+logical module identity。Extern declaration 的 validated binding 是 embedded module 唯一
+对 Osiris 可见的 API，并通过普通 module rule export/import。
+
+**OEP-0001-R006D：** Body 紧跟 opening tag 的 newline 开始，且 closing tag 独占一行时，
+必须移除结构性首尾 newline，并从每个非空 body line 移除 closing tag 的 indentation。
+剩余 relative indentation 是 literal；indentation 不足的非空 line 必须诊断。Inline body
+保留 tag 间全部 byte。Canonical formatter 禁止重命名 label 或修改 generic body content，
+并且必须在 indentation normalization 前后保留精确 source mapping。
+
+**OEP-0001-R006E：** Rich Metadata field 的 schema 允许 embedded content reference 时，
+可以包含一个未加引号的 Symbol，命名同一 source module 中的 generic embedded binding。
+Resolution 必须是 static、order-independent，并受 field 要求的 language 限制；禁止执行该
+binding 或任意 metadata expression。Resolved normalized content、language、source span、
+label 与 content hash 必须保留在 `.osri` 和 tooling record。只被 metadata 引用不会让该
+`Str` binding runtime-reachable；ordinary code use 与 explicit export 仍保持普通 runtime
+含义。
 
 ### 模块、名称与别名
 
@@ -149,9 +247,10 @@ canonical binding ID。中文或其他本地化 preferred name 与 alias 必须�
 
 **OEP-0001-R013：** Kernel 必须为 module/import/export 和 alias declaration、
 runtime/Phase-1 binding、`fn`、`let`、`if`、`do`、结构化异常流与 raise、
-`defstruct`、外部 Python binding 与 decorator、宏定义，以及 typed static
-schema/record declaration 提供语义。Declaration macro 可以提供 compiler-owned
-declaration 的 authored spelling。
+`defstruct`、外部 Python binding/decorator、embedded-language text/linkable embedded
+Python module declaration、宏定义，以及 typed static schema/record declaration 提供语义。
+Declaration macro 可以提供 compiler-owned declaration 的 authored spelling，但禁止合成
+embedded foreign-source body。
 
 **OEP-0001-R014：** Threading、普通条件便利形式、comprehension、递归便利形式、
 资源 helper 和数据序列组合应该是标准或扩展宏/函数。除非独立 Accepted OEP 确立缺失
@@ -222,6 +321,19 @@ declaration、name、type annotation、decorator 和 control flow，方便审核
 
 **OEP-0001-R030：** Python backend 必须通过结构化表示降低已验证 semantic IR。
 宏展开和主要 codegen 禁止通过拼接可执行 Python source fragment 实现。
+
+**OEP-0001-R030A：** Embedded `python` body 是 authored foreign source artifact，不是 macro
+output 或 semantic code-generation fragment，因此是 OEP-0001-R030 authored-source 禁令
+的唯一例外。Compiler 必须按 configured Python target parse，使用映射后的 Osiris span
+报告 syntax error，通过 compiler 内嵌、版本固定的 Ruff formatter normalize，并在不
+import/execute 的情况下 hash normalized module。普通 Osiris HIR 发出前，embedded
+module 必须表示为 validated linkable artifact。
+
+**OEP-0001-R030B：** Embedded `python` module 之间的 static Python import 必须解析为可
+relocate module graph。Graph 外 import 必须命名普通 declared Python dependency。初始格式
+必须拒绝动态 import provider-owned embedded module、修改 `sys.path`、filesystem-relative
+module discovery 或依赖 undeclared package data。该限制不禁止 declared function 在
+runtime 显式执行 I/O；它只保持 linkage 静态、可复现。
 
 **OEP-0001-R031：** 生成 Python 必须保留 Osiris evaluation order，不得重复带可观测
 effect 的 expression。Target-specific rewrite 不得静默削弱类型、temporal、data 或
@@ -448,21 +560,22 @@ OEP 文本描述为 compiler proof 或 Accepted language behavior。
 
 ### 文档与本地化名称 metadata
 
-**OEP-0001-R057：** `:doc` 必须是非空 default `Str`，或 OEP-0001-R058 定义的
-locale map。Exported declaration 必须提供 `:doc`；private declaration 应该提供。
+**OEP-0001-R057：** `:doc` 必须是非空 default `Str`、same-module `~markdown` reference，
+或 OEP-0001-R058 定义的 locale map。Exported declaration 必须提供 `:doc`；private declaration 应该提供。
 Declaration docstring 如果作为 surface sugar 得到支持，必须填充 default string 形式。
 为了 AI 和生态互操作，可复用 package 应该用英文编写 default，但 compiler 必须允许
 作者选择其他 default language。
 
 **OEP-0001-R058：** 本地化文档必须使用一个紧凑的 `:doc` map，其结构是从 canonical
-BCP 47 locale string 以及必需 Keyword `:default` 到非空 `Str`。`:default` 是作者选择的
-language-neutral fallback slot，禁止把它解释为 language tag。Locale key 经 BCP 47
+BCP 47 locale string 以及必需 Keyword `:default` 到非空 `Str` 或 same-module
+`~markdown` reference。`:default` 是作者选择的 language-neutral fallback slot，禁止把它解释为 language tag。Locale key 经 BCP 47
 canonicalization 后必须唯一。即使值与 `:default` 相同，作者也可以增加 `"en"`、
 `"zh-CN"` 或其他 tagged entry。本 contract 不把 translation 拆到第二个 metadata key。
 
 **OEP-0001-R059：** Documentation consumer 请求 locale 时，必须从 normalized `:doc`
 map 按 RFC 4647 lookup fallback sequence 选择 entry；没有 tagged entry 匹配时再回退到
-`:default`。Plain `Str` 必须 normalize 为 `{:default <value>}`，不得推断其 language。
+`:default`。Plain `Str` 或 resolved `~markdown` reference 必须 normalize 为
+`{:default <value>}`，不得推断其 language。
 选中 `:default` 时，consumer 必须标记它来自 default fallback，不得伪造 resolved BCP 47
 tag。Locale selection 不得改变 binding identity、overload selection 或 semantic。
 
@@ -504,7 +617,9 @@ code action。
 
 **OEP-0001-R063：** `.osri`、semantic query、LSP 与 local CLI query 必须保留 default
 documentation、所有 tagged translation、canonical name、localized preferred name、alias
-与 provenance。JSON documentation entry 必须至少暴露以下逻辑结构：
+与 provenance。Embedded content reference 必须序列化为 resolved content，并携带 label、
+language、source provenance 与 content hash；consumer 不得需要 provider source 才能渲染。
+JSON documentation entry 必须至少暴露以下逻辑结构：
 
 ```json
 {
@@ -640,6 +755,14 @@ Compiler 不得上传 source、overlay、interface、semantic record、query 或
 `osr lsc semantic --format json` 可以保留为 bulk fallback，但不得成为 LSP-visible fact
 的唯一 CLI route。
 
+**OEP-0001-R072A：** Compiler-owned LSP/LSC operation 必须识别 embedded sigil
+position，暴露 tag、label、host span、embedded position 与 mapped diagnostic，并在
+`extern python` binding 和 local embedded `python` provider 之间 navigation。Foreign-language
+completion、hover、signature help、definition、references 与 rename 可以委托 external
+language service；它们不是必须在 LSC 内实现的 compiler-owned capability。Stable LSC
+JSON projection 仍必须暴露足够的 virtual-document text 与双向 position mapping，使 CLI
+或 Agent 可以显式调用 external tool。
+
 ### Canonical formatting
 
 **OEP-0001-R073：** Osiris 必须为 `.osr` source 定义唯一 canonical formatter 和
@@ -686,6 +809,14 @@ Metadata 必须继续附着到它描述的 datum。
 atom spelling、string content、collection/top-level form order 和所有其他 semantic
 distinction，并且必须幂等。如果 syntax error 阻止 meaning-preserving result，必须报告
 diagnostic，且不得部分重写该文件。
+
+**OEP-0001-R074A：** `osr fmt` 必须格式化 host sigil placement/indentation。Generic
+embedded body 除 `osiris` 外，在 OEP-0001-R006D structural tag normalization 后仍保持
+byte-preserved。`osiris` body 必须由 canonical Osiris formatter 递归 format。Embedded
+`python` body 必须使用与 generated Python 相同、由 compiler 内嵌且版本固定的 Ruff
+formatter 与固定 profile，并把 edit 映射回 host `.osr` document。Python formatting
+必须 in-process，不能使用 ambient `ruff` executable、Python process、language server
+formatter 或 project-specific Ruff configuration。Embedded body 无效时不得部分改写文件。
 
 **OEP-0001-R075：** Formatter CLI grammar 必须是：
 
@@ -843,6 +974,15 @@ format/validate。
 一致实现应提供以下证据：
 
 - reader fixture 覆盖所有固定 form、Unicode identity、metadata prefix、保留与恢复规则；
+- embedded-sigil fixture 覆盖 closing label 精确匹配、使用另一 label 时 raw content 内的
+  closing-tag text、indentation normalization、unknown generic language tag、malformed
+  label、unterminated body 后 recovery 和精确双向 source mapping；
+- embedded Python fixture 证明 target parsing、in-process canonical formatting、static
+  import closure、compile-time 不执行、symbolic `extern python` handle 解析到 same-module
+  provider，同时 string module name 保持 external；
+- embedded-content fixture 证明普通 `Str` export/import、same-module metadata reference
+  resolution、递归 `~osiris` formatting，以及 documentation-only reference 不产生 runtime
+  reachability；
 - kernel inventory 与 standard macro inventory 可以独立查询；
 - 宏测试证明 hygiene、phase isolation、determinism 和 origin chain；
 - type/`defstruct` 测试证明 inference 与 public boundary rule；
@@ -868,6 +1008,12 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 15，2026-07-25：规定 generic embedded block 是普通可 export `Str` binding，
+  embedded Python label 是由 symbolic `extern python` 使用的 private provider handle，并加入
+  Rich Metadata 对 same-module `~markdown`/`~osiris` content 的 static reference。
+- Revision 14，2026-07-25：加入带名称的 raw embedded-language block，定义
+  `~python<module>` 用于 linkable Python module，并规定 target validation、formatting、source
+  mapping 与 LSP/LSC foreign-tool boundary。
 - Revision 13，2026-07-25：使用确定性的 Unicode 显示列定义行宽和悬挂缩进，使宽字符
   本地化名称与 ASCII 名称正确对齐。
 - Revision 12，2026-07-24：规定 `:aliases` 只用于源码迁移，要求 interface 与 semantic

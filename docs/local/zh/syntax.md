@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 8
+revision: 9
 source: ../../syntax.md
-source-revision: 8
+source-revision: 9
 translation-status: Current
 ---
 
@@ -50,6 +50,46 @@ Phase 1 reader 形式包括：
 ~value      ; syntax quote 内的 unquote
 ~@values    ; syntax quote 内的 unquote-splicing
 ```
+
+## 嵌入语言块
+
+具名嵌入块可以直接保存外部语言或多行文本，不需要字符串转义：
+
+```clojure
+~json<settings>
+{"theme": "dark", "compact": true}
+</settings>
+
+(export [settings])
+```
+
+Language tag 使用小写；closing label 必须与 opening label 完全一致。对于 `json`、
+`markdown`、`sql`、`html`、`css`、`javascript`、`typescript`、`toml`、`yaml`
+等通用语言，label 声明一个 module-private `Str` binding。它只能通过普通 `export`
+和 `import` 跨模块。格式正确的未知 language tag 也是合法 raw text，不会加载
+compiler extension。
+
+Body 是 raw content，其中的引号、分号、delimiter 和 `~` 都没有 Osiris 含义。多行
+形式会去掉 opening/closing 的结构性换行，并从每个非空行移除 closing tag 的公共
+缩进。如果正文必须包含完全相同的 closing text，应改用另一个 label。
+
+`python` 是特例：它的 label 是 private provider handle，不是 `Str`，也不能 export。
+它只能由 symbolic local `extern` 使用：
+
+```clojure
+~python<text-backend>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+```
+
+`extern python text-backend` 会把本地模块链接到 distribution-private
+`__osiris_runtime__`。相反，`extern python "package.module"` 表示由 uv/PyPI 提供的
+外部 Python module，compiler 不会复制它。嵌入模块之间可以使用静态 import；compiler
+只重定位 reachable private module graph，编译时绝不执行它。
 
 ## 名称
 
@@ -119,6 +159,11 @@ row.value             ; 静态字段或 Python 属性
 node：
 
 ```clojure
+~osiris<increment-all-example>
+(increment-all [1 2 3])
+;; => [2 3 4]
+</increment-all-example>
+
 ^:deprecated
 ^{:doc {:default "Increment every integer."
         "zh-CN" "将每个整数加一。"}
@@ -126,9 +171,7 @@ node：
   :osiris/names
   {"zh-CN" {:preferred 全部加一
              :aliases [逐项加一]}}
-  :examples
-  [["(increment-all [1 2 3])"
-    ";; => [2 3 4]"]]
+  :examples [increment-all-example]
   :agent/tags [:data :transform]}
 (defn ^{:type (Vector Int)} increment-all
   [^{:type (Vector Int)} values]
@@ -149,20 +192,35 @@ node：
 `"zh-CN"` 或 `"ja"`。工具按 RFC 4647 lookup，最后回退到 `:default`，且不能伪称
 这个无标签回退属于某个 locale。
 
-文档示例使用 examples vector，其中每个 example 仍是一个 vector，并且每个 string
-只保存一行源码：
+文档示例使用具名 `~osiris` block；`:examples` 是由同模块、未加引号的 block name
+组成的 vector：
 
 ```clojure
-:examples
-[["(reduce + 0 [1 2 3 4])"
-  ";; => 10"]
- ["(reduce + [1 2 3 4])"
-  ";; => 10"]]
+~osiris<reduce-example>
+(reduce + 0 [1 2 3 4])
+;; => 10
+</reduce-example>
+
+^{:examples [reduce-example]}
+(defn reduce ...)
 ```
 
-不要在一个 string 中写转义换行。外层 vector 区分多个 example，内层 vector 保留经过
-统一格式化的源码行。LSP、LSC、package interface 和面向 Agent 的 JSON 使用同一份
-metadata。
+每个 block 是一段完整、符合 canonical formatter 的源码。只被 metadata 引用的 block
+不会作为 runtime string 释放。LSP、LSC、package interface 和面向 Agent 的 JSON
+都会保留 resolved content、language、label、source span 和 content hash。
+
+长文档也可以引用同模块 `~markdown` block；短文档仍可直接用 literal，每个 locale
+可以独立选择：
+
+```clojure
+~markdown<normalize-doc>
+Normalize text for stable comparison.
+</normalize-doc>
+
+^{:doc {:default normalize-doc
+        "zh-CN" "规范化文本以便稳定比较。"}}
+(defn normalize ...)
+```
 
 `:osiris/names` 也可以直接附着到函数参数。这样声明的本地化 keyword spelling 属于
 该函数的静态签名：
@@ -430,6 +488,12 @@ type 和尾位置。两种形式都降低为常量栈 Python 控制流。相互�
 decorator 是 runtime 行为，不是 Rich Metadata。已知 keyword argument 会经过检查，并
 使用 canonical Python name 生成。
 
+小型、package-owned backend 应使用 `~python` provider 并随生成产物分发；普通已安装
+Python dependency 应使用 string module name。`osr fmt` 使用 compiler 内置且版本固定的
+Ruff profile 在进程内格式化嵌入 Python。VS Code 中嵌入块内的 completion、hover、
+navigation、diagnostics、rename 和 range formatting 委托给该 tag 对应的已安装语言支持。
+缺少外部语言服务不会影响 Osiris compilation 或 tooling。
+
 Generated Python 对 Osiris 保持 standalone。Reachable standard operation 需要可复用
 support 时，linker 在 owning package 的 reserved `__osiris_runtime__` 下生成 ordinary
 Python。Osiris source 禁止声明该 package 或直接 import 其中的 private name。
@@ -456,11 +520,14 @@ Compiler 携带完整 standard resource tree 的 SHA-256 identity。Resource 缺
   [count Int]
   [total Int])
 
+~osiris<positive-sums-example>
+(positive-sums [-2 1] [1 3])
+;; => [1 2 4]
+</positive-sums-example>
+
 ^{:doc {:default "Return positive Cartesian sums."
         "zh-CN" "返回笛卡尔组合中的正数和。"}
-  :examples
-  [["(positive-sums [-2 1] [1 3])"
-    ";; => [1 2 4]"]]
+  :examples [positive-sums-example]
   :osiris/names
   {"zh-CN" {:preferred 正数组合}}}
 (defn ^{:type (Vector Int)} positive-sums
@@ -472,10 +539,13 @@ Compiler 携带完整 standard resource tree 的 SHA-256 identity。Resource 缺
         :when (> sum 0)]
     sum))
 
+~osiris<summarize-example>
+(summarize [2 3 5])
+;; => (Summary :count 3 :total 10)
+</summarize-example>
+
 ^{:doc {:default "Summarize a vector of integers."}
-  :examples
-  [["(summarize [2 3 5])"
-    ";; => (Summary :count 3 :total 10)"]]}
+  :examples [summarize-example]}
 (defn ^Summary summarize
   [^{:type (Vector Int)} values]
   (Summary

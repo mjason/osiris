@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Version of the byte-level canonical formatting contract.
-pub const FORMAT_VERSION: u32 = 5;
+pub const FORMAT_VERSION: u32 = 6;
 
 const MAX_LINE_WIDTH: usize = 80;
 const METADATA_LINE_WIDTH: usize = 72;
@@ -55,6 +55,7 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
                     && top_level > 0
                     && line_start
                     && !comment_since_top_level
+                    && !token.text.trim_start().starts_with(";; =>")
                     && !output.ends_with("\n\n")
                 {
                     output.push('\n');
@@ -126,8 +127,25 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
             column += 1;
         }
         let token_column = column;
-        output.push_str(&token.text);
-        column += display_width(&token.text);
+        let rendered = if token.kind == TokenKind::EmbeddedLanguage {
+            let Some(form) = find_embedded_form(&document.forms, token.span.start) else {
+                return Err(format_error(
+                    "formatter could not associate an embedded-language token with its form",
+                    token.span,
+                ));
+            };
+            render_embedded(form, token_column)?
+        } else {
+            token.text.clone()
+        };
+        output.push_str(&rendered);
+        if let Some(last_line) = rendered.rsplit('\n').next()
+            && rendered.contains('\n')
+        {
+            column = display_width(last_line);
+        } else {
+            column += display_width(&rendered);
+        }
         line_start = false;
         if is_opening(token.kind) {
             depth += 1;
@@ -157,12 +175,7 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
 
     let formatted = reader::read(&output);
     let equivalent = formatted.diagnostics.is_empty()
-        && document.forms.len() == formatted.forms.len()
-        && document
-            .forms
-            .iter()
-            .zip(&formatted.forms)
-            .all(|(left, right)| source_form_eq(left, right));
+        && documents_equivalent_after_embedded_formatting(&document.forms, &formatted.forms);
     if !equivalent {
         return Err(FormatError {
             diagnostics: vec![Diagnostic::error(
@@ -173,6 +186,147 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
         });
     }
     Ok(output)
+}
+
+fn find_embedded_form(forms: &[Form], start: usize) -> Option<&Form> {
+    forms.iter().find_map(|form| {
+        if form.datum_span.start == start && matches!(form.kind, FormKind::EmbeddedLanguage { .. })
+        {
+            return Some(form);
+        }
+        let metadata = form.metadata.iter().find_map(|entry| {
+            find_embedded_form(std::slice::from_ref(&entry.key), start)
+                .or_else(|| find_embedded_form(std::slice::from_ref(&entry.value), start))
+        });
+        metadata.or_else(|| match &form.kind {
+            FormKind::List(items)
+            | FormKind::Vector(items)
+            | FormKind::Map(items)
+            | FormKind::Set(items) => find_embedded_form(items, start),
+            FormKind::ReaderMacro { form, .. } => {
+                find_embedded_form(std::slice::from_ref(form), start)
+            }
+            _ => None,
+        })
+    })
+}
+
+fn render_embedded(form: &Form, indent: usize) -> Result<String, FormatError> {
+    let FormKind::EmbeddedLanguage {
+        language,
+        label,
+        raw_body,
+        body,
+        body_span,
+        ..
+    } = &form.kind
+    else {
+        unreachable!("embedded rendering requires an embedded form");
+    };
+    let formatted_body = match language.as_str() {
+        "osiris" => format_source(body).map_err(|error| FormatError {
+            diagnostics: error
+                .diagnostics
+                .into_iter()
+                .map(|mut diagnostic| {
+                    diagnostic.span = crate::source::Span::new(
+                        reader::embedded_source_offset(
+                            raw_body,
+                            body,
+                            *body_span,
+                            diagnostic.span.start,
+                        ),
+                        reader::embedded_source_offset(
+                            raw_body,
+                            body,
+                            *body_span,
+                            diagnostic.span.end,
+                        ),
+                    );
+                    diagnostic
+                })
+                .collect(),
+        })?,
+        "python" => crate::backend::format_embedded_module(body)
+            .map_err(|error| format_error(error.message(), *body_span))?,
+        _ => body.clone(),
+    };
+    let body = formatted_body.trim_end_matches(['\r', '\n']);
+    let indentation = " ".repeat(indent);
+    let mut rendered = format!("~{language}<{}>\n", label.spelling);
+    for line in body.split('\n') {
+        rendered.push_str(&indentation);
+        rendered.push_str(line.strip_suffix('\r').unwrap_or(line));
+        rendered.push('\n');
+    }
+    rendered.push_str(&indentation);
+    rendered.push_str("</");
+    rendered.push_str(&label.spelling);
+    rendered.push('>');
+    Ok(rendered)
+}
+
+fn documents_equivalent_after_embedded_formatting(left: &[Form], right: &[Form]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut left = left.to_vec();
+    let mut right = right.to_vec();
+    canonicalize_embedded_forms(&mut left)
+        && canonicalize_embedded_forms(&mut right)
+        && left
+            .iter()
+            .zip(&right)
+            .all(|(left, right)| source_form_eq(left, right))
+}
+
+fn canonicalize_embedded_forms(forms: &mut [Form]) -> bool {
+    forms.iter_mut().all(canonicalize_embedded_form)
+}
+
+fn canonicalize_embedded_form(form: &mut Form) -> bool {
+    for entry in &mut form.metadata {
+        if !canonicalize_embedded_form(&mut entry.key)
+            || !canonicalize_embedded_form(&mut entry.value)
+        {
+            return false;
+        }
+    }
+    match &mut form.kind {
+        FormKind::EmbeddedLanguage {
+            language,
+            raw_body,
+            body,
+            ..
+        } => {
+            let canonical = match language.as_str() {
+                "osiris" => match format_source(body) {
+                    Ok(source) => source,
+                    Err(_) => return false,
+                },
+                "python" => match crate::backend::format_embedded_module(body) {
+                    Ok(source) => source,
+                    Err(_) => return false,
+                },
+                _ => body.clone(),
+            };
+            *raw_body = canonical.clone();
+            *body = canonical;
+            true
+        }
+        FormKind::List(items)
+        | FormKind::Vector(items)
+        | FormKind::Map(items)
+        | FormKind::Set(items) => canonicalize_embedded_forms(items),
+        FormKind::ReaderMacro { form, .. } => canonicalize_embedded_form(form),
+        _ => true,
+    }
+}
+
+fn format_error(message: impl Into<String>, span: crate::source::Span) -> FormatError {
+    FormatError {
+        diagnostics: vec![Diagnostic::error("OSR-F0002", message, span)],
+    }
 }
 
 #[derive(Default)]

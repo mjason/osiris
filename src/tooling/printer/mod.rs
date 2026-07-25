@@ -57,6 +57,16 @@ fn render_form(output: &mut String, form: &Form) {
             });
             render_form(output, form);
         }
+        FormKind::EmbeddedLanguage {
+            language,
+            label,
+            raw_body,
+            ..
+        } => {
+            let _ = write!(output, "~{language}<{}>", label.spelling);
+            output.push_str(raw_body);
+            let _ = write!(output, "</{}>", label.spelling);
+        }
         FormKind::Error(message) => {
             let _ = write!(output, "#<error:{}>", message.replace('>', "\\>"));
         }

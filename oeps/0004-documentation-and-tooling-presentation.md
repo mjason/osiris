@@ -12,8 +12,8 @@ areas:
   - Standard Library
   - Packaging
 created: 2026-07-24
-updated: 2026-07-24
-revision: 2
+updated: 2026-07-25
+revision: 4
 requires: [0, 1, 2, 3]
 replaces: []
 superseded-by: null
@@ -92,24 +92,37 @@ independent formatting rules.
 use the OEP-0001 `:doc` contract. `:default` is authored content, not a language
 code. Translation keys MUST be canonical BCP 47 tags.
 
-**OEP-0004-R002:** Documentation examples MUST use an `:examples` vector of
-examples, where each example is a vector containing one source line per string:
+**OEP-0004-R002:** Documentation examples MUST be authored as named `~osiris`
+blocks and referenced by an `:examples` vector of unquoted Symbols:
 
 ```clojure
+~markdown<reduce-doc>
+Eagerly reduce values in order.
+</reduce-doc>
+
+~markdown<reduce-doc-zh>
+按顺序立即归约值。
+</reduce-doc-zh>
+
+~osiris<reduce-example>
+(reduce + 0 [1 2 3 4])
+;; => 10
+</reduce-example>
+
 ^{:doc
-  {:default "Eagerly reduce values in order."
-   "zh-CN" "按顺序立即归约值。"}
-  :examples
-  [["(reduce + 0 [1 2 3 4])"
-    ";; => 10"]]}
+  {:default reduce-doc
+   "zh-CN" reduce-doc-zh}
+  :examples [reduce-example]}
 (defn reduce ...)
 ```
 
-The outer vector contains distinct examples. Each inner vector contains one
-complete, canonically formatted Osiris snippet without escaped newline
-characters. Lines MUST be joined with a line-feed character when projected.
-Expected values or output SHOULD use Osiris comments so the snippet remains
-valid source when copied with the expectation line.
+Each reference MUST resolve statically to one same-module `~osiris` binding
+under OEP-0001-R006E. Its body is one complete, canonically formatted Osiris
+snippet. Expected values or output SHOULD use Osiris comments so the snippet
+remains valid source when copied with the expectation line. `:doc` MAY use the
+same reference mechanism with same-module `~markdown` bindings; literal strings
+remain valid for short documentation. References are resolved content, not
+metadata evaluation or runtime dependency edges.
 
 **OEP-0004-R003:** Public standard-library callables and macros MUST provide at
 least one example before the standard-library OEP becomes Final. Public
@@ -123,15 +136,18 @@ require network access, and MUST disclose any Python or effectful boundary it
 uses.
 
 **OEP-0004-R005:** Package validation MUST reject a non-vector `:examples`
-value, non-vector example members, non-string line members, empty examples,
-empty source lines other than intentional blank lines, and examples that exceed
-metadata resource limits. Standard-library validation MUST additionally join,
-parse, and format every example as Osiris source. A package MAY run examples as
-a stronger test.
+value, non-Symbol members, missing or cross-module references, references to a
+language other than `osiris`, empty examples, and content that exceeds metadata
+resource limits. Every resolved example MUST parse as a complete Osiris source
+snippet and already conform to the canonical formatter. A `:doc` reference MUST
+similarly resolve to a non-empty same-module `markdown` block. A package MAY run
+examples as a stronger test.
 
-**OEP-0004-R006:** Examples are tooling metadata. Changing only examples or
-translated documentation MUST change tooling/content hashes but MUST NOT change
-binding identity or semantic ABI hashes.
+**OEP-0004-R006:** Examples are tooling metadata. Changing content referenced
+only by examples or translated documentation MUST change tooling/content hashes
+but MUST NOT change binding identity, runtime reachability, or semantic ABI
+hashes. A generic block also used by ordinary code retains the normal runtime
+hash behavior of its `Str` binding.
 
 ## Human information hierarchy
 
@@ -217,6 +233,47 @@ definition results and machine projections. Standard-library locations MUST
 identify the actual distributed source module and MUST be openable through the
 `osiris-stdlib:` virtual document provider.
 
+## Embedded-language tooling
+
+**OEP-0004-R020A:** LSP semantic tokens, document symbols, folding, selection,
+diagnostics, and formatting MUST treat each embedded sigil as a mapped language
+region rather than an opaque Osiris string. Host delimiters and labels remain
+Osiris tokens; body tokens use the sigil language identifier when the client
+supports it. A missing foreign tool MUST NOT disable Osiris parsing, formatting,
+navigation, or compilation.
+
+**OEP-0004-R020B:** The VS Code extension MUST expose each open embedded region
+as a versioned virtual document with a stable identity derived from the host
+URI, host document version, block identity, language tag, and label. It MUST
+maintain lossless bidirectional position/edit mappings and discard stale foreign
+results when the host version changes. A private mirror below `.osiris/lsp/`
+MAY be used when a foreign server cannot consume virtual URI schemes; it MUST be
+excluded from build/watch/package inputs, content-addressed, and removed when no
+session owns it.
+
+**OEP-0004-R020C:** Opening or requesting a language feature inside a
+`~python<label>` block MUST lazily activate the user's configured Python
+language support and route the virtual Python document to its language server.
+The adapter MUST map Python
+diagnostics, completion, hover, signature help, definition, references, rename,
+semantic tokens, and formatting edits back to the host `.osr` region when the
+server provides them. It MUST NOT start Python merely for `osr check`, build,
+watch, CLI formatting, or an unopened workspace without a Python request.
+Absence or failure of the Python language server degrades only delegated IDE
+features. The adapter MUST NOT emulate a missing Python language-server feature
+with compiler-owned analysis or formatting.
+
+**OEP-0004-R020D:** Generic tags such as `markdown`, `sql`, and `json` MUST use
+the same virtual-document protocol. When corresponding language support is
+installed and configured, the extension MUST lazily activate it and delegate
+every capability it advertises, including completion, diagnostics, navigation,
+semantic tokens, and formatting. Delegation MUST NOT grant compile-time
+execution, filesystem authority, reader extension, or runtime linkage. Foreign
+edits that escape the embedded body, alter its label/delimiter without a
+host-language edit, or target a stale document version MUST be rejected. A
+missing language service degrades only that service's IDE features and MUST NOT
+be replaced with an ad hoc emulation in the Osiris extension.
+
 ## Long-form documentation
 
 **OEP-0004-R021:** Long-form documents served by `osr doc` remain authored in
@@ -237,6 +294,12 @@ An implementation of this OEP is complete when:
 - no default human hover contains serialized effects, temporal, or data JSON;
 - examples round-trip through `.osri` and standard API JSON;
 - standard examples pass reader and canonical formatter validation;
+- VS Code integration tests map Python diagnostics and edits through a
+  `~python<label>` virtual document, start Python support lazily, reject
+  stale/escaping edits, and retain compiler syntax/formatting behavior without
+  a Python server;
+- Markdown, SQL, and JSON fixtures receive embedded tokenization and optional
+  delegation without changing their runtime `Str` value;
 - machine JSON retains the full facts hidden by human projections;
 - documentation output is snapshot-tested for stable, readable layout.
 
@@ -249,7 +312,13 @@ An implementation of this OEP is complete when:
 
 ## Change History
 
-- Revision 2, 2026-07-24: Defined multi-line example vectors and progressive,
-  operation-scoped disclosure for human and agent tooling.
+- Revision 4, 2026-07-25: Defined static references to named `~osiris` example
+  blocks and named `~markdown` documentation blocks without creating runtime
+  reachability.
+- Revision 3, 2026-07-25: Defined mapped embedded-language regions, virtual
+  documents, lazy Python language-server activation for `~python<label>` blocks, graceful
+  fallback, and safe delegation for generic language sigils.
+- Revision 2, 2026-07-24: Defined progressive, operation-scoped disclosure for
+  human and agent tooling.
 - Revision 1, 2026-07-24: Initial documentation metadata and tooling
   presentation contract.

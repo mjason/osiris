@@ -71,6 +71,25 @@ impl SemanticDocument {
                     },
                     documentation: documentation(&binding.metadata),
                     examples: examples(&binding.metadata),
+                    content_references: analysis
+                        .surface
+                        .embedded_content_references
+                        .iter()
+                        .filter(|reference| {
+                            metadata_contains_span(&binding.metadata, reference.reference_span)
+                        })
+                        .map(|reference| SemanticContentReference {
+                            source: source.clone(),
+                            field: reference.field.clone(),
+                            language: reference.language.clone(),
+                            label: reference.label.clone(),
+                            content: reference.content.clone(),
+                            content_hash: reference.content_hash.clone(),
+                            reference_span: reference.reference_span,
+                            source_span: reference.source_span,
+                            body_span: reference.body_span,
+                        })
+                        .collect(),
                     span: binding.name.span,
                     definition,
                     references: occurrences,
@@ -215,4 +234,27 @@ impl SemanticDocument {
     pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
+}
+
+fn metadata_contains_span(metadata: &[MetadataEntry], span: Span) -> bool {
+    fn contains(form: &Form, span: Span) -> bool {
+        if form.span == span {
+            return true;
+        }
+        form.metadata
+            .iter()
+            .any(|entry| contains(&entry.key, span) || contains(&entry.value, span))
+            || match &form.kind {
+                FormKind::List(items)
+                | FormKind::Vector(items)
+                | FormKind::Map(items)
+                | FormKind::Set(items) => items.iter().any(|item| contains(item, span)),
+                FormKind::ReaderMacro { form, .. } => contains(form, span),
+                _ => false,
+            }
+    }
+
+    metadata
+        .iter()
+        .any(|entry| contains(&entry.key, span) || contains(&entry.value, span))
 }

@@ -258,6 +258,7 @@ pub(in crate::interface) fn collect_phase_references(
         | FormKind::Float(_)
         | FormKind::String(_)
         | FormKind::Keyword(_)
+        | FormKind::EmbeddedLanguage { .. }
         | FormKind::Error(_) => {}
     }
 }

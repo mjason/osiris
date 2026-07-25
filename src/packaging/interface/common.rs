@@ -18,6 +18,7 @@ pub(in crate::interface) fn project_metadata(
                     .unwrap_or_default()
                     .trim_start_matches(':');
                 !(key == "doc"
+                    || key == "osiris/content-references"
                     || key == "since"
                     || key == "deprecated"
                     || key == "replacement"
@@ -86,6 +87,19 @@ pub(crate) fn normalize_form(form: &Form) -> Form {
         FormKind::ReaderMacro { macro_kind, form } => FormKind::ReaderMacro {
             macro_kind: *macro_kind,
             form: Box::new(normalize_form(form)),
+        },
+        FormKind::EmbeddedLanguage {
+            language,
+            label,
+            raw_body,
+            body,
+            body_span,
+        } => FormKind::EmbeddedLanguage {
+            language: language.clone(),
+            label: normalize_name(label),
+            raw_body: raw_body.clone(),
+            body: body.clone(),
+            body_span: *body_span,
         },
         FormKind::Error(message) => FormKind::Error(message.clone()),
     };

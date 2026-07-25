@@ -255,7 +255,10 @@ fn parse_type_argument(
         | FormKind::Map(_)
         | FormKind::Set(_) => true,
         FormKind::List(values) => values.is_empty(),
-        FormKind::Symbol(_) | FormKind::ReaderMacro { .. } | FormKind::Error(_) => false,
+        FormKind::Symbol(_)
+        | FormKind::ReaderMacro { .. }
+        | FormKind::EmbeddedLanguage { .. }
+        | FormKind::Error(_) => false,
     };
     if !is_literal {
         return parse_type(form, type_variables);

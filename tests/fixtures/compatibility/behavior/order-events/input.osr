@@ -1,0 +1,8 @@
+(module compat.order-events)
+(py/import builtins :as py)
+(defn ^Int main []
+  (do
+    (py.print "start")
+    (py.print "middle")
+    42))
+(py.print (main))

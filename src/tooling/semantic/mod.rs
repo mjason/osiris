@@ -22,7 +22,22 @@ use crate::{
 };
 
 /// Bumped when the JSON shape of SemanticDocument changes incompatibly.
-pub const SEMANTIC_DOCUMENT_VERSION: u32 = 1;
+pub const SEMANTIC_DOCUMENT_VERSION: u32 = 2;
+
+/// Resolved embedded content with enough provenance for editors and agents to
+/// render or navigate it without reopening the provider declaration.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SemanticContentReference {
+    pub source: String,
+    pub field: String,
+    pub language: String,
+    pub label: String,
+    pub content: String,
+    pub content_hash: String,
+    pub reference_span: Span,
+    pub source_span: Span,
+    pub body_span: Span,
+}
 
 /// An open BCP 47 label table. Locale only affects presentation.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -229,6 +244,7 @@ pub struct SemanticSymbol {
     pub names: SemanticNames,
     pub documentation: SemanticDocumentation,
     pub examples: Vec<Vec<String>>,
+    pub content_references: Vec<SemanticContentReference>,
     pub span: Span,
     pub definition: Span,
     pub references: Vec<Span>,

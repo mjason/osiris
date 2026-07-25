@@ -129,6 +129,9 @@ fn collect_identifier_lints(form: &Form, lints: &mut Vec<IdentifierLint>) {
             }
         }
         FormKind::ReaderMacro { form, .. } => collect_identifier_lints(form, lints),
+        FormKind::EmbeddedLanguage { label, .. } => {
+            lints.extend(lint_identifier_strict(&label.spelling, form.datum_span));
+        }
         FormKind::None
         | FormKind::Bool(_)
         | FormKind::Integer(_)

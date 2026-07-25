@@ -147,6 +147,16 @@ impl<'a> Lowerer<'a> {
                         None,
                     );
                 }
+                AstItemKind::EmbeddedText(embedded) => {
+                    self.declare(
+                        &embedded.label,
+                        BindingKind::Value,
+                        Type::Str,
+                        item.metadata.clone(),
+                        embedded.span,
+                        None,
+                    );
+                }
                 AstItemKind::Defn(function) => self.predeclare_function(function, false, None),
                 AstItemKind::Defstruct(structure) => self.predeclare_struct(structure),
                 AstItemKind::DefstaticSchema(schema) => {
@@ -218,6 +228,7 @@ impl<'a> Lowerer<'a> {
                 | AstItemKind::Alias(_)
                 | AstItemKind::PyDecorate(_)
                 | AstItemKind::StaticRecord(_)
+                | AstItemKind::EmbeddedPython(_)
                 | AstItemKind::Expr(_)
                 | AstItemKind::Error(_) => {}
             }

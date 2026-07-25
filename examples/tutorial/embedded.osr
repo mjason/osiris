@@ -1,0 +1,29 @@
+(module tutorial.embedded)
+
+;; Embedded Python is a source-level boundary. The compiler relocates this
+;; block, while Python's language service remains responsible for features
+;; inside the body.
+~python<text-tools>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-tools>
+
+;; extern gives the embedded function a typed Osiris boundary. The wrapper
+;; below is the public Osiris API exposed to downstream modules.
+(extern python text-tools
+  (defn ^Str normalize-text [^Str value]))
+
+(export
+  [normalize])
+
+~osiris<normalize-example>
+(normalize "  Hello, Osiris  ")
+;; => "hello, osiris"
+</normalize-example>
+
+^{:doc
+  {:default "Normalize text at an embedded Python boundary."
+   "zh-CN" "在嵌入 Python 边界规范化文本。"}
+  :examples [normalize-example]}
+(defn ^Str normalize [^Str value]
+  (normalize-text value))

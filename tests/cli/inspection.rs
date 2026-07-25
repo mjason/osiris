@@ -258,7 +258,10 @@ fn lsc_semantic_json_exposes_aliases_facts_and_operation_graph() {
     let semantic: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("semantic view should be JSON");
     let semantic = &semantic["result"];
-    assert_eq!(semantic["version"], 1);
+    assert_eq!(
+        semantic["version"],
+        osiris::semantic::SEMANTIC_DOCUMENT_VERSION
+    );
     assert_eq!(semantic["module"], "sample");
     assert!(semantic["symbols"].as_array().is_some_and(|symbols| {
         symbols.iter().any(|symbol| {

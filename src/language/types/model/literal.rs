@@ -83,9 +83,11 @@ impl TypeLiteral {
                     .map(Self::from_form)
                     .collect::<Result<_, _>>()?,
             ),
-            FormKind::ReaderMacro { .. } | FormKind::Error(_) => {
+            FormKind::ReaderMacro { .. }
+            | FormKind::EmbeddedLanguage { .. }
+            | FormKind::Error(_) => {
                 return Err(TypeLiteralError::new(
-                    "reader macros and error forms are not valid type literals",
+                    "reader macros, embedded blocks, and error forms are not valid type literals",
                 ));
             }
         };

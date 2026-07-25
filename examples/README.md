@@ -7,6 +7,7 @@ root。模块名由相对路径确定：
 examples/hello.osr               -> hello
 examples/tutorial/transforms.osr -> tutorial.transforms
 examples/tutorial/macros.osr     -> tutorial.macros
+examples/tutorial/embedded.osr   -> tutorial.embedded
 examples/tutorial/app.osr        -> tutorial.app
 ```
 
@@ -25,14 +26,17 @@ examples/tutorial/app.osr        -> tutorial.app
 没有显式 `osiris.core` import 时，core 的公开 binding 会自动 refer。示例只有在需要
 限制 surface、排除名称或重命名时才显式 import core。
 
-Public API 的文档示例遵循 OEP-0004：外层 vector 保存多个 example，内层 vector
-每个 string 保存一行格式化后的 Osiris source：
+Public API 的文档示例遵循 OEP-0004：每个完整示例使用一个有名称的
+`~osiris` 块，`:examples` 通过未加引号的 symbol 静态引用它：
 
 ```clojure
+~osiris<sum-three-example>
+(sum-three 2 3 5)
+;; => 10
+</sum-three-example>
+
 ^{:doc {:default "Sum three integers."}
-  :examples
-  [["(sum-three 2 3 5)"
-    ";; => 10"]]}
+  :examples [sum-three-example]}
 (defn ^Int sum-three [^Int left ^Int middle ^Int right]
   (+ left middle right))
 ```
@@ -48,3 +52,25 @@ cargo run --bin osr -- build
 一起生成到 `dist/`，而不只是单独生成入口文件。运行时依赖
 `tutorial.transforms` 会出现在 `app.py` 的 Python import 中；
 `tutorial.macros` 只参与编译期展开，不会成为 `app.py` 的运行时 import。
+
+教程还包含一个有类型边界的嵌入 Python 模块：
+
+```clojure
+~python<text-tools>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-tools>
+
+(extern python text-tools
+  (defn ^Str normalize-text [^Str value]))
+```
+
+`tutorial.embedded/normalize` 将这个 foreign function 包装为普通的
+Osiris 函数。生成的 Python 会把嵌入模块释放到 `__osiris_runtime__`，不需要
+安装 `osiris` Python runtime 包。仓库内的兼容性套件使用同一条编译、分发和执行
+路径：
+
+```console
+cargo test --test compatibility
+cargo test --test compatibility behavior_embedded_python
+```

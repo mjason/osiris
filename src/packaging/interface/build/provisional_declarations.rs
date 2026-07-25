@@ -36,6 +36,19 @@ pub(super) fn collect_provisional_item(
                 },
             );
         }
+        ast::ItemKind::EmbeddedText(embedded) => {
+            let binding =
+                provisional_value_binding(module, &embedded.label, Type::Str, Vec::new(), None);
+            declarations.insert(
+                embedded.label.canonical.clone(),
+                ProvisionalDeclaration {
+                    binding,
+                    function: None,
+                    structure: None,
+                    operator: None,
+                },
+            );
+        }
         ast::ItemKind::Defn(function) => {
             collect_provisional_function(module, function, None, declarations, next_type_variable)?;
         }

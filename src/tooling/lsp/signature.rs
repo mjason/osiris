@@ -174,6 +174,15 @@ pub(super) fn display_form(form: &Form) -> String {
             },
             display_form(form)
         ),
+        FormKind::EmbeddedLanguage {
+            language,
+            label,
+            raw_body,
+            ..
+        } => format!(
+            "~{language}<{}>{raw_body}</{}>",
+            label.spelling, label.spelling
+        ),
         FormKind::Error(message) => format!("#<error:{message}>"),
     }
 }
@@ -435,6 +444,7 @@ pub(super) fn find_call_form_in(form: &Form, span: Span) -> Option<&Form> {
         | FormKind::String(_)
         | FormKind::Keyword(_)
         | FormKind::Symbol(_)
+        | FormKind::EmbeddedLanguage { .. }
         | FormKind::Error(_) => &[],
     };
     children

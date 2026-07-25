@@ -4,6 +4,10 @@ import {
   LanguageClientOptions,
   ServerOptions
 } from "vscode-languageclient/node";
+import {
+  EmbeddedRegionResponse,
+  registerEmbeddedLanguageSupport
+} from "./embedded";
 
 let client: LanguageClient | undefined;
 const MINIMUM_SERVER_VERSION = [0, 3, 0] as const;
@@ -117,6 +121,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     )
   );
   await startClient();
+  registerEmbeddedLanguageSupport(context, async (uri) => {
+    if (client === undefined) {
+      throw new Error("Osiris language server is not running");
+    }
+    return client.sendRequest<EmbeddedRegionResponse>("osiris/embeddedRegions", { uri });
+  });
 }
 
 export async function deactivate(): Promise<void> {

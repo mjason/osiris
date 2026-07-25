@@ -7,10 +7,15 @@
 
 ;; ` 建立卫生 syntax template，~ 插入一个调用方语法对象，~@ 插入一组语法
 ;; 对象。value# 一类自动 gensym 也可用于避免捕获调用方局部名称。
+~osiris<unless-example>
+(unless ready? "waiting")
+;; => "waiting" when ready? is false
+</unless-example>
+
 ^{:doc
   {:default "Evaluate body when the condition is false and return its last value."
    "zh-CN" "条件为假时执行 body，并返回最后一个表达式。"}
-  :examples [["(unless ready?" "  \"waiting\")" ";; => \"waiting\" when ready? is false"]]}
+  :examples [unless-example]}
 (defmacro unless [condition & body]
   `(if (not ~condition)
      (do
@@ -19,10 +24,15 @@
 
 ;; value# 每次展开都会变成唯一的局部 binding。传入的 expression 只求值一次，
 ;; 同时不会捕获调用方恰好同名的变量。
+~osiris<twice-example>
+(twice (+ 2 1))
+;; => 6
+</twice-example>
+
 ^{:doc
   {:default "Evaluate an expression once and add the result to itself."
    "zh-CN" "只求值一次，并把结果与自身相加。"}
-  :examples [["(twice (+ 2 1))" ";; => 6"]]}
+  :examples [twice-example]}
 (defmacro twice [expression]
   `(let [value# ~expression]
      (+ value# value#)))

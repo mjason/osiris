@@ -100,10 +100,19 @@ pub struct Analysis {
     pub surface: ast::Module,
     pub hir: hir::Module,
     pub static_data: records::StaticModuleData,
+    pub embedded_python: Vec<EmbeddedPythonArtifact>,
     pub diagnostics: Vec<Diagnostic>,
     pub migration_advisories: Vec<hir::MigrationAdvisory>,
     pub source_hash: String,
     pub cache_key: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmbeddedPythonArtifact {
+    pub handle: String,
+    pub logical_module: String,
+    pub source: String,
+    pub source_span: crate::source::Span,
 }
 
 impl Analysis {
@@ -192,6 +201,9 @@ fn analyze_document(
         options,
         &mut surface_result.diagnostics,
     );
+    let (embedded_python, mut embedded_diagnostics) =
+        embedded::compile_python_modules(&surface_result.module, options.target_python);
+    surface_result.diagnostics.append(&mut embedded_diagnostics);
     if surface_result.module.name.as_ref().is_some_and(|name| {
         name.canonical
             .split('.')
@@ -255,6 +267,7 @@ fn analyze_document(
         surface: surface_result.module,
         hir: hir_result.module,
         static_data,
+        embedded_python,
         diagnostics,
         migration_advisories: hir_result.migration_advisories,
         source_hash,
@@ -398,6 +411,7 @@ fn finish_compile_with_model(
     )
 }
 
+mod embedded;
 mod support;
 mod workspace;
 

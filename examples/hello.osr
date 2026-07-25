@@ -18,11 +18,22 @@
 ;; Rich Metadata。下面会生成 @register(extra_data={...})。
 (py/decorate publish (register :extra-data {"columns" ["value" "year"]}))
 
+~osiris<publish-default-example>
+(publish context)
+
+;; Emits the default field named value.
+</publish-default-example>
+
+~osiris<publish-named-example>
+(publish context "score")
+
+;; Emits the score field.
+</publish-named-example>
+
 ^{:doc
   {:default "Publish a field through the host context."
    "zh-CN" "将字段发布到宿主上下文。"}
-  :examples [["(publish context)" ";; Emits the default field named value."]
-             ["(publish context \"score\")" ";; Emits the score field."]]}
+  :examples [publish-default-example publish-named-example]}
 (defn ^Any publish [^Any context [^Str field = "value"]]
   (context.emit field))
 
@@ -30,9 +41,14 @@
 ;; authored fallback（可复用包推荐英文），其他 BCP 47 key 是内嵌翻译。
 ;; :preferred 是推荐的本地化拼写；:aliases 只保留迁移期兼容的旧拼写，
 ;; 使用旧拼写会得到替换提示。两者都不会生成 wrapper 或第二份 Python 函数。
+~osiris<increment-all-example>
+(increment-all [1 2 3])
+;; => [2 3 4]
+</increment-all-example>
+
 ^{:doc
   {:default "Increment every integer." "zh-CN" "将每个整数加一。"}
-  :examples [["(increment-all [1 2 3])" ";; => [2 3 4]"]]
+  :examples [increment-all-example]
   :osiris/names {"zh-CN" {:preferred 全部加一 :aliases [逐项加一]}}}
 (defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} values]
   (forv [value values]
@@ -40,10 +56,15 @@
 
 ;; for/forv 是标准 core 宏，不是 Rust 编译器里的专用语法。for 返回 lazy sequence，
 ;; forv eager 返回 Vector。这里展示多重 binding、:let 中间绑定和 :when 过滤。
+~osiris<positive-pair-sums-example>
+(positive-pair-sums [-2 1] [1 3])
+;; => [1 2 4]
+</positive-pair-sums-example>
+
 ^{:doc
   {:default "Compute the positive Cartesian sums of two integer vectors."
    "zh-CN" "计算两组整数的正数笛卡尔和。"}
-  :examples [["(positive-pair-sums [-2 1] [1 3])" ";; => [1 2 4]"]]}
+  :examples [positive-pair-sums-example]}
 (defn ^{:type (Vector Int)} positive-pair-sums
   [^{:type (Vector Int)} left-values ^{:type (Vector Int)} right-values]
   (forv [left left-values
@@ -54,10 +75,15 @@
 
 ;; ->> 把上一步结果放到下一步调用的最后一个参数位置。这里先逐项加一，再通过
 ;; reduce 求和；生成的 Python 仍保留普通函数和清晰的数据流。
+~osiris<sum-after-increment-example>
+(sum-after-increment [1 2 3])
+;; => 9
+</sum-after-increment-example>
+
 ^{:doc
   {:default "Increment all integers, then sum them."
    "zh-CN" "将所有整数加一后求和。"}
-  :examples [["(sum-after-increment [1 2 3])" ";; => 9"]]}
+  :examples [sum-after-increment-example]}
 (defn ^Int sum-after-increment [^{:type (Vector Int)} values]
   (->> values
        (mapv (fn [^Int value] (+ value 1)))

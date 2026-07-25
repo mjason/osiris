@@ -104,6 +104,7 @@ pub(super) fn parse_form(
             )
         },
         |input| parse_metadata(input, depth, eof_offset),
+        parse_embedded_language,
         parse_string,
         parse_atom,
         parse_lexical_error,

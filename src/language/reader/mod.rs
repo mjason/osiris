@@ -70,6 +70,83 @@ pub fn read_incremental(source: &str, previous: &Document) -> Document {
     read_snapshot(source, Some(previous))
 }
 
+/// Map each normalized embedded-body line to the byte offset of its first
+/// content byte in the host source.
+#[must_use]
+pub fn embedded_line_source_offsets(raw: &str, span: Span) -> Vec<usize> {
+    let first_break = if raw.starts_with("\r\n") {
+        Some(2)
+    } else if raw.starts_with(['\n', '\r']) {
+        Some(1)
+    } else {
+        None
+    };
+    let Some(first_break) = first_break else {
+        return vec![span.start];
+    };
+    let Some(last_break_char) = raw.rfind(['\n', '\r']) else {
+        return vec![span.start];
+    };
+    let closing_indent = &raw[last_break_char + 1..];
+    if !closing_indent
+        .chars()
+        .all(|character| matches!(character, ' ' | '\t'))
+    {
+        return vec![span.start];
+    }
+    let content_end = if raw.as_bytes()[last_break_char] == b'\n'
+        && last_break_char > 0
+        && raw.as_bytes()[last_break_char - 1] == b'\r'
+    {
+        last_break_char - 1
+    } else {
+        last_break_char
+    };
+    let content = &raw[first_break..content_end];
+    let mut offsets = Vec::new();
+    let mut cursor = 0;
+    loop {
+        let line_end = content[cursor..]
+            .find(['\n', '\r'])
+            .map_or(content.len(), |offset| cursor + offset);
+        let line = &content[cursor..line_end];
+        let stripped = if line.is_empty() || !line.starts_with(closing_indent) {
+            0
+        } else {
+            closing_indent.len()
+        };
+        offsets.push(span.start + first_break + cursor + stripped);
+        if line_end == content.len() {
+            break;
+        }
+        cursor = if content.as_bytes()[line_end] == b'\r'
+            && content.as_bytes().get(line_end + 1) == Some(&b'\n')
+        {
+            line_end + 2
+        } else {
+            line_end + 1
+        };
+    }
+    offsets
+}
+
+/// Map one normalized embedded-body byte offset into the host source.
+#[must_use]
+pub fn embedded_source_offset(raw: &str, body: &str, span: Span, offset: usize) -> usize {
+    let bounded = offset.min(body.len());
+    let line = body[..bounded]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count();
+    let line_start = body[..bounded].rfind('\n').map_or(0, |index| index + 1);
+    embedded_line_source_offsets(raw, span)
+        .get(line)
+        .copied()
+        .unwrap_or(span.end)
+        .saturating_add(bounded - line_start)
+        .min(span.end)
+}
+
 fn read_snapshot(source: &str, previous: Option<&Document>) -> Document {
     let lexed = lex(source);
     let significant = lexed

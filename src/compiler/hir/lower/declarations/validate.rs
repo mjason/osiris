@@ -318,6 +318,23 @@ impl<'a> Lowerer<'a> {
                     }
                     Some(ItemKind::Value(Value { binding, value }))
                 }
+                AstItemKind::EmbeddedText(embedded) => {
+                    if !embedded.runtime_reachable {
+                        None
+                    } else {
+                        self.global_id(&embedded.label).map(|binding| {
+                            ItemKind::Value(Value {
+                                binding,
+                                value: Some(Expr {
+                                    span: embedded.body_span,
+                                    ty: Type::Str,
+                                    summaries: CallSummaries::pure_scalar(),
+                                    kind: ExprKind::String(embedded.body.clone()),
+                                }),
+                            })
+                        })
+                    }
+                }
                 AstItemKind::Defn(function) => self.lower_function(function).map(|mut function| {
                     function.decorators = decorators.remove(&function.binding).unwrap_or_default();
                     ItemKind::Function(function)
@@ -346,6 +363,7 @@ impl<'a> Lowerer<'a> {
                 | AstItemKind::PyDecorate(_)
                 | AstItemKind::Defmacro(_)
                 | AstItemKind::DefnForSyntax(_)
+                | AstItemKind::EmbeddedPython(_)
                 | AstItemKind::Error(_) => None,
             };
             if let Some(kind) = kind {

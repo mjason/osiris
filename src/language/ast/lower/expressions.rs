@@ -41,6 +41,18 @@ impl Lowerer {
                     }
                 }
             }
+            FormKind::EmbeddedLanguage { language, body, .. } => {
+                if language == "python" {
+                    self.error(
+                        AST_WRONG_SHAPE,
+                        "embedded Python is a top-level provider declaration, not an expression",
+                        form.span,
+                    );
+                    ExprKind::Error("embedded Python used as an expression".to_owned())
+                } else {
+                    ExprKind::String(body.clone())
+                }
+            }
             FormKind::Error(message) => ExprKind::Error(message.clone()),
         };
         Expr::from_form(form, kind)
@@ -107,6 +119,7 @@ impl Lowerer {
                     }
                 }
             }
+            FormKind::EmbeddedLanguage { body, .. } => ExprKind::String(body.clone()),
             FormKind::Error(message) => ExprKind::Error(message.clone()),
         };
         Expr::from_form(form, kind)

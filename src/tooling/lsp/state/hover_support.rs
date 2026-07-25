@@ -145,6 +145,7 @@ fn symbol_hover_machine_projection(
         },
         "aliases": symbol.aliases,
         "examples": symbol.examples,
+        "contentReferences": symbol.content_references,
         "type": symbol.ty,
         "source": {
             "uri": source_uri,
@@ -314,5 +315,4 @@ fn evaluation_behavior(evaluation: &str, locale: &str) -> Option<&'static str> {
 fn label_for_symbol<'a>(symbol: &'a crate::semantic::SemanticSymbol, locale: &str) -> &'a str {
     symbol.labels.for_locale(locale)
 }
-
 

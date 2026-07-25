@@ -16,6 +16,27 @@ pub(crate) fn source_form_eq(left: &Form, right: &Form) -> bool {
             | (FormKind::Error(left), FormKind::Error(right)) => left == right,
             (FormKind::Keyword(left), FormKind::Keyword(right))
             | (FormKind::Symbol(left), FormKind::Symbol(right)) => left == right,
+            (
+                FormKind::EmbeddedLanguage {
+                    language: left_language,
+                    label: left_label,
+                    raw_body: left_raw,
+                    body: left_body,
+                    ..
+                },
+                FormKind::EmbeddedLanguage {
+                    language: right_language,
+                    label: right_label,
+                    raw_body: right_raw,
+                    body: right_body,
+                    ..
+                },
+            ) => {
+                left_language == right_language
+                    && left_label == right_label
+                    && left_raw == right_raw
+                    && left_body == right_body
+            }
             (FormKind::List(left), FormKind::List(right))
             | (FormKind::Vector(left), FormKind::Vector(right))
             | (FormKind::Map(left), FormKind::Map(right))
@@ -50,6 +71,24 @@ pub(crate) fn datum_eq(left: &Form, right: &Form) -> bool {
         | (FormKind::Error(left), FormKind::Error(right)) => left == right,
         (FormKind::Keyword(left), FormKind::Keyword(right))
         | (FormKind::Symbol(left), FormKind::Symbol(right)) => left.canonical == right.canonical,
+        (
+            FormKind::EmbeddedLanguage {
+                language: left_language,
+                label: left_label,
+                body: left_body,
+                ..
+            },
+            FormKind::EmbeddedLanguage {
+                language: right_language,
+                label: right_label,
+                body: right_body,
+                ..
+            },
+        ) => {
+            left_language == right_language
+                && left_label.canonical == right_label.canonical
+                && left_body == right_body
+        }
         (FormKind::List(left), FormKind::List(right))
         | (FormKind::Vector(left), FormKind::Vector(right)) => sequence_eq(left, right),
         (FormKind::Map(left), FormKind::Map(right)) => map_eq(left, right),

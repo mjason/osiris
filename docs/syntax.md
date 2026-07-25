@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 8
+revision: 9
 ---
 
 # Osiris Syntax
@@ -50,6 +50,51 @@ The phase-1 reader forms are:
 ~value      ; unquote inside syntax quote
 ~@values    ; unquote-splicing inside syntax quote
 ```
+
+## Embedded Language Blocks
+
+A named embedded block keeps foreign or multi-line text readable without
+string escaping:
+
+```clojure
+~json<settings>
+{"theme": "dark", "compact": true}
+</settings>
+
+(export [settings])
+```
+
+The language tag is lowercase and the closing label must exactly match the
+opening label. The label declares a module-private `Str` binding for generic
+languages such as `json`, `markdown`, `sql`, `html`, `css`, `javascript`,
+`typescript`, `toml`, and `yaml`. It crosses modules only through ordinary
+`export` and `import`. Unknown well-formed language tags are also valid raw
+text; they do not load compiler extensions.
+
+The body is raw. Quotes, semicolons, delimiters, and `~` have no Osiris meaning
+inside it. In the multi-line form above, the opening/closing structural
+newlines and the closing tag's common indentation are removed. Choose another
+label when the body itself must contain the exact closing text.
+
+`python` is different: its label is a private provider handle, not a `Str` and
+not an exportable binding. Use it only from a symbolic local `extern`:
+
+```clojure
+~python<text-backend>
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+```
+
+`extern python text-backend` links that local authored module into the
+distribution-private `__osiris_runtime__`. By contrast,
+`extern python "package.module"` names an external Python module supplied by
+uv/PyPI and is never copied. Embedded modules may statically import one another;
+the compiler relocates the reachable private module graph and never executes it
+while compiling.
 
 ## Names
 
@@ -127,6 +172,11 @@ The `^` reader prefix attaches immutable, non-executable Rich Metadata to the
 following supported syntax node:
 
 ```clojure
+~osiris<increment-all-example>
+(increment-all [1 2 3])
+;; => [2 3 4]
+</increment-all-example>
+
 ^:deprecated
 ^{:doc {:default "Increment every integer."
         "zh-CN" "将每个整数加一。"}
@@ -134,9 +184,7 @@ following supported syntax node:
   :osiris/names
   {"zh-CN" {:preferred 全部加一
              :aliases [逐项加一]}}
-  :examples
-  [["(increment-all [1 2 3])"
-    ";; => [2 3 4]"]]
+  :examples [increment-all-example]
   :agent/tags [:data :transform]}
 (defn ^{:type (Vector Int)} increment-all
   [^{:type (Vector Int)} values]
@@ -158,20 +206,37 @@ standard BCP 47 language tags such as `"en"`, `"zh-CN"`, or `"ja"`. Tooling
 uses RFC 4647 lookup and falls back to `:default` without pretending that the
 fallback has a language tag.
 
-Documentation examples use a vector of examples. Each example is another
-vector containing one source line per string:
+Documentation examples use named `~osiris` blocks. `:examples` is a vector of
+unquoted, same-module block names:
 
 ```clojure
-:examples
-[["(reduce + 0 [1 2 3 4])"
-  ";; => 10"]
- ["(reduce + [1 2 3 4])"
-  ";; => 10"]]
+~osiris<reduce-example>
+(reduce + 0 [1 2 3 4])
+;; => 10
+</reduce-example>
+
+^{:examples [reduce-example]}
+(defn reduce ...)
 ```
 
-Do not put escaped newlines into one string. The outer vector separates
-examples; the inner vector preserves canonically formatted source lines. LSP,
-LSC, package interfaces, and Agent-facing JSON all consume this same metadata.
+Each block is one complete, canonically formatted snippet. A reference used
+only by metadata is not emitted as a runtime string. LSP, LSC, package
+interfaces, and Agent-facing JSON retain the resolved content together with
+its language, label, source span, and content hash.
+
+Long documentation may similarly reference same-module `~markdown` blocks.
+Literals remain convenient for short text, and every locale may choose either
+form:
+
+```clojure
+~markdown<normalize-doc>
+Normalize text for stable comparison.
+</normalize-doc>
+
+^{:doc {:default normalize-doc
+        "zh-CN" "规范化文本以便稳定比较。"}}
+(defn normalize ...)
+```
 
 `:osiris/names` may also be attached directly to a function parameter. This
 publishes localized keyword spellings as part of that function's static
@@ -459,6 +524,14 @@ Use explicit boundaries so compilation never imports or executes Python:
 to a generated declaration; decorators are runtime behavior, not Rich Metadata.
 Known keyword arguments are checked and emitted with canonical Python names.
 
+Use a `~python` provider when a small package-owned backend must be distributed
+with generated output; use a string module name for a normal installed Python
+dependency. `osr fmt` formats embedded Python in-process with the compiler's
+pinned Ruff profile. In VS Code, completion, hover, navigation, diagnostics,
+rename, and range formatting inside an embedded block are delegated to the
+installed language support for its tag. Missing foreign language support does
+not affect Osiris compilation or tooling.
+
 Generated Python is standalone with respect to Osiris. When a reachable
 standard operation needs reusable support, the linker emits ordinary Python
 under the owning package's reserved `__osiris_runtime__` package. Osiris source
@@ -489,11 +562,14 @@ Generated Python still has no runtime dependency on `osiris-lang`.
   [count Int]
   [total Int])
 
+~osiris<positive-sums-example>
+(positive-sums [-2 1] [1 3])
+;; => [1 2 4]
+</positive-sums-example>
+
 ^{:doc {:default "Return positive Cartesian sums."
         "zh-CN" "返回笛卡尔组合中的正数和。"}
-  :examples
-  [["(positive-sums [-2 1] [1 3])"
-    ";; => [1 2 4]"]]
+  :examples [positive-sums-example]
   :osiris/names
   {"zh-CN" {:preferred 正数组合}}}
 (defn ^{:type (Vector Int)} positive-sums
@@ -505,10 +581,13 @@ Generated Python still has no runtime dependency on `osiris-lang`.
         :when (> sum 0)]
     sum))
 
+~osiris<summarize-example>
+(summarize [2 3 5])
+;; => (Summary :count 3 :total 10)
+</summarize-example>
+
 ^{:doc {:default "Summarize a vector of integers."}
-  :examples
-  [["(summarize [2 3 5])"
-    ";; => (Summary :count 3 :total 10)"]]}
+  :examples [summarize-example]}
 (defn ^Summary summarize
   [^{:type (Vector Int)} values]
   (Summary

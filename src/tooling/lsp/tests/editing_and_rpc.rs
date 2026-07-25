@@ -178,7 +178,10 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
         .to_string(),
     );
     let result = &semantic.response.as_ref().expect("response")["result"];
-    assert_eq!(result["version"], 1);
+    assert_eq!(
+        result["version"],
+        crate::semantic::SEMANTIC_DOCUMENT_VERSION
+    );
     assert_eq!(result["document_version"], 1);
     assert!(result["symbols"].is_array());
     assert!(result["operation_graph"]["nodes"].is_array());
@@ -222,6 +225,49 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
             .is_some_and(|nodes| !nodes.is_empty())
     );
     assert!(syntax_result["nodes"][0]["id"].is_u64());
+}
+
+#[test]
+fn embedded_region_request_uses_reader_regions_and_utf16_line_maps() {
+    let mut machine = JsonRpcMachine::new();
+    machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        })
+        .to_string(),
+    );
+    machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": URI,
+                "languageId": "osiris",
+                "version": 7,
+                "text": "(module demo)\n~python<工具>\n  def label() -> str:\n      return \"😀\"\n  </工具>\n"
+            }}
+        })
+        .to_string(),
+    );
+    let response = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "osiris/embeddedRegions",
+            "params": { "uri": URI }
+        })
+        .to_string(),
+    );
+    let result = &response.response.as_ref().expect("response")["result"];
+    assert_eq!(result["documentVersion"], 7);
+    assert_eq!(result["regions"][0]["language"], "python");
+    assert_eq!(result["regions"][0]["label"], "工具");
+    assert_eq!(result["regions"][0]["text"], "def label() -> str:\n    return \"😀\"");
+    assert_eq!(result["regions"][0]["lineMap"][0]["hostLine"], 2);
+    assert_eq!(result["regions"][0]["lineMap"][0]["hostCharacter"], 2);
 }
 
 #[test]

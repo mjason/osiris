@@ -134,6 +134,28 @@ fn aligns_wide_unicode_callees_by_display_column() {
     );
 }
 
+#[test]
+fn formats_embedded_osiris_and_python_with_their_canonical_formatters() {
+    let source = concat!(
+        "~osiris<example>\n(reduce + 0 [1  2 3])\n</example>\n",
+        "~python<backend>\ndef normalize(value:str)->str:\n return value.strip()\n</backend>\n",
+    );
+    let expected = concat!(
+        "~osiris<example>\n(reduce + 0 [1 2 3])\n</example>\n\n",
+        "~python<backend>\ndef normalize(value: str) -> str:\n    return value.strip()\n</backend>\n",
+    );
+    let formatted = format_source(source).expect("valid embedded source");
+    assert_eq!(formatted, expected);
+    assert_eq!(format_source(&formatted).unwrap(), formatted);
+}
+
+#[test]
+fn preserves_generic_embedded_body_content() {
+    let source = "~json<settings>\n{\"theme\":  \"dark\"}\n</settings>\n";
+    let formatted = format_source(source).expect("valid embedded source");
+    assert_eq!(formatted, source);
+}
+
 fn display_column(line: &str, needle: &str) -> usize {
     let byte_offset = line.find(needle).expect("text on formatted line");
     display_width(&line[..byte_offset])

@@ -1,4 +1,7 @@
-use super::{INVALID_ESCAPE, LINE_BREAK_IN_STRING, UNCLOSED_STRING, UNSUPPORTED_DISPATCH, lex};
+use super::{
+    INVALID_ESCAPE, LINE_BREAK_IN_STRING, UNCLOSED_EMBEDDED_BLOCK, UNCLOSED_STRING,
+    UNSUPPORTED_DISPATCH, lex,
+};
 use crate::{source::Span, syntax::TokenKind};
 
 fn kinds(source: &str) -> Vec<TokenKind> {
@@ -73,6 +76,40 @@ fn token_text_round_trips_every_source_byte() {
         .map(|token| token.text)
         .collect::<String>();
     assert_eq!(rebuilt, source);
+}
+
+#[test]
+fn embedded_blocks_are_one_lossless_token() {
+    let source = "~python<backend>\nvalue = \"</other>\"\n</backend> tail";
+    let result = lex(source);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.tokens[0].kind, TokenKind::EmbeddedLanguage);
+    assert_eq!(
+        result.tokens[0].text,
+        "~python<backend>\nvalue = \"</other>\"\n</backend>"
+    );
+    assert_eq!(
+        result
+            .tokens
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<String>(),
+        source
+    );
+}
+
+#[test]
+fn unterminated_embedded_blocks_fail_without_reinterpreting_the_body() {
+    let source = "~json<settings>\n{\"enabled\": true}";
+    let result = lex(source);
+    assert_eq!(result.tokens.len(), 1);
+    assert_eq!(result.tokens[0].kind, TokenKind::Error);
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == UNCLOSED_EMBEDDED_BLOCK)
+    );
 }
 
 #[test]

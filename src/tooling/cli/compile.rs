@@ -7,6 +7,7 @@ struct LinkedSupport {
     helpers: BTreeSet<String>,
     binding_ids: BTreeSet<String>,
     source_maps: BTreeSet<SourceMapIdentity>,
+    embedded_modules: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -178,6 +179,31 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
     for (_, _, result) in units {
         let module_name = result.analysis.hir.name.clone();
         if arguments.emit.contains(&EmitKind::Python) {
+            for embedded in &result.analysis.embedded_python {
+                let package = embedded
+                    .logical_module
+                    .split_once(".packages.")
+                    .map_or("__osiris_runtime__", |(package, _)| package)
+                    .to_owned();
+                let previous = runtime_packages
+                    .entry(package)
+                    .or_default()
+                    .embedded_modules
+                    .insert(embedded.logical_module.clone(), embedded.source.clone());
+                if previous
+                    .as_ref()
+                    .is_some_and(|source| source != &embedded.source)
+                {
+                    return CliOutcome::failure(
+                        1,
+                        String::new(),
+                        format!(
+                            "osr: conflicting embedded Python module `{}`\n",
+                            embedded.logical_module
+                        ),
+                    );
+                }
+            }
             let Some(generated) = result.python else {
                 return CliOutcome::failure(
                     1,
@@ -276,6 +302,12 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
         }));
         let mut support_files = crate::backend::runtime_support_files(&package, &helpers);
         support_files.extend(linked_standard.files);
+        support_files.extend(
+            support
+                .embedded_modules
+                .into_iter()
+                .map(|(module, source)| (compiler::python_module_path(&module), source)),
+        );
         let file_hashes = support_files
             .iter()
             .filter(|(path, _)| path.extension().and_then(|value| value.to_str()) == Some("py"))

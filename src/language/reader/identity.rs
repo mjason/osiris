@@ -406,7 +406,21 @@ fn update_form_fingerprint(hasher: &mut Sha256, form: &Form) {
             ]);
             update_form_fingerprint(hasher, form);
         }
-        FormKind::Error(message) => update_tagged_text(hasher, 12, message),
+        FormKind::EmbeddedLanguage {
+            language,
+            label,
+            raw_body,
+            body,
+            ..
+        } => {
+            hasher.update([12]);
+            update_text(hasher, language);
+            update_text(hasher, &label.spelling);
+            update_text(hasher, &label.canonical);
+            update_text(hasher, raw_body);
+            update_text(hasher, body);
+        }
+        FormKind::Error(message) => update_tagged_text(hasher, 13, message),
     }
 }
 

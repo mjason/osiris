@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-25
-revision: 13
+revision: 15
 requires: [0]
 replaces: []
 superseded-by: null
@@ -122,8 +122,9 @@ source positions or binding spelling.
 
 **OEP-0001-R002:** The reader MUST recognize lists, vectors, maps, sets,
 symbols, keywords, strings, numbers, booleans, `none`, comments, quote, syntax
-quote, unquote, unquote-splicing, and Rich Metadata prefixes as fixed reader
-forms. Commas outside strings MUST be treated as whitespace.
+quote, unquote, unquote-splicing, embedded-language sigils, and Rich Metadata
+prefixes as fixed reader forms. Commas outside strings MUST be treated as
+whitespace.
 
 **OEP-0001-R003:** The reader MUST preserve original spelling, trivia, and byte
 spans in a lossless source model while also exposing normalized datum values.
@@ -144,6 +145,121 @@ target Python identifier normalization rules.
 independently testable grammar and recovery contract. A malformed fixed form
 MUST NOT silently fall back to an atom with different meaning, and domain
 syntax MUST NOT be introduced through atom-token ambiguity.
+
+**OEP-0001-R006A:** The fixed reader MUST support embedded-language sigils with
+this grammar:
+
+```text
+~<language><label><body></label>
+```
+
+`language` MUST be a non-empty lowercase ASCII identifier beginning with a
+letter and continuing with ASCII letters, digits, `+`, or `-`. `label` is
+required, MUST be non-empty NFC UTF-8 without newline, `<`, or `>`, and MUST NOT
+have leading or trailing whitespace. The exact authored label in `</label>`
+terminates the body. A body that needs that byte sequence MUST choose a different
+label; the reader defines no escape sequence. Sigil bodies are raw: quotes,
+reader escapes, unquote, interpolation, metadata prefixes, comments, and
+collection delimiters have no Osiris meaning inside them. The lossless source
+model MUST retain the language, semantic label, authored closing spelling, raw
+body bytes, and the byte/line mapping of every embedded position.
+
+**OEP-0001-R006B:** A generic embedded-language sigil is a top-level named
+declaration. Its label MUST be a valid Osiris binding name and declares a `Str`
+whose value is the normalized raw body. The binding has ordinary module
+visibility: it is private by default and crosses a module boundary only through
+explicit `export` and `import`. Interfaces and tooling MUST retain its language
+and source map:
+
+```clojure
+~markdown<usage>
+# Usage
+
+Pass the value to `render`.
+</usage>
+
+(render usage)
+```
+
+The ordinary module rules therefore permit an explicitly exported data block
+to be consumed elsewhere:
+
+```clojure
+;; app/resources.osr
+(module app.resources)
+
+~json<default-config>
+{"theme": "dark"}
+</default-config>
+
+(export [default-config])
+```
+
+```clojure
+;; app/main.osr
+(module app.main)
+
+(import app.resources [default-config])
+
+(load-config default-config)
+```
+
+Built-in generic languages MUST include `osiris`, `markdown`, `sql`, `json`,
+`html`, `css`, `javascript`, `typescript`, `toml`, and `yaml`; an unknown
+well-formed language remains a valid raw embedded text declaration and MUST NOT
+load compiler code. Packages MUST NOT register reader callbacks, lowering
+callbacks, or executable language handlers. This open data identifier space
+does not weaken OEP-0001-R004.
+
+**OEP-0001-R006C:** `python` is the built-in embedded Python-module language. Its
+label MUST be a valid Osiris binding name and its body MUST contain exactly one
+Python module:
+
+```clojure
+~python<text-backend>
+from __future__ import annotations
+
+def normalize(value: str) -> str:
+    return value.strip().casefold()
+</text-backend>
+
+(extern python text-backend
+  (defn ^Str normalize
+    [^Str value]))
+```
+
+The declaration creates a package-owned linkable Python provider handle; it
+does not evaluate to `Str`, execute during compilation, or create an ordinary
+installed-package import. The handle is module-private, is valid only where an
+embedded provider is accepted, and MUST NOT be exported, imported, passed to a
+function, or emitted as a runtime value. `extern python <handle>` MUST resolve
+that exact local declaration, while `extern python "<module>"` MUST continue to
+name an ordinary external Python module. The compiler MUST NOT fall back from a
+handle to installed Python or scan/import Python to guess a provider. Duplicate
+handles and collisions after Python identifier lowering MUST be diagnosed. The
+compiler MUST derive and expose a deterministic relocatable logical module
+identity from the owning Osiris module and handle. The extern declaration's
+validated bindings form the only Osiris-visible API of the embedded module and
+are exported or imported through the ordinary module rules.
+
+**OEP-0001-R006D:** A body beginning immediately after the opening tag's newline
+and ending on the closing tag's own line MUST remove that structural first/last
+newline and the closing tag's indentation from
+each non-empty body line. Relative indentation after that removal is literal.
+An under-indented non-empty line MUST be diagnosed. Inline bodies preserve all
+bytes between tags. The canonical formatter MUST NOT rename the label or change
+generic body content and MUST preserve an exact source mapping through
+indentation normalization.
+
+**OEP-0001-R006E:** A Rich Metadata field whose schema permits an embedded
+content reference MAY contain an unquoted Symbol naming a generic embedded
+binding in the same source module. Resolution MUST be static, order-independent,
+and restricted by the field's required language; it MUST NOT evaluate the
+binding or arbitrary metadata expressions. The resolved normalized content,
+language, source span, label, and content hash MUST be retained in `.osri` and
+tooling records. A reference used only by metadata does not make the `Str`
+binding runtime-reachable; ordinary code use and explicit export retain their
+normal runtime meaning.
 
 ### Modules, names, and aliases
 
@@ -180,9 +296,10 @@ preserve.
 **OEP-0001-R013:** The kernel MUST provide semantics for module/import/export
 and alias declarations; runtime and Phase-1 bindings; `fn`, `let`, `if`, `do`,
 structured exception flow, and raising; `defstruct`; external Python bindings
-and decorators; macro definitions; and typed static schema or record
-declarations. A declaration macro MAY provide the authored spelling of a
-compiler-owned declaration.
+and decorators; embedded-language text and linkable embedded Python module
+declarations; macro definitions; and typed static schema or record declarations.
+A declaration macro MAY provide the authored spelling of a compiler-owned
+declaration, but MUST NOT synthesize an embedded foreign-source body.
 
 **OEP-0001-R014:** Threading, ordinary conditional conveniences,
 comprehensions, recursion conveniences, resource helpers, and data-sequence
@@ -269,6 +386,24 @@ control flow suitable for review and debugging.
 **OEP-0001-R030:** The Python backend MUST lower validated semantic IR through
 a structured representation. Macro expansion and principal code generation
 MUST NOT be implemented by concatenating executable Python source fragments.
+
+**OEP-0001-R030A:** Embedded `python` bodies are authored foreign source artifacts,
+not macro output or semantic code-generation fragments, and are therefore the
+only exception to OEP-0001-R030's authored-source prohibition. The compiler
+MUST parse them for the configured Python target, reject syntax errors with
+mapped Osiris spans, normalize them through the compiler-embedded,
+version-pinned Ruff formatter, and hash the normalized module without importing
+or executing it.
+The embedded module MUST be represented as a validated linkable artifact before
+ordinary Osiris HIR is emitted.
+
+**OEP-0001-R030B:** Static Python imports among embedded `python` modules MUST be
+resolved into a relocatable module graph. Imports outside that graph MUST name
+ordinary declared Python dependencies. Dynamic import of a provider-owned
+embedded module, mutation of `sys.path`, filesystem-relative module discovery,
+or reliance on undeclared package data MUST be rejected in the initial format.
+This restriction does not prohibit runtime I/O explicitly performed by a
+declared function; it keeps linkage static and reproducible.
 
 **OEP-0001-R031:** Generated Python MUST preserve Osiris evaluation order and
 must not duplicate an expression with observable effects. Target-specific
@@ -528,17 +663,19 @@ language behavior.
 
 ### Documentation and localized name metadata
 
-**OEP-0001-R057:** `:doc` MUST be either a non-empty default `Str` or a locale
-map defined by OEP-0001-R058. An exported declaration MUST provide `:doc`; a
-private declaration SHOULD provide it. A declaration docstring, when supported
-as surface sugar, MUST populate the default string form. Reusable packages
-SHOULD author the default in English for AI and ecosystem interoperability, but
-the compiler MUST permit another authored default language.
+**OEP-0001-R057:** `:doc` MUST be either a non-empty default `Str`, a same-module
+`~markdown` reference, or a locale map defined by OEP-0001-R058. An exported
+declaration MUST provide `:doc`; a private declaration SHOULD provide it. A
+declaration docstring, when supported as surface sugar, MUST populate the
+default string form. Reusable packages SHOULD author the default in English for
+AI and ecosystem interoperability, but the compiler MUST permit another
+authored default language.
 
 **OEP-0001-R058:** Localized documentation MUST use one compact `:doc` map from
-the required Keyword `:default` and canonical BCP 47 locale strings to
-non-empty `Str` values. `:default` is the author's language-neutral fallback
-slot and MUST NOT be interpreted as a language tag. Locale keys MUST be unique
+the required Keyword `:default` and canonical BCP 47 locale strings to either
+non-empty `Str` values or same-module `~markdown` references. `:default` is the
+author's language-neutral fallback slot and MUST NOT be interpreted as a
+language tag. Locale keys MUST be unique
 after BCP 47 canonicalization. An author MAY include an `"en"`, `"zh-CN"`, or
 other tagged entry even when its value equals `:default`. Splitting translations
 into a second metadata key is not part of this contract.
@@ -546,7 +683,8 @@ into a second metadata key is not part of this contract.
 **OEP-0001-R059:** A documentation consumer requesting a locale MUST select an
 entry from the normalized `:doc` map using the RFC 4647 lookup fallback
 sequence, then fall back to `:default` when no tagged entry matches. A plain
-`Str` MUST normalize as `{:default <value>}` without inferring its language.
+`Str` or resolved `~markdown` reference MUST normalize as
+`{:default <value>}` without inferring its language.
 When `:default` is selected, a consumer MUST identify it as the default fallback
 and MUST NOT fabricate a resolved BCP 47 tag. Locale selection MUST NOT change
 binding identity, overload selection, or semantics.
@@ -597,8 +735,11 @@ receive this advisory. LSP SHOULD provide a code action for the replacement.
 
 **OEP-0001-R063:** `.osri`, semantic queries, LSP, and local CLI queries MUST
 preserve the default documentation, every tagged translation, the canonical
-name, localized preferred names, aliases, and provenance. JSON documentation
-entries MUST expose at least this logical shape:
+name, localized preferred names, aliases, and provenance. Embedded content
+references MUST be serialized as their resolved content plus label, language,
+source provenance, and content hash; a consumer MUST NOT need provider source
+to render them. JSON documentation entries MUST expose at least this logical
+shape:
 
 ```json
 {
@@ -755,6 +896,16 @@ contain. The compiler MUST NOT upload source, overlays, interfaces, semantic
 records, queries, or results. `osr lsc semantic --format json` MAY remain the
 bulk fallback, but it MUST not be the only CLI route to an LSP-visible fact.
 
+**OEP-0001-R072A:** Compiler-owned LSP and LSC operations MUST recognize an
+embedded sigil position, expose its tag, label, host span, embedded position,
+and mapped diagnostics, and navigate between an `extern python` binding and its
+local embedded `python` provider. Foreign-language completion, hover, signature help,
+definition, references, and rename MAY be delegated to an external language
+service and are not compiler-owned capabilities requiring an in-process LSC
+implementation. The stable LSC JSON projection MUST nevertheless expose enough
+virtual-document text and bidirectional position mapping for a CLI or agent to
+invoke an external tool explicitly.
+
 ### Canonical formatting
 
 **OEP-0001-R073:** Osiris MUST define one canonical formatter and formatting
@@ -816,6 +967,17 @@ Metadata attachment, atom spelling, string contents, collection and top-level
 form order, and all other semantic distinctions. It MUST be idempotent. If a
 syntax error prevents a meaning-preserving result, it MUST report diagnostics
 and MUST NOT partially rewrite that file.
+
+**OEP-0001-R074A:** `osr fmt` MUST format the host sigil placement and
+indentation. Generic embedded bodies other than `osiris` remain byte-preserved
+after the structural tag normalization in OEP-0001-R006D. An `osiris` body MUST
+be recursively formatted with the canonical Osiris formatter. An embedded
+`python` body MUST use the same compiler-embedded, version-pinned Ruff formatter
+and fixed profile as generated Python, with edits mapped back into the host `.osr` document.
+Python formatting MUST run in-process and MUST NOT use an ambient `ruff`
+executable, Python process, language server formatter, or project-specific Ruff
+configuration. An invalid embedded body prevents the file from being partially
+rewritten.
 
 **OEP-0001-R075:** The formatter CLI grammar MUST be:
 
@@ -1003,6 +1165,17 @@ A conforming implementation provides evidence that:
 
 - reader fixtures cover every fixed form, Unicode identity, metadata prefix,
   preservation rule, and recovery boundary;
+- embedded-sigil fixtures cover exact closing-label matching, closing-tag text
+  inside raw content under a different label, indentation normalization, unknown
+  generic language tags, malformed labels, recovery after an unterminated body,
+  and exact bidirectional source mapping;
+- embedded Python fixtures prove target parsing, in-process canonical
+  formatting, static import closure, no compile-time execution, and resolution
+  from a symbolic `extern python` handle to its same-module provider while a
+  string module name remains external;
+- embedded-content fixtures prove ordinary `Str` export/import behavior,
+  same-module metadata-reference resolution, recursive `~osiris` formatting,
+  and absence of runtime reachability for documentation-only references;
 - kernel inventory and standard macro inventory are independently queryable;
 - macro tests prove hygiene, phase isolation, determinism, and origin chains;
 - type and `defstruct` tests prove inference and public-boundary rules;
@@ -1033,6 +1206,13 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 15, 2026-07-25: Defined generic embedded blocks as ordinary
+  exportable `Str` bindings, made embedded Python labels private provider
+  handles used by symbolic `extern python`, and added static Rich Metadata
+  references to same-module `~markdown` and `~osiris` content.
+- Revision 14, 2026-07-25: Added named raw embedded-language blocks, defined
+  `~python<module>` for linkable Python modules, and specified target
+  validation, formatting, source mapping, and LSP/LSC foreign-tool boundaries.
 - Revision 13, 2026-07-25: Defined line width and hanging indentation in
   deterministic Unicode display columns so wide localized names align with
   ASCII names.

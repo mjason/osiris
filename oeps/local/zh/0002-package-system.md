@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 8
+revision: 10
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 8
+source-revision: 10
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -62,6 +62,12 @@ compile config 与静态 wheel contract，同时保留 Python 用户熟悉的 pa
 - **Artifact set**：为一个 module graph 与 target 生成的全部输出。
 - **Extension distribution**：wheel 携带 Osiris marker 和至少一个公开 `.osri` 的 Python
   distribution。
+- **Package**：由 `osr init --package` 创建的普通 Python distribution；它可以暴露一个
+  或多个 public Osiris module，此时也是 extension distribution。
+- **Linkable backend**：由 package 所有、非 public、可由 macro expansion 选择并复制到
+  consumer artifact 的 Osiris runtime closure；它不是 installed shared Python runtime。
+- **Runtime closure**：宏展开后一个 generated artifact 所需 linkable backend binding 与
+  module 的传递集合。
 - **Marker**：列出 extension artifact 的静态 `dist-info/osiris.toml` 数据。
 - **Effective dependency graph**：项目 build 使用的 locked runtime dependency closure。
 - **Development dependency**：用于 build/edit，但不会自动暴露给 consumer 的依赖。
@@ -145,10 +151,12 @@ config 的前提下加入 Osiris。重复执行必须幂等。
 dependency 并更新 lock。uv 失败时必须报告，且不得留下宣称 setup 成功但 dependency
 update 未完成的配置。
 
-**OEP-0002-R015：** `osr init --extension <project>` 与
-`osr init --existing --extension [directory]` 必须配置使用 `osiris_build`、canonical
-import package 和至少一个 public Osiris module 的 Python distribution。转换 existing
-project 时遇到 incompatible build backend 必须拒绝，不能静默替换。
+**OEP-0002-R015：** `osr init --package <project>` 与
+`osr init --existing --package [directory]` 必须配置使用 `osiris_build`、canonical
+Osiris namespace 和至少一个 public Osiris module 的 Python distribution。转换 existing
+project 时遇到 incompatible build backend 必须拒绝，不能静默替换。Package 是 author
+面对的 lifecycle 概念；extension distribution 是 compiler 对暴露 public interface 的
+package 所作的 discovery 分类。
 
 ### Module 与项目命令
 
@@ -215,13 +223,13 @@ normalize。
 target 或 declared dependency 不一致时，compilation 必须以 stable diagnostic 失败。
 Discovery 禁止按 filesystem order 或 import precedence 选择 best effort package。
 
-### Extension build 与 artifact
+### Package build、linkable backend 与 artifact
 
 **OEP-0002-R031：** `osiris_build` 必须是随 Osiris 发布的 PEP 517 build backend。
-Extension project 的 `[build-system]` 必须 pin compatible `osiris-lang` build requirement，
+Osiris package 的 `[build-system]` 必须 pin compatible `osiris-lang` build requirement，
 并指定 `osiris_build` 为 backend。
 
-**OEP-0002-R032：** Extension sdist 必须包含 `pyproject.toml`、`osiris.jsonc`、全部所需
+**OEP-0002-R032：** Osiris package sdist 必须包含 `pyproject.toml`、`osiris.jsonc`、全部所需
 `.osr` source 和 reproducible wheel build 所需文件。Sdist build 不得依赖 project root
 之外未列出的文件。
 
@@ -231,11 +239,75 @@ Reachable standard support 必须依 OEP-0003 编译到每个 owning Python pack
 `__osiris_runtime__`。Runtime semantic 与 dependency compilation 必须使用 validated
 `.osri`，不能隐式重新编译 packaged source。
 
+**OEP-0002-R033A：** 对每个可从 public interface 或 exported macro expansion 到达的
+package-owned Osiris runtime binding，extension wheel 还必须包含 validated、versioned
+linkable-backend artifact。Artifact 必须包含完整 binding/module closure、stable binding
+identity、可 relocate 的 internal module edge、source-map identity 和 semantic interface
+dependency hash。该规则同样适用于普通 public Osiris function 与 macro 引入的 private
+function。Authored `.osr` 只用于 navigation/audit；consumer 禁止通过重新编译它获得
+backend behavior。
+
+**OEP-0002-R033B：** 可能生成 package-private runtime binding 的 macro interface 必须在
+validated macro artifact 中声明该 binding 的 linkable backend closure。Expansion 必须
+保留 stable binding identity。Closure 缺失、不兼容、无效或不能覆盖全部 emitted private
+runtime binding 时，必须在 codegen 前失败。Macro expansion 禁止把 private binding 静默
+变成 public interface binding。
+
+**OEP-0002-R033C：** Consumer compilation 期间，linker 必须取得 expanded HIR 选择的
+transitive runtime closure，并且只释放到 owning output package 的 reserved
+`__osiris_runtime__/packages/<provider-id>/`。`<provider-id>` 必须由 locked provider
+distribution identity 与 validated artifact hash 确定性生成，并避免碰撞。全部 internal
+backend import 必须 relocate 到该目录。Generated consumer Python 在 runtime 禁止 import
+provider package 的 generated Osiris Python module、`osiris-lang`、`.osr` source、`.osri`、
+macro IR 或 documentation data。
+
+**OEP-0002-R033D：** Package 只能通过 OEP-0001 的 embedded `python` module 提供
+package-owned Python backend。该 module 是 linkable artifact 携带的 compiler input，
+不是对 provider installed Python namespace 的 import。其 private provider handle 禁止出现
+在 public interface 中；只有 validated `extern` binding 可以建立 downstream reachability。
+它可以 import 明确声明的普通
+Python dependency（例如 `pandas`）；这些 provider 保持普通 `Requires-Dist` dependency，
+绝不复制到 `__osiris_runtime__`。大型、native、独立 version 或通用可复用的 Python
+实现应该作为独立 Python distribution。未声明的 same-distribution `.py` file 禁止隐式
+成为 runtime provider。
+
+**OEP-0002-R033E：** Package 可以包含 public facade module、private implementation
+module、Phase-1 macro helper 和 linkable backend module。只有 explicit export declaration
+对普通 downstream source 公开。包括 `defn-` 在内的 private declaration 只能由 package
+macro 通过其 declared linkable closure 使用，并且不能被 consumer import、completion 或
+直接引用。
+
+**OEP-0002-R033F：** Package source layout 必须遵循 `osiris.jsonc` source root 下的普通
+module mapping。例如 `src/acme_text/core.osr` 与
+`src/acme_text/backend/normalize.osr` 分别定义 `acme_text.core` 和
+`acme_text.backend.normalize`。Build backend 必须根据 resolved binding reachability 推导
+linkable closure，禁止引入第二个 backend directory、configuration list、filename
+convention 或 consumer source recompilation。为 inspection 随 wheel 发布的 generated
+Python 禁止被选为这些 Osiris binding 的 runtime provider。
+
+**OEP-0002-R033G：** Provider wheel 必须把 relocatable closure graph 存在
+`<distribution>.dist-info/osiris/linkable-backend.hir.json`，把 embedded Python module
+存在 `<distribution>.dist-info/osiris/python-runtime/<logical-path>.py`，并把 graph 指名的
+authored `.osr` 按 canonical module path 放入 wheel 供 navigation。`osiris.toml` 必须记录
+`linkable_backend`、`linkable_backend_hash`、schema/ABI、Python target、closure-root
+binding identity、embedded Python module path/hash 与 source-map identity。
+`dist-info/osiris/` 下文件是 compiler data，不是 installed import target，在 discovery 或
+compilation 时绝不能 import/execute。Consumer linker 读取它们，只选择 reachable closure，
+在 `__osiris_runtime__/packages/<provider-id>/` 下生成可读且已 format 的 `.py`，并把
+selected hash 记录到 consumer runtime manifest。
+
+**OEP-0002-R033H：** Osiris runtime code 必须按 binding-level transitive reachability
+选择。Embedded Python 必须按 module-level transitive static-import reachability 选择：一个
+embedded module 提供的任意 declared binding 可达时，必须释放完整 normalized module 及其
+static import closure 中全部 provider-owned embedded module。初始 linker 禁止尝试 Python
+function-level tree shaking。Provider wheel 只携带一次完整 validated graph；每个 consumer
+output 只携带 selected Osiris binding 与 embedded Python module。
+
 **OEP-0002-R034：** Wheel backend 必须生成
 `<distribution>.dist-info/osiris.toml`，作者禁止手工维护。Marker 必须标识 schema version、
 provider distribution/version、target Python compatibility、每个 interface/source path、
 semantic/source-map hash、linked-support manifest/hash、records artifact，以及确定性验证
-所需 dependency identity。
+所需 dependency identity 与 OEP-0002-R033G 的 linkable-backend field。
 
 **OEP-0002-R035：** 每个 `.osri` 必须包含下游 parsing、macro expansion、name/alias
 resolution、type、Rich Metadata、static record 和 declared contract 所需 public module
@@ -249,11 +321,12 @@ serialization/marker ordering 必须确定。Published artifact 中的 path 必�
 使用前也必须验证。Partial、stale、path-escaping、duplicate、oversized 或 hash mismatch
 artifact 必须失败，不能 fallback 到 Python import 或 source execution。
 
-**OEP-0002-R038：** Public interface dependency 必须作为普通 runtime requirement 声明
-在 `pyproject.toml`，使 Python wheel metadata 保留同一 dependency closure。
-Development-only dependency 不得满足 published interface reference。
+**OEP-0002-R038：** Public interface dependency 与 linkable backend 使用的独立 Python
+provider 必须作为普通 runtime requirement 声明在 `pyproject.toml`，使 Python wheel
+metadata 保留同一 dependency closure。Development-only dependency 不得满足 published
+interface reference 或 linkable backend import。
 
-**OEP-0002-R039：** Extension 必须使用 `uv add`、`uv build`、`uv publish` 等普通工具
+**OEP-0002-R039：** Package 必须使用 `uv add`、`uv build`、`uv publish` 等普通工具
 install/publish。Compiler 可以提供 diagnostic/scaffold，但禁止包装成第二套 package
 lifecycle。
 
@@ -278,11 +351,11 @@ compatibility，但只能由 documentation client 验证，不得作为 check、
 其必需的 packaged `.osr` member，并针对该 member 编码 source span；不得在 map 内重复
 authored source text。Consumer 使用 mapped span 前必须验证 member hash。
 
-**OEP-0002-R044：** Editable extension installation 必须使用 configured build backend 生成的
+**OEP-0002-R044：** Editable package installation 必须使用 configured build backend 生成的
 标准 PEP 660 editable wheel。Compiler 不得绕过 validated wheel metadata contract，通过自创
 editable-directory 或 source-tree scan 发现 extension。
 
-**OEP-0002-R045：** Stable versioning 之前，generated project/extension scaffold 必须把
+**OEP-0002-R045：** Stable versioning 之前，generated project/package scaffold 必须把
 `osiris-lang` 限制在 compiler package 当前 minor release line。因此 `0.3.0` release 生成
 `osiris-lang>=0.3,<0.4`。Artifact/marker 还必须记录 compilation 所需的确切 language、
 interface、standard-library 与 helper ABI value。
@@ -321,6 +394,11 @@ extension 已存在于 Python dependency，重复列表会漂移；`trust` 属�
 Wheel 携带 `.osr` 方便 source navigation 与 audit，`.osri` 仍是静态 compilation authority，
 从而避免 installed source 变成隐式 executable plugin。一次 invocation 一个 target 能保持
 compiler 快速、artifact identity 清晰，同时为以后 OEP 留出扩展空间。
+
+Package-owned backend 与 standard library 使用同一 deployment 方向：validated、可
+relocate Osiris closure 与小型 explicit embedded Python module 从 provider metadata 进入
+consumer private `__osiris_runtime__`，绝不从 provider installed generated namespace
+import。独立管理的 Python 实现仍是普通 package 和明确 dependency。
 
 ## 向后兼容 (Backwards Compatibility)
 
@@ -390,7 +468,7 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 - JSONC fixture 覆盖 comment、trailing comma、duplicate key、最小 config、source 内
   exclusion 与被拒绝 legacy field；
-- init fixture 覆盖新项目、existing uv project、幂等、extension setup 与 uv failure rollback；
+- init fixture 覆盖新项目、existing uv project、幂等、package setup 与 uv failure rollback；
 - module mapping/atomic artifact 测试覆盖 collision/stale output；
 - cache fixture 证明 unchanged reuse、output restore、source/config/target/interface
   invalidation、corruption fallback 和 failed-build safety；
@@ -403,10 +481,24 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 - lock fixture 覆盖 registry、Git、URL、workspace、editable 与 path source；
 - 恶意 marker/interface/wheel/path fail closed 且不 import package code；
 - sdist 能构建含 source、Python、interface、map、record 与 generated marker 的确定 wheel；
+- direct public Osiris call 与 exported macro 生成 private runtime binding 时，都只把其
+  validated transitive backend closure 链接到 consumer `__osiris_runtime__` 下，且不
+  import provider package 或 Osiris runtime；
+- missing、stale、incompatible、incomplete linkable closure 在 Python generation 前失败，
+  undeclared same-distribution Python backend 也必须被拒绝；
+- embedded `python` module 只在其 declared binding 可达时复制，携带完整 static embedded-module
+  import closure，而 `pandas` 等普通 dependency 留在 runtime package 之外；
 - uv 安装的 consumer 能只依赖 validated locked artifact 导入 extension interface 并编译。
 
 ## 修订历史 (Change History)
 
+- Revision 10，2026-07-25：把 embedded Python provider handle 规定为 module-private
+  implementation detail，并要求 consumer reachability 从 validated Osiris `extern` binding
+  开始。
+- Revision 9，2026-07-25：区分 author-facing package 与 extension discovery，以
+  `init --package` 替换 `init --extension`，规定 consumer-owned linkable backend closure，
+  并允许按 module-level reachability 链接 explicit embedded `python` module；external Python
+  dependency 继续保持普通 package。
 - Revision 8，2026-07-25：要求生成 Python 保留 fallback docstring 与可读名称，并在不把
   standard macro 重建进 compiler 的前提下移除安全的结构样板。
 - Revision 7，2026-07-25：定义有界的 project-local artifact cache，并要求在 Python
