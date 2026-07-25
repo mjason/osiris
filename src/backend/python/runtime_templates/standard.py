@@ -33,7 +33,9 @@ def identity(value: Any) -> Any:
     return value
 
 
-def apply(function: Callable[..., Any], prefix: Iterable[Any], arguments: Iterable[Any]) -> Any:
+def apply(
+    function: Callable[..., Any], prefix: Iterable[Any], arguments: Iterable[Any]
+) -> Any:
     """Invoke one Kernel leaf with fixed and variadic positional arguments."""
     return function(*tuple(prefix), *tuple(arguments))
 
@@ -55,12 +57,16 @@ def comp(*functions: Callable[..., Any]) -> Callable[..., Any]:
     return composed
 
 
-def partial(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Callable[..., Any]:
+def partial(
+    function: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Callable[..., Any]:
     return _functools.partial(function, *args, **kwargs)
 
 
 def juxt(*functions: Callable[..., Any]) -> Callable[..., tuple[Any, ...]]:
-    return lambda *args, **kwargs: tuple(function(*args, **kwargs) for function in functions)
+    return lambda *args, **kwargs: tuple(
+        function(*args, **kwargs) for function in functions
+    )
 
 
 def complement(function: Callable[..., Any]) -> Callable[..., bool]:
@@ -123,11 +129,15 @@ def dissoc(collection: object, *keys: object) -> Mapping[object, object]:
     return _LogicalMap(result)
 
 
-def update(collection: object, key: object, function: Callable[..., Any], *args: Any) -> object:
+def update(
+    collection: object, key: object, function: Callable[..., Any], *args: Any
+) -> object:
     return assoc(collection, key, function(get(collection, key), *args))
 
 
-def get_in(collection: object, keys: Iterable[object], not_found: object = None) -> object:
+def get_in(
+    collection: object, keys: Iterable[object], not_found: object = None
+) -> object:
     current = collection
     sentinel = object()
     for key in keys:
@@ -155,7 +165,9 @@ def update_in(
     return assoc_in(collection, path, function(get_in(collection, path), *args))
 
 
-def select_keys(collection: Mapping[Any, Any], keys: Iterable[Any]) -> Mapping[Any, Any]:
+def select_keys(
+    collection: Mapping[Any, Any], keys: Iterable[Any]
+) -> Mapping[Any, Any]:
     return _logical_map((key, collection[key]) for key in keys if key in collection)
 
 
@@ -170,7 +182,9 @@ def merge(*collections: object) -> Mapping[object, object]:
     return result
 
 
-def merge_with(function: Callable[..., Any], *collections: object) -> Mapping[object, object]:
+def merge_with(
+    function: Callable[..., Any], *collections: object
+) -> Mapping[object, object]:
     result: Mapping[object, object] = _LogicalMap()
     for collection in collections:
         if collection is None:
@@ -178,11 +192,15 @@ def merge_with(function: Callable[..., Any], *collections: object) -> Mapping[ob
         if not isinstance(collection, Mapping):
             raise TypeError("merge-with expects mappings or none")
         for key, value in _mapping_entries(collection):
-            result = assoc(result, key, function(result[key], value) if key in result else value)  # type: ignore[assignment]
+            result = assoc(
+                result, key, function(result[key], value) if key in result else value
+            )  # type: ignore[assignment]
     return result
 
 
-def group_by(function: Callable[[Any], Any], collection: object) -> Mapping[Any, tuple[Any, ...]]:
+def group_by(
+    function: Callable[[Any], Any], collection: object
+) -> Mapping[Any, tuple[Any, ...]]:
     groups: list[tuple[Any, list[Any]]] = []
     for value in _iter_or_empty(collection):
         key = function(value)
@@ -214,7 +232,9 @@ def index_by(function: Callable[[Any], Any], collection: object) -> Mapping[Any,
     )
 
 
-def rename_keys(collection: Mapping[Any, Any], renames: Mapping[Any, Any]) -> Mapping[Any, Any]:
+def rename_keys(
+    collection: Mapping[Any, Any], renames: Mapping[Any, Any]
+) -> Mapping[Any, Any]:
     return _logical_map(
         ((renames.get(key, key), value) for key, value in _mapping_entries(collection)),
         reject_collisions=True,
@@ -222,7 +242,9 @@ def rename_keys(collection: Mapping[Any, Any], renames: Mapping[Any, Any]) -> Ma
     )
 
 
-def update_keys(function: Callable[[Any], Any], collection: Mapping[Any, Any]) -> Mapping[Any, Any]:
+def update_keys(
+    function: Callable[[Any], Any], collection: Mapping[Any, Any]
+) -> Mapping[Any, Any]:
     return _logical_map(
         ((function(key), value) for key, value in _mapping_entries(collection)),
         reject_collisions=True,
@@ -230,8 +252,12 @@ def update_keys(function: Callable[[Any], Any], collection: Mapping[Any, Any]) -
     )
 
 
-def update_vals(function: Callable[[Any], Any], collection: Mapping[Any, Any]) -> Mapping[Any, Any]:
-    return _LogicalMap((key, function(value)) for key, value in _mapping_entries(collection))
+def update_vals(
+    function: Callable[[Any], Any], collection: Mapping[Any, Any]
+) -> Mapping[Any, Any]:
+    return _LogicalMap(
+        (key, function(value)) for key, value in _mapping_entries(collection)
+    )
 
 
 def zipmap(keys: Iterable[Any], values: Iterable[Any]) -> Mapping[Any, Any]:
@@ -249,7 +275,9 @@ def invert(collection: Mapping[Any, Any]) -> Mapping[Any, Any]:
 def range(*arguments: int) -> _LazySeq:
     if not 1 <= len(arguments) <= 3:
         raise TypeError("range expects end, start/end, or start/end/step")
-    if any(not isinstance(value, int) or isinstance(value, bool) for value in arguments):
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) for value in arguments
+    ):
         raise TypeError("range arguments must be integers")
     if len(arguments) == 3 and arguments[2] == 0:
         raise ValueError("range step cannot be zero")
@@ -404,7 +432,10 @@ nan_p = _math.isnan
 
 
 def pmap(function: Callable[..., Any], *collections: Iterable[Any]) -> tuple[Any, ...]:
-    futures = tuple(future_call(lambda values=values: function(*values)) for values in zip(*collections))
+    futures = tuple(
+        future_call(lambda values=values: function(*values))
+        for values in zip(*collections)
+    )
     return tuple(deref(value) for value in futures)
 
 
@@ -440,7 +471,11 @@ def del_item_bang(value: object, key: object) -> None:
     del value[key]  # type: ignore[index]
 
 
-def call(function: Callable[..., Any], args: Iterable[Any], kwargs: Mapping[str, Any] | None = None) -> Any:
+def call(
+    function: Callable[..., Any],
+    args: Iterable[Any],
+    kwargs: Mapping[str, Any] | None = None,
+) -> Any:
     return function(*tuple(args), **({} if kwargs is None else dict(kwargs)))
 
 
@@ -453,6 +488,10 @@ def type_name(value: object) -> str:
     return f"{value_type.__module__}.{value_type.__qualname__}"
 
 
-__all__ = [name for name in globals() if not name.startswith("_") and name not in {
-    "Any", "Callable", "Iterable", "Mapping", "Sequence", "annotations"
-}]
+__all__ = [
+    name
+    for name in globals()
+    if not name.startswith("_")
+    and name
+    not in {"Any", "Callable", "Iterable", "Mapping", "Sequence", "annotations"}
+]

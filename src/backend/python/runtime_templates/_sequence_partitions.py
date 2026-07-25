@@ -12,6 +12,7 @@ from ._sequence_core import _LazySeq, _MISSING, _iter_or_empty, lazy_seq
 from ._sequence_eager import Reduced
 from ._sequence_transforms import _clojure_equal
 
+
 def _positive_partition_integer(value: object, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise TypeError(f"{name} must be an integer")
@@ -234,11 +235,15 @@ def drop_last(*arguments: object) -> _LazySeq:
     return lazy_seq(produce)
 
 
-def reductions(function: Callable[[object, object], object], *arguments: object) -> _LazySeq:
+def reductions(
+    function: Callable[[object, object], object], *arguments: object
+) -> _LazySeq:
     """Yield each intermediate accumulator, including the initial value."""
 
     if len(arguments) not in (1, 2):
-        raise TypeError("reductions expects function, collection, or initial value and collection")
+        raise TypeError(
+            "reductions expects function, collection, or initial value and collection"
+        )
 
     def produce() -> Iterator[object]:
         iterator = _iter_or_empty(arguments[0] if len(arguments) == 1 else arguments[1])

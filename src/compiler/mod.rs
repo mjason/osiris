@@ -21,7 +21,6 @@ use crate::{
     },
     macro_expand::{self, ExpansionOptions, ExpansionTrace, ImportedPhaseModule},
     module_graph::{ModuleGraph, ModuleGraphError},
-    name::python_identifier,
     project::PythonVersion,
     reader, records, source_map,
     syntax::{Document, Name},

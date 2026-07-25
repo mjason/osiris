@@ -1,6 +1,7 @@
 use super::{
     BindingKind, CONFUSABLE_IDENTIFIER, INVISIBLE_IDENTIFIER, MIXED_SCRIPT_IDENTIFIER,
     NameAllocator, lint_forms_strict, lint_identifier_strict, python_identifier,
+    python_module_identifier,
 };
 use crate::{reader::read, source::Span};
 
@@ -10,6 +11,10 @@ fn maps_lisp_and_unicode_names_deterministically() {
     assert_eq!(python_identifier("empty?"), "empty_p");
     assert_eq!(python_identifier("归一化数据"), "归一化数据");
     assert_eq!(python_identifier("class"), "class_");
+    assert_eq!(
+        python_module_identifier("example.data-tools"),
+        "example.data_tools"
+    );
 }
 
 #[test]

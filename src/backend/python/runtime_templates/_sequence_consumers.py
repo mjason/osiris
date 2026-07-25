@@ -8,6 +8,7 @@ from collections.abc import Callable
 from ._sequence_core import _MISSING, _iter_or_empty
 from .control import truthy
 
+
 def run_bang(function: Callable[[object], object], collection: object) -> None:
     """Invoke ``function`` for each item and discard all results."""
 

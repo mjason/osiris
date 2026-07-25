@@ -12,8 +12,8 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-24
-revision: 12
+updated: 2026-07-25
+revision: 13
 requires: [0]
 replaces: []
 superseded-by: null
@@ -769,9 +769,13 @@ Guide](https://guide.clojure.style/) source-layout conventions. That guide is
 design provenance, not a moving normative dependency: the rules below are the
 complete Osiris contract, and this OEP controls wherever the languages differ.
 
-- The preferred maximum line width MUST be 80 Unicode scalar values. An atomic
-  string, symbol, keyword, number, or comment MAY exceed it; the formatter MUST
-  NOT alter literal or identifier contents merely to enforce the limit.
+- The preferred maximum line width MUST be 80 Unicode display columns. Width
+  MUST follow the formatting version's fixed Unicode width table: wide and
+  full-width characters occupy two columns, combining characters occupy zero,
+  and ambiguous-width characters occupy one. An atomic string, symbol,
+  keyword, number, or comment MAY exceed the limit; the formatter MUST NOT
+  alter literal or identifier contents merely to enforce it. Indentation and
+  hanging alignment MUST use the same display-column calculation.
 - Indentation MUST use spaces, never tabs. Forms with body parameters MUST
   indent the body two spaces from the opening parenthesis. Closing delimiters
   MUST be gathered onto the final content line and MUST NOT occupy a line by
@@ -1029,6 +1033,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 13, 2026-07-25: Defined line width and hanging indentation in
+  deterministic Unicode display columns so wide localized names align with
+  ASCII names.
 - Revision 12, 2026-07-24: Reserved `:aliases` for source migration,
   required spelling roles to survive interfaces and semantic indexes, and
   specified non-failing replacement advisories across compiler CLI, LSC, and

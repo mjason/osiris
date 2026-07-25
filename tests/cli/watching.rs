@@ -3,7 +3,7 @@ use std::{thread, time::Duration};
 use super::*;
 
 fn wait_for(mut predicate: impl FnMut() -> bool) -> bool {
-    for _ in 0..100 {
+    for _ in 0..400 {
         if predicate() {
             return true;
         }

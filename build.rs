@@ -92,6 +92,13 @@ struct Document {
 }
 
 fn main() {
+    for path in ["build.rs", "Cargo.toml", "Cargo.lock", "src"] {
+        println!("cargo:rerun-if-changed={path}");
+    }
+    println!(
+        "cargo:rustc-env=OSIRIS_COMPILER_BUILD_HASH={}",
+        compiler_build_hash()
+    );
     println!("cargo:rerun-if-changed=oeps/oeps.jsonc");
     println!("cargo:rerun-if-changed=docs/syntax.md");
     for entry in fs::read_dir("oeps").expect("read oeps") {
@@ -171,6 +178,37 @@ fn main() {
         "cargo:rustc-env=OSIRIS_STDLIB_TREE_HASH={}",
         standard_resource_hash(standard_root)
     );
+}
+
+fn compiler_build_hash() -> String {
+    let mut files = vec![
+        PathBuf::from("build.rs"),
+        PathBuf::from("Cargo.toml"),
+        PathBuf::from("Cargo.lock"),
+    ];
+    collect_files(Path::new("src"), &mut files);
+    files.sort();
+    let mut digest = Sha256::new();
+    for path in files {
+        let relative = path.to_string_lossy().replace('\\', "/");
+        let bytes = fs::read(&path).expect("read compiler build input");
+        digest.update((relative.len() as u64).to_be_bytes());
+        digest.update(relative.as_bytes());
+        digest.update((bytes.len() as u64).to_be_bytes());
+        digest.update(bytes);
+    }
+    format!("sha256:{:x}", digest.finalize())
+}
+
+fn collect_files(directory: &Path, files: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(directory).expect("read compiler source directory") {
+        let path = entry.expect("compiler source entry").path();
+        if path.is_dir() {
+            collect_files(&path, files);
+        } else if path.is_file() {
+            files.push(path);
+        }
+    }
 }
 
 fn standard_resource_hash(root: &Path) -> String {

@@ -7,6 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use ruff_python_formatter::{PyFormatOptions, format_module_source};
+
 use crate::{
     hir::{self, ExprKind, ItemKind, Operator},
     name::python_identifier,
@@ -31,6 +33,10 @@ pub struct RuntimeSupport {
     pub helpers: BTreeSet<String>,
     pub binding_ids: BTreeSet<String>,
 }
+
+/// Changes whenever generated Python formatting can change without another
+/// public compiler ABI changing.
+pub const PYTHON_FORMATTER_ABI: &str = "ruff-python-formatter-0.0.4/default-v1";
 
 /// An error raised while lowering a semantically valid HIR to Python.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -88,9 +94,7 @@ pub fn compile_module(
     final_body.extend(backend.typevar_declarations());
     final_body.extend(body);
     let python_module = py::Module::new(final_body);
-    let source = python_module
-        .to_source()
-        .map_err(|error| BackendError::new(error.to_string(), None))?;
+    let source = render_formatted_module(&python_module)?;
     Ok(GeneratedPython {
         module: python_module,
         source,
@@ -118,9 +122,7 @@ pub(crate) fn compile_module_with_runtime(
     final_body.extend(backend.typevar_declarations());
     final_body.extend(body);
     let python_module = py::Module::new(final_body);
-    let source = python_module
-        .to_source()
-        .map_err(|error| BackendError::new(error.to_string(), None))?;
+    let source = render_formatted_module(&python_module)?;
     Ok(GeneratedPython {
         module: python_module,
         source,
@@ -135,6 +137,20 @@ pub fn emit_module(
     target: impl Into<PythonVersion>,
 ) -> Result<GeneratedPython, BackendError> {
     compile_module(module, target)
+}
+
+fn render_formatted_module(module: &py::Module) -> Result<String, BackendError> {
+    let source = module
+        .to_source()
+        .map_err(|error| BackendError::new(error.to_string(), None))?;
+    format_module_source(&source, PyFormatOptions::default())
+        .map(|formatted| formatted.into_code())
+        .map_err(|error| {
+            BackendError::new(
+                format!("could not format generated Python with Ruff: {error}"),
+                None,
+            )
+        })
 }
 
 struct Backend<'hir> {

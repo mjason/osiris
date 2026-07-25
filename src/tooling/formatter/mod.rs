@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::{
     diagnostic::Diagnostic,
     reader,
@@ -9,7 +11,7 @@ use crate::{
 };
 
 /// Version of the byte-level canonical formatting contract.
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 5;
 
 const MAX_LINE_WIDTH: usize = 80;
 const METADATA_LINE_WIDTH: usize = 72;
@@ -125,7 +127,7 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
         }
         let token_column = column;
         output.push_str(&token.text);
-        column += token.text.chars().count();
+        column += display_width(&token.text);
         line_start = false;
         if is_opening(token.kind) {
             depth += 1;
@@ -306,7 +308,7 @@ impl LayoutPlan {
             "case" => self.plan_pairs(form, items, 2),
             "condp" => self.plan_pairs(form, items, 3),
             "->" | "->>" | "some->" | "some->>" => {
-                let offset = head.chars().count() + 2;
+                let offset = display_width(head) + 2;
                 for step in items.iter().skip(2) {
                     self.add_break(step.span.start, form.datum_span.start, offset);
                 }
@@ -323,7 +325,7 @@ impl LayoutPlan {
                 }
             }
             _ if width > MAX_LINE_WIDTH => {
-                let offset = head.chars().count() + 2;
+                let offset = display_width(head) + 2;
                 for argument in items.iter().skip(2) {
                     self.add_break(argument.span.start, form.datum_span.start, offset);
                 }
@@ -406,7 +408,7 @@ fn flat_width(start: usize, end: usize, tokens: &[Token]) -> usize {
         if needs_space(previous, token.kind) {
             width += 1;
         }
-        width += token.text.chars().count();
+        width += display_width(&token.text);
         previous = Some(token.kind);
     }
     width
@@ -418,6 +420,10 @@ fn resolve_indent(spec: BreakSpec, delimiters: &[(usize, usize)]) -> usize {
         .rev()
         .find_map(|(position, column)| (*position == spec.anchor).then_some(*column + spec.offset))
         .unwrap_or(spec.offset)
+}
+
+fn display_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
 }
 
 fn enclosing_delimiter(tokens: &[Token], position: usize, kind: TokenKind) -> Option<usize> {

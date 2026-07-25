@@ -393,6 +393,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn embedded_runtime_templates_are_canonical_ruff_output() {
+        for module in [
+            SupportModule::Control,
+            SupportModule::Logical,
+            SupportModule::SequenceCore,
+            SupportModule::SequenceEager,
+            SupportModule::SequenceTransforms,
+            SupportModule::SequencePartitions,
+            SupportModule::SequenceConsumers,
+            SupportModule::Standard,
+        ] {
+            let formatted = ruff_python_formatter::format_module_source(
+                module.source(),
+                ruff_python_formatter::PyFormatOptions::default(),
+            )
+            .expect("embedded runtime Python should remain valid Ruff input")
+            .into_code();
+            assert_eq!(
+                formatted,
+                module.source(),
+                "{} is not formatted",
+                module.path()
+            );
+        }
+    }
+
+    #[test]
     fn support_linking_uses_the_transitive_module_closure() {
         let files = runtime_support_files(
             "demo.__osiris_runtime__",

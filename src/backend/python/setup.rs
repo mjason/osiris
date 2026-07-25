@@ -296,8 +296,10 @@ impl<'hir> Backend<'hir> {
                     .insert(id.as_str().to_owned());
             }
             self.runtime_module.clone()
-        } else {
+        } else if runtime.python_module {
             runtime.module.replace('/', ".")
+        } else {
+            crate::name::python_module_identifier(&runtime.module)
         };
         self.from_imports
             .entry(module)
@@ -340,7 +342,11 @@ impl<'hir> Backend<'hir> {
             .get(&import.binding)
             .cloned()
             .unwrap_or_else(|| python_identifier(&import.module));
-        let module = import.module.replace('/', ".");
+        let module = if import.python {
+            import.module.replace('/', ".")
+        } else {
+            crate::name::python_module_identifier(&import.module)
+        };
         let default_local = module.rsplit('.').next().unwrap_or(&module);
         let alias = (local != default_local).then_some(local);
         self.direct_imports.insert(module, alias);
@@ -434,6 +440,11 @@ impl<'hir> Backend<'hir> {
 fn runtime_module_for(module: &str) -> String {
     module.split_once('.').map_or_else(
         || "__osiris_runtime__".to_owned(),
-        |(package, _)| format!("{package}.__osiris_runtime__"),
+        |(package, _)| {
+            format!(
+                "{}.__osiris_runtime__",
+                crate::name::python_identifier(package)
+            )
+        },
     )
 }

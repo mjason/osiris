@@ -135,10 +135,12 @@ fn declaration_markers(module: &hir::Module) -> Vec<(String, Span)> {
                 }
             }
             ItemKind::Import(import) => {
-                markers.push((
-                    format!("import {}", import.module.replace('/', ".")),
-                    item.span,
-                ));
+                let module = if import.python {
+                    import.module.replace('/', ".")
+                } else {
+                    crate::name::python_module_identifier(&import.module)
+                };
+                markers.push((format!("import {module}"), item.span));
             }
             ItemKind::Expr(_) | ItemKind::StaticSchema(_) | ItemKind::StaticRecord(_) => {}
         }

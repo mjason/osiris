@@ -173,6 +173,16 @@ pub fn python_identifier(name: &str) -> String {
     result
 }
 
+/// Maps every component of an Osiris module path to its Python import path.
+#[must_use]
+pub fn python_module_identifier(module: &str) -> String {
+    module
+        .split(['/', '.'])
+        .map(python_identifier)
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
 fn is_python_keyword(name: &str) -> bool {
     matches!(
         name,

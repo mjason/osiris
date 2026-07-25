@@ -12,11 +12,11 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-24
-revision: 12
+updated: 2026-07-25
+revision: 13
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 12
+source-revision: 13
 translation-status: Current
 requires: [0]
 replaces: []
@@ -652,8 +652,10 @@ Canonical layout 以 [Clojure Style Guide](https://guide.clojure.style/) 的 sou
 惯例为基线。该指南只说明设计来源，不是会随上游变化的动态规范依赖；下面的规则构成
 完整 Osiris contract，两门语言存在差异时以本 OEP 为准。
 
-- 建议最大行宽必须是 80 个 Unicode scalar value。单个 string、symbol、keyword、number
-  或 comment 可以超过此限制；formatter 不得为了行宽改变 literal 或 identifier content。
+- 建议最大行宽必须是 80 个 Unicode 显示列。宽度必须使用当前 formatting version 固定的
+  Unicode width table：宽字符和全角字符占 2 列，组合字符占 0 列，歧义宽度字符占 1 列。
+  单个 string、symbol、keyword、number 或 comment 可以超过此限制；formatter 不得为了
+  行宽改变 literal 或 identifier content。缩进和悬挂对齐必须使用同一套显示列计算。
 - 缩进必须使用 space，禁止 tab。带 body parameter 的 form 必须从 opening parenthesis
   向内缩进两个 space。Closing delimiter 必须收拢在最后一个 content line，禁止单独占行。
 - Function/macro call 无法放入一行时，应尽量把第一个 argument 留在 callee 同一行，后续
@@ -866,6 +868,8 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 13，2026-07-25：使用确定性的 Unicode 显示列定义行宽和悬挂缩进，使宽字符
+  本地化名称与 ASCII 名称正确对齐。
 - Revision 12，2026-07-24：规定 `:aliases` 只用于源码迁移，要求 interface 与 semantic
   index 保留 spelling role，并规定 compiler CLI、LSC、LSP 都提供不阻断编译的替换提示。
 - Revision 11，2026-07-24：定义本地化参数 keyword spelling、signature-local resolution、

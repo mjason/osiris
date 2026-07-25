@@ -4,6 +4,124 @@ use super::*;
 mod extensions;
 
 #[test]
+fn project_build_cache_reuses_and_restores_the_complete_dist() {
+    let fixture = SourceFixture::new("none\n");
+    fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"cached-project\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"],"outDir":"dist","targetPython":"3.11"}"#,
+    )
+    .unwrap();
+
+    let first = osr(&["build", path_argument(&fixture.directory)]);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let generated = fixture.directory.join("dist/main.py");
+    let manifest = fixture
+        .directory
+        .join(".osiris/cache/workspace-v1/manifest.json");
+    assert!(manifest.is_file());
+
+    #[cfg(unix)]
+    let original_inode = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&generated).unwrap().ino()
+    };
+    let second = osr(&["build", path_argument(&fixture.directory)]);
+    assert!(second.status.success());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(&generated).unwrap().ino(), original_inode);
+    }
+
+    fs::remove_dir_all(fixture.directory.join("dist")).unwrap();
+    let restored = osr(&["build", path_argument(&fixture.directory)]);
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    assert!(generated.is_file());
+    assert!(!fixture.directory.join("dist/.osiris").exists());
+}
+
+#[test]
+fn project_build_cache_invalidates_inputs_and_ignores_failed_builds() {
+    let fixture = SourceFixture::new("none\n");
+    let source = fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"cache-inputs\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    let config = fixture.directory.join("osiris.jsonc");
+    fs::write(
+        &config,
+        r#"{"source":["src"],"outDir":"dist","targetPython":"3.11"}"#,
+    )
+    .unwrap();
+    let manifest = fixture
+        .directory
+        .join(".osiris/cache/workspace-v1/manifest.json");
+
+    assert!(
+        osr(&["build", path_argument(&fixture.directory)])
+            .status
+            .success()
+    );
+    let first: serde_json::Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+
+    fs::write(&source, "(module main)\n(def value 2)\n").unwrap();
+    assert!(
+        osr(&["build", path_argument(&fixture.directory)])
+            .status
+            .success()
+    );
+    let second: serde_json::Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_ne!(first["key"], second["key"]);
+    assert!(
+        fs::read_to_string(fixture.directory.join("dist/main.py"))
+            .unwrap()
+            .contains("value: int = 2")
+    );
+
+    fs::write(
+        &config,
+        r#"{"source":["src"],"outDir":"dist","targetPython":"3.12"}"#,
+    )
+    .unwrap();
+    assert!(
+        osr(&["build", path_argument(&fixture.directory)])
+            .status
+            .success()
+    );
+    let third: serde_json::Value = serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    assert_ne!(second["key"], third["key"]);
+    let map: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.directory.join("dist/main.py.map")).unwrap())
+            .unwrap();
+    assert_eq!(map["python_target"], "3.12");
+
+    let cache_before_failure = fs::read(&manifest).unwrap();
+    fs::write(&source, "(module main\n").unwrap();
+    assert!(
+        !osr(&["build", path_argument(&fixture.directory)])
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(&manifest).unwrap(), cache_before_failure);
+}
+
+#[test]
 fn build_compiles_the_jsonc_project_without_a_source_argument() {
     let fixture = SourceFixture::new("none\n");
     fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
@@ -126,6 +244,12 @@ fn compile_writes_parseable_python_and_source_map_atomically() {
             .is_some_and(|hash| hash.starts_with("sha256:"))
     );
     assert_eq!(map["generated"], "sample.py");
+    let generated_lines = fs::read_to_string(&python).unwrap().lines().count();
+    assert_eq!(
+        map["mappings"].as_array().map(Vec::len),
+        Some(generated_lines),
+        "source-map positions must describe Ruff-formatted Python"
+    );
     assert!(
         map["mappings"]
             .as_array()

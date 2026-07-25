@@ -61,6 +61,7 @@ pub(super) fn build_hash(
         &analysis.source_hash,
         &analysis.hir.trust_policy_hash,
         &target_python,
+        backend::PYTHON_FORMATTER_ABI,
         interface.map_or("none", interface::Interface::semantic_interface_hash),
     ])
 }
@@ -244,8 +245,8 @@ pub(super) fn sort_located_diagnostics(diagnostics: &mut [LocatedDiagnostic]) {
 #[must_use]
 pub fn python_module_path(module_name: &str) -> PathBuf {
     let mut path = PathBuf::new();
-    for component in module_name.split(['/', '.']) {
-        path.push(python_identifier(component));
+    for component in crate::name::python_module_identifier(module_name).split('.') {
+        path.push(component);
     }
     path.set_extension("py");
     path

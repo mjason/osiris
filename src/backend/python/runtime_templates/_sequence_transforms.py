@@ -86,7 +86,9 @@ def keep(function: Callable[[object], object], collection: object) -> _LazySeq:
     return lazy_seq(produce)
 
 
-def keep_indexed(function: Callable[[int, object], object], collection: object) -> _LazySeq:
+def keep_indexed(
+    function: Callable[[int, object], object], collection: object
+) -> _LazySeq:
     """Indexed variant of :func:`keep`."""
 
     def produce() -> Iterator[object]:
@@ -98,7 +100,9 @@ def keep_indexed(function: Callable[[int, object], object], collection: object) 
     return lazy_seq(produce)
 
 
-def map_indexed(function: Callable[[int, object], _Result], collection: object) -> _LazySeq:
+def map_indexed(
+    function: Callable[[int, object], _Result], collection: object
+) -> _LazySeq:
     """Map a function over ``(index, value)`` pairs lazily."""
 
     def produce() -> Iterator[_Result]:

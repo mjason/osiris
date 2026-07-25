@@ -133,6 +133,13 @@ set atomically. `watch` reruns that same build when a non-excluded `.osr`
 source changes. `compile` remains the lower-level command for explicit source
 and `--emit` control.
 
+Successful project builds keep one bounded cache entry in `.osiris/cache/`.
+It is separate from `dist/`, is never published, and can always be deleted.
+Unchanged builds leave an identical `dist/` untouched; a missing or stale
+`dist/` can be restored from the validated cache. Generated Python is formatted
+by the Ruff formatter embedded in `osr` before source maps are produced, so no
+external `ruff` command or project Ruff configuration is required.
+
 - `dist/hello.py` is the readable generated Python module.
 - `dist/hello.osri` is the public, versioned Osiris compilation
   interface used by downstream modules and tools.

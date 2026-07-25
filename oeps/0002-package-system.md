@@ -12,8 +12,8 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-23
-revision: 6
+updated: 2026-07-25
+revision: 7
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -354,6 +354,28 @@ release line. The `0.3.0` release therefore generates `osiris-lang>=0.3,<0.4`.
 Artifacts and markers MUST additionally record the exact language, interface,
 standard-library, and helper ABI values required for compilation.
 
+**OEP-0002-R046:** Project compilation MAY reuse one bounded, versioned cache
+under `.osiris/cache/`. The cache MUST remain separate from `outDir`, MUST NOT
+be published, and MUST be safe to delete at any time. A cache identity MUST
+cover source bytes and module identities, semantic project and lock inputs,
+the target and strict mode, compiler/language/interface ABIs, generated-Python
+formatter ABI, trust-policy hash, selected artifact kinds, standard-library
+identity, and every selected external interface's semantic, tooling, and
+content hashes. Implementations MUST NOT use modification times as correctness
+evidence. They MUST validate static dependencies before lookup, treat an
+unknown, malformed, partial, oversized, path-escaping, or hash-mismatched entry
+as a miss, replace cache state atomically, and never let a failed build poison
+the last successful entry. A hit MAY leave an already identical `outDir`
+untouched or restore the same artifact paths atomically when output is absent
+or stale; cache use MUST NOT change the artifact contract.
+
+**OEP-0002-R047:** Every generated `.py` artifact, including source-compiled
+standard facades and compiler-linked private runtime modules, MUST use the one
+compiler-pinned Ruff formatting profile. Formatting MUST complete before
+generated-source hashes and `.py.map` positions are calculated. The formatter
+MUST be embedded in the native compiler; builds MUST NOT depend on an ambient
+`ruff` executable, Python process, or project-specific Ruff configuration.
+
 ## Rationale
 
 The configuration is deliberately small. `source` already defines the watch
@@ -455,6 +477,10 @@ A conforming implementation provides evidence that:
 - init fixtures cover a new project, an existing uv project, idempotence,
   extension setup, and rollback on uv failure;
 - module mapping and atomic artifact tests cover collisions and stale outputs;
+- cache fixtures prove unchanged reuse, output restoration, source/config/
+  target/interface invalidation, corruption fallback, and failed-build safety;
+- generated Python and linked runtime fixtures are idempotent under the pinned
+  Ruff profile, and source maps refer to the formatted line layout;
 - watch tests prove build-equivalent scope, output exclusion, event coalescing,
   config/lock changes, and prompt interruption without Python;
 - lock fixtures cover registry, Git, URL, workspace, editable, and path sources;
@@ -467,6 +493,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 7, 2026-07-25: Defined the bounded project-local artifact cache and
+  required embedded, compiler-pinned Ruff formatting before Python hashes and
+  source-map generation.
 - Revision 6, 2026-07-23: Required hash-validated references to packaged source
   in wheel maps, standard PEP 660 editable wheels, and current-minor pre-stable
   scaffold dependency ranges with exact ABI metadata.

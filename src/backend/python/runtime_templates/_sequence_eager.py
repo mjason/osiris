@@ -11,6 +11,7 @@ from .control import truthy
 
 _Result = TypeVar("_Result")
 
+
 def nonempty(collection: object) -> bool:
     """Test a collection without consuming memoized lazy values."""
 
@@ -32,9 +33,7 @@ def for_stop() -> _ForStop:
     return _FOR_STOP
 
 
-def doseq(
-    function: Callable[[object], object], collection: Iterable[object]
-) -> None:
+def doseq(function: Callable[[object], object], collection: Iterable[object]) -> None:
     """Invoke ``function`` in order without materializing callback results."""
 
     for value in _iter_or_empty(collection):
@@ -58,9 +57,7 @@ def mapv(
     return tuple(_map_values(function, collections))
 
 
-def map(
-    function: Callable[..., _Result], *collections: Iterable[object]
-) -> _LazySeq:
+def map(function: Callable[..., _Result], *collections: Iterable[object]) -> _LazySeq:
     """Apply ``function`` lazily and memoize realized values.
 
     ``mapv`` is the explicit eager Vector form.  Keeping laziness in the
@@ -109,11 +106,7 @@ def mapcat(
 def _filter_values(
     predicate: Callable[[object], object], collection: Iterable[object]
 ) -> Iterator[object]:
-    return (
-        value
-        for value in _iter_or_empty(collection)
-        if truthy(predicate(value))
-    )
+    return (value for value in _iter_or_empty(collection) if truthy(predicate(value)))
 
 
 def filterv(
@@ -137,12 +130,12 @@ def removev(
 ) -> tuple[object, ...]:
     """Vector form of ``remove`` using Clojure truthiness."""
 
-    return tuple(value for value in _iter_or_empty(collection) if not truthy(predicate(value)))
+    return tuple(
+        value for value in _iter_or_empty(collection) if not truthy(predicate(value))
+    )
 
 
-def remove(
-    predicate: Callable[[object], object], collection: object
-) -> _LazySeq:
+def remove(predicate: Callable[[object], object], collection: object) -> _LazySeq:
     """Lazily retain values for which ``predicate`` is false/nil."""
 
     def produce() -> Iterator[object]:

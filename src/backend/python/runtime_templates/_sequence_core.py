@@ -9,6 +9,7 @@ from typing import Iterator, Optional
 
 _MISSING = object()
 
+
 class _LazySeq:
     """Memoized lazy sequence that realizes elements one at a time.
 

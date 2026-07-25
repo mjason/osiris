@@ -12,11 +12,11 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-23
-revision: 6
+updated: 2026-07-25
+revision: 7
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 6
+source-revision: 7
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -287,6 +287,23 @@ editable-directory 或 source-tree scan 发现 extension。
 `osiris-lang>=0.3,<0.4`。Artifact/marker 还必须记录 compilation 所需的确切 language、
 interface、standard-library 与 helper ABI value。
 
+**OEP-0002-R046：** Project compilation 可以复用 `.osiris/cache/` 下一个有界且版本化的
+cache。Cache 必须与 `outDir` 分离、不得发布，并且在任何时候删除都不影响正确性。Cache
+identity 必须覆盖 source bytes/module identity、语义 project/lock input、target/strict、
+compiler/language/interface ABI、generated-Python formatter ABI、trust-policy hash、所选
+artifact kind、standard-library identity，以及每个所选 external interface 的 semantic、
+tooling 和 content hash。实现不得把 modification time 当作正确性依据；lookup 前必须验证
+静态 dependency；unknown、malformed、partial、oversized、path-escaping 或 hash-mismatch
+entry 必须视为 miss；cache state 必须原子替换；失败 build 不得污染最后一次成功 entry。
+命中时可以保持完全相同的 `outDir` 不动，也可以在 output 缺失或 stale 时原子恢复同一套
+artifact path；使用 cache 不得改变 artifact contract。
+
+**OEP-0002-R047：** 每个生成 `.py` artifact，包括由源码编译的 standard facade 和由
+compiler 链接的 private runtime module，都必须使用 compiler 固定的统一 Ruff formatting
+profile。Formatting 必须在计算 generated-source hash 与 `.py.map` position 之前完成。
+Formatter 必须嵌入 native compiler；build 不得依赖 ambient `ruff` executable、Python
+process 或项目自己的 Ruff configuration。
+
 ## 理由 (Rationale)
 
 配置故意保持小型。`source` 已定义 watch scope，第二个 watch field 会产生矛盾 tree；
@@ -367,6 +384,10 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
   exclusion 与被拒绝 legacy field；
 - init fixture 覆盖新项目、existing uv project、幂等、extension setup 与 uv failure rollback；
 - module mapping/atomic artifact 测试覆盖 collision/stale output；
+- cache fixture 证明 unchanged reuse、output restore、source/config/target/interface
+  invalidation、corruption fallback 和 failed-build safety；
+- generated Python/runtime fixture 对固定 Ruff profile 保持 idempotent，source map 指向
+  formatting 后的 line layout；
 - watch 测试证明与 build 相同 scope、排除 output、合并 event、响应 config/lock change、
   无 Python 且可立即中断；
 - lock fixture 覆盖 registry、Git、URL、workspace、editable 与 path source；
@@ -376,6 +397,8 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 7，2026-07-25：定义有界的 project-local artifact cache，并要求在 Python
+  hash/source map 生成前使用嵌入 compiler、固定版本的 Ruff formatter。
 - Revision 6，2026-07-23：要求 wheel map hash-validated 引用 packaged source、使用标准
   PEP 660 editable wheel，并采用带确切 ABI metadata 的当前 minor pre-stable scaffold
   dependency range。

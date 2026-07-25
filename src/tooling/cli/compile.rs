@@ -27,11 +27,11 @@ pub(super) enum EmitKind {
 }
 
 pub(super) struct CompileArguments<'a> {
-    paths: Vec<&'a str>,
-    out_dir: Option<&'a str>,
-    site_roots: Vec<&'a str>,
-    emit: BTreeSet<EmitKind>,
-    explicit_emit: bool,
+    pub(super) paths: Vec<&'a str>,
+    pub(super) out_dir: Option<&'a str>,
+    pub(super) site_roots: Vec<&'a str>,
+    pub(super) emit: BTreeSet<EmitKind>,
+    pub(super) explicit_emit: bool,
 }
 
 pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
@@ -117,6 +117,27 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
     for (_, _, options) in &mut sources {
         options.trust_policy = loaded.trust_policy.clone();
     }
+    let out_dir = arguments
+        .out_dir
+        .map_or_else(|| context.default_out_dir.clone(), PathBuf::from);
+    let workspace_cache = workspace_cache(&context, &sources, &loaded, &arguments);
+    if let Some((cache, key)) = &workspace_cache
+        && let Some(artifacts) = cache.load(key)
+    {
+        if !crate::cache::output_matches(&out_dir, &artifacts)
+            && let Err(error) = publish_artifacts(&out_dir, &artifacts)
+        {
+            return CliOutcome::failure(
+                1,
+                String::new(),
+                format!(
+                    "osr: could not restore cached artifacts to '{}': {error}\n",
+                    out_dir.display()
+                ),
+            );
+        }
+        return CliOutcome::success(format!("{}\n", out_dir.display()));
+    }
     let compile_inputs = sources
         .iter()
         .map(|(_, source, options)| compiler::CompileInput::new(source, options))
@@ -152,9 +173,6 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
             return CliOutcome::failure(1, String::new(), stderr);
         }
     };
-    let out_dir = arguments
-        .out_dir
-        .map_or(context.default_out_dir, PathBuf::from);
     let mut artifacts = Vec::new();
     let mut runtime_packages = BTreeMap::<String, LinkedSupport>::new();
     for (_, _, result) in units {
@@ -311,6 +329,9 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                 out_dir.display()
             ),
         );
+    }
+    if let Some((cache, key)) = workspace_cache {
+        let _ = cache.store(&key, &artifacts);
     }
 
     CliOutcome::success(format!("{}\n", out_dir.display()))

@@ -39,6 +39,7 @@ __all__ = [
     "truthy",
 ]
 
+
 def truthy(value: object) -> bool:
     """Return Clojure truthiness: only ``None`` and ``False`` are false."""
 
@@ -188,9 +189,7 @@ def delay(thunk: Callable[[], _Result]) -> Delay[_Result]:
 
 
 _TIMEOUT_UNSET = object()
-_FUTURE_EXECUTOR = _futures.ThreadPoolExecutor(
-    thread_name_prefix="osiris-future"
-)
+_FUTURE_EXECUTOR = _futures.ThreadPoolExecutor(thread_name_prefix="osiris-future")
 
 
 def _timeout_seconds(timeout_ms: object) -> Optional[float]:

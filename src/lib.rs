@@ -4,6 +4,8 @@ pub mod artifact;
 pub mod ast;
 #[path = "backend/python/mod.rs"]
 pub mod backend;
+#[path = "packaging/cache/mod.rs"]
+pub mod cache;
 #[path = "tooling/cli/mod.rs"]
 pub mod cli;
 #[path = "compiler/mod.rs"]

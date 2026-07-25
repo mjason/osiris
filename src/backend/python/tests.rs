@@ -32,6 +32,21 @@ fn emits_readable_typed_function_and_value() {
 }
 
 #[test]
+fn generated_python_is_canonical_ruff_output() {
+    let source = compile(
+        "(defn ^Int combine-values [^Int first-value ^Int second-value ^Int third-value ^Int fourth-value] (+ first-value second-value third-value fourth-value))",
+    );
+    let formatted = ruff_python_formatter::format_module_source(
+        &source,
+        ruff_python_formatter::PyFormatOptions::default(),
+    )
+    .expect("generated Python should remain valid Ruff input")
+    .into_code();
+    assert_eq!(formatted, source);
+    assert!(source.contains("def combine_values(\n"), "{source}");
+}
+
+#[test]
 fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
     let source = compile(
         r#"(py/import host.runtime :as host)

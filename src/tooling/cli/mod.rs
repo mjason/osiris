@@ -100,6 +100,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
 }
 
 mod build;
+mod build_cache;
 mod check;
 mod compile;
 mod docs;
@@ -116,6 +117,7 @@ mod watch;
 mod workspace;
 
 use build::*;
+use build_cache::*;
 use check::*;
 use compile::*;
 use docs::*;

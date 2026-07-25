@@ -2,7 +2,7 @@
 name = "osiris"
 version = "0.3.3"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.94"
 authors = ["MJ <tywf91@gmail.com>"]
 description = "The osr Lisp compiler"
 readme = "README.md"
@@ -23,11 +23,15 @@ oxilangtag = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
+ruff_python_formatter = "=0.0.4"
 toml = "0.8"
 toml_edit = "0.22"
 unicode-normalization = "0.1"
+unicode-width = "0.2"
 json5 = "0.4"
 globset = "0.4"
+# Ruff 0.0.4 expects the 0.9 compact_str integration retained by 0.10.1.
+get-size2 = "=0.10.1"
 async-graphql = { version = "=7.0.16", default-features = false }
 async-graphql-derive = "=7.0.16"
 async-graphql-parser = "=7.0.16"
@@ -46,7 +50,10 @@ sha2 = "0.10"
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "warn"
+all = { level = "warn", priority = -1 }
+# The Ruff toolchain bump should not force unrelated source-style rewrites.
+collapsible_if = "allow"
+manual_is_multiple_of = "allow"
 
 [profile.release]
 lto = "thin"

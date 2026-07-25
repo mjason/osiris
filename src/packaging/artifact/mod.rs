@@ -7,13 +7,13 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::source::Span;
 
 static NEXT_STAGING_ID: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ArtifactKind {
     Python,
@@ -155,7 +155,7 @@ pub fn publish_artifacts(out_dir: &Path, artifacts: &[Artifact]) -> io::Result<(
     result
 }
 
-fn validate_relative_artifact_path(path: &Path) -> io::Result<()> {
+pub(crate) fn validate_relative_artifact_path(path: &Path) -> io::Result<()> {
     if path.as_os_str().is_empty()
         || path.is_absolute()
         || path

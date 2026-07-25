@@ -8,6 +8,7 @@ wheels/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.osiris/
 node_modules/
 *.vsix
 
