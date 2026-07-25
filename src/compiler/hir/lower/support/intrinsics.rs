@@ -14,7 +14,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "osiris.kernel/loop*".to_owned(),
-                    python: "_u0_osiris_loop".to_owned(),
+                    python: "_osiris_loop".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },
@@ -50,7 +50,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "osiris.kernel/recur*".to_owned(),
-                    python: "_u0_osiris_recur".to_owned(),
+                    python: "_osiris_recur".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },
@@ -86,7 +86,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: format!("osiris.kernel/{name}"),
-                    python: format!("_u0_osiris_{name}"),
+                    python: format!("_osiris_{name}"),
                     kind: BindingKind::Function,
                     span,
                 },
@@ -114,7 +114,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "Reduced".to_owned(),
-                    python: "_u0_osiris_Reduced".to_owned(),
+                    python: "_osiris_Reduced".to_owned(),
                     kind: BindingKind::Type,
                     span,
                 },
@@ -142,7 +142,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "Delay".to_owned(),
-                    python: "_u0_osiris_Delay".to_owned(),
+                    python: "_osiris_Delay".to_owned(),
                     kind: BindingKind::Type,
                     span,
                 },
@@ -170,7 +170,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "Future".to_owned(),
-                    python: "_u0_osiris_Future".to_owned(),
+                    python: "_osiris_Future".to_owned(),
                     kind: BindingKind::Type,
                     span,
                 },
@@ -198,7 +198,7 @@ impl<'a> Lowerer<'a> {
                 name: BindingName {
                     id: id.clone(),
                     canonical: "Promise".to_owned(),
-                    python: "_u0_osiris_Promise".to_owned(),
+                    python: "_osiris_Promise".to_owned(),
                     kind: BindingKind::Type,
                     span,
                 },
@@ -232,7 +232,7 @@ impl<'a> Lowerer<'a> {
                     id: id.clone(),
                     canonical: "osiris.kernel/mapv".to_owned(),
                     // This internal name cannot be produced by authored source.
-                    python: "_u0_osiris_mapv".to_owned(),
+                    python: "_osiris_mapv".to_owned(),
                     kind: BindingKind::Function,
                     span,
                 },

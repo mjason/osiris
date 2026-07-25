@@ -18,7 +18,7 @@ fn assert_uses_a_runtime_exception_and_keeps_message_lazy() {
     assert!(
         generated
             .source
-            .contains("assert_value as _u0_osiris_assert_value"),
+            .contains("assert_value as _osiris_assert_value"),
         "{}",
         generated.source
     );

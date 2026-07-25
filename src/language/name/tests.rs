@@ -12,6 +12,11 @@ fn maps_lisp_and_unicode_names_deterministically() {
     assert_eq!(python_identifier("归一化数据"), "归一化数据");
     assert_eq!(python_identifier("class"), "class_");
     assert_eq!(
+        python_identifier("\0osr-gensym:3:current-value"),
+        "_osr_current_value_g3"
+    );
+    assert_eq!(python_identifier("\0destructure4"), "_osr_destructure4");
+    assert_eq!(
         python_module_identifier("example.data-tools"),
         "example.data_tools"
     );

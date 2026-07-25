@@ -492,3 +492,62 @@ fn compile_orders_sources_and_replays_dependency_macro_ir() {
     assert!(interface.contains("add-one"));
     assert!(interface.contains("make-add"));
 }
+
+#[test]
+fn generated_python_uses_one_readable_import_for_an_osiris_provider() {
+    let app_source = r#"(module sample.app)
+            (import sample.values :as values :refer [increment])
+            (export [sum-increments])
+            ^{:doc "Increment through qualified and referred names."}
+            (defn ^Int sum-increments [^Int value]
+              (+ (values/increment value) (increment value)))
+        "#;
+    let fixture = SourceFixture::new(app_source);
+    let app = fixture.write("src/sample/app.osr", app_source);
+    let values = fixture.write(
+        "src/sample/values.osr",
+        r#"(module sample.values)
+            (export [increment])
+            ^{:doc "Increment an integer."}
+            (defn ^Int increment [^Int value] (+ value 1))
+        "#,
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"import-demo\"\nversion = \"1.0.0\"\n",
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+    let out_dir = fixture.directory.join("import-build");
+
+    let output = osr(&[
+        "compile",
+        path_argument(&app),
+        path_argument(&values),
+        "--out-dir",
+        path_argument(&out_dir),
+        "--emit",
+        "py,osri,map",
+    ]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated =
+        fs::read_to_string(out_dir.join("sample/app.py")).expect("consumer Python should exist");
+    assert!(
+        generated.contains("from sample.values import increment"),
+        "{generated}"
+    );
+    assert!(!generated.contains("import sample.values"), "{generated}");
+    assert!(
+        generated.contains("\"\"\"Increment through qualified and referred names.\"\"\""),
+        "{generated}"
+    );
+}

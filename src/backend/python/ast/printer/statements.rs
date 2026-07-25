@@ -20,6 +20,12 @@ impl Printer {
             Stmt::Assign(assign) => self.print_assign(assign),
             Stmt::AnnAssign(assign) => self.print_ann_assign(assign),
             Stmt::AugAssign(assign) => self.print_aug_assign(assign),
+            Stmt::Docstring(value) => {
+                self.start_line();
+                self.print_docstring(value);
+                self.end_line();
+                Ok(())
+            }
             Stmt::Expr(expression) => {
                 self.start_line();
                 self.print_expr(expression, 0)?;
@@ -65,6 +71,32 @@ impl Printer {
                 Ok(())
             }
         }
+    }
+
+    fn print_docstring(&mut self, value: &str) {
+        self.output.push_str("\"\"\"");
+        let mut characters = value.chars().peekable();
+        while let Some(character) = characters.next() {
+            match character {
+                '\\' => self.output.push_str("\\\\"),
+                '"' if characters.peek() == Some(&'"') => {
+                    let mut probe = characters.clone();
+                    probe.next();
+                    if probe.peek() == Some(&'"') {
+                        characters.next();
+                        characters.next();
+                        self.output.push_str("\\\"\"\"");
+                    } else {
+                        self.output.push('"');
+                    }
+                }
+                '\n' => self.output.push_str("\\n"),
+                '\r' => self.output.push_str("\\r"),
+                '\t' => self.output.push_str("\\t"),
+                character => self.output.push(character),
+            }
+        }
+        self.output.push_str("\"\"\"");
     }
 
     pub(super) fn print_import(&mut self, import: &Import) -> Result<(), PrintError> {

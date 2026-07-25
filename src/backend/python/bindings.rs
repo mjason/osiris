@@ -20,6 +20,14 @@ impl<'hir> Backend<'hir> {
                 return Ok(expression.clone());
             }
         }
+        if self.binding(id).is_ok_and(|binding| {
+            matches!(
+                binding.name.kind,
+                crate::name::BindingKind::Module | crate::name::BindingKind::PythonModule
+            )
+        }) {
+            self.used_module_bindings.insert(id.clone());
+        }
         self.register_runtime_binding(id);
         Ok(py::Expr::name(self.python_name(id).to_owned()))
     }
@@ -222,13 +230,16 @@ impl<'hir> Backend<'hir> {
         }
     }
     pub(super) fn fresh_helper(&mut self, prefix: &str) -> String {
-        loop {
-            let name = format!("{}_{}", prefix, self.helper_counter);
-            self.helper_counter += 1;
+        if self.reserved_names.insert(prefix.to_owned()) {
+            return prefix.to_owned();
+        }
+        for suffix in 2_usize.. {
+            let name = format!("{prefix}_{suffix}");
             if self.reserved_names.insert(name.clone()) {
                 return name;
             }
         }
+        unreachable!("an unbounded suffix space always contains a free helper name")
     }
     pub(super) fn error(&self, message: impl Into<String>, span: Option<Span>) -> BackendError {
         BackendError::new(message, span)

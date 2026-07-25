@@ -46,7 +46,7 @@ fn loop_recur_lowers_to_constant_stack_runtime() {
         "{python}"
     );
     assert!(python.contains("recur as"), "{python}");
-    assert!(python.contains("return _u0_osiris_loop"), "{python}");
+    assert!(python.contains("return _osiris_loop"), "{python}");
     assert!(
         !python.contains("return sum_down("),
         "loop must not recurse: {python}"
@@ -77,7 +77,7 @@ fn function_recur_lowers_to_constant_stack_runtime() {
         python.contains("from __osiris_runtime__ import loop as"),
         "{python}"
     );
-    assert!(python.contains("return _u0_osiris_loop"), "{python}");
+    assert!(python.contains("return _osiris_loop"), "{python}");
     assert!(
         !python.contains("return sum_down("),
         "function recur must not recurse: {python}"
@@ -214,7 +214,7 @@ fn anonymous_fn_supports_function_recur() {
         result.analysis.diagnostics
     );
     let python = result.python.expect("anonymous fn should compile").source;
-    assert!(python.contains("_u0_osiris_loop"), "{python}");
+    assert!(python.contains("_osiris_loop"), "{python}");
 }
 
 #[test]
@@ -253,7 +253,7 @@ fn loop_allows_an_empty_state_vector() {
         .python
         .expect("empty-state loop should generate Python")
         .source;
-    assert!(python.contains("_u0_osiris_loop"), "{python}");
+    assert!(python.contains("_osiris_loop"), "{python}");
 }
 
 #[test]

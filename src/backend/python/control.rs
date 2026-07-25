@@ -56,6 +56,17 @@ impl<'hir> Backend<'hir> {
                 let then_body = self.lower_tail(then_branch)?;
                 let else_body = self.lower_tail(else_branch)?;
                 let mut result = condition.prefix;
+                if let (Some(body), Some(orelse)) = (
+                    single_return_expression(&then_body),
+                    single_return_expression(&else_body),
+                ) {
+                    result.push(py::Stmt::Return(Some(py::Expr::IfExp {
+                        body: Box::new(body.clone()),
+                        test: Box::new(condition_value),
+                        orelse: Box::new(orelse.clone()),
+                    })));
+                    return Ok(result);
+                }
                 result.push(py::Stmt::If(py::IfStmt {
                     test: condition_value,
                     body: then_body,
@@ -154,5 +165,12 @@ impl<'hir> Backend<'hir> {
             result.push(py::Stmt::Expr(value));
         }
         Ok(result)
+    }
+}
+
+fn single_return_expression(statements: &[py::Stmt]) -> Option<&py::Expr> {
+    match statements {
+        [py::Stmt::Return(Some(value))] => Some(value),
+        _ => None,
     }
 }

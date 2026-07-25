@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 7
+revision: 8
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -376,6 +376,17 @@ generated-source hashes and `.py.map` positions are calculated. The formatter
 MUST be embedded in the native compiler; builds MUST NOT depend on an ambient
 `ruff` executable, Python process, or project-specific Ruff configuration.
 
+**OEP-0002-R048:** Generated Python MUST remain an inspectable source target,
+not merely an executable transport. Authored fallback `:doc` metadata on a
+runtime declaration MUST become its Python docstring. Authored identifiers
+MUST retain their canonical readable Python mapping; compiler-owned hygienic
+bindings and helpers MUST use recognizable purpose-based private names rather
+than escaped internal identities. The backend SHOULD collapse expression-only
+control flow, terminal temporaries, and redundant imports when doing so
+preserves evaluation order and module initialization. These projections MUST
+NOT reconstruct standard macros as compiler syntax: macro expansion and the
+standard-library/kernel boundary remain authoritative.
+
 ## Rationale
 
 The configuration is deliberately small. `source` already defines the watch
@@ -481,6 +492,8 @@ A conforming implementation provides evidence that:
   target/interface invalidation, corruption fallback, and failed-build safety;
 - generated Python and linked runtime fixtures are idempotent under the pinned
   Ruff profile, and source maps refer to the formatted line layout;
+- generated-source fixtures retain fallback docstrings, readable hygienic
+  names, idiomatic expression-only control flow, and nonredundant imports;
 - watch tests prove build-equivalent scope, output exclusion, event coalescing,
   config/lock changes, and prompt interruption without Python;
 - lock fixtures cover registry, Git, URL, workspace, editable, and path sources;
@@ -493,6 +506,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 8, 2026-07-25: Required generated Python to preserve fallback
+  docstrings and readable names while removing safe structural boilerplate
+  without reconstructing standard macros in the compiler.
 - Revision 7, 2026-07-25: Defined the bounded project-local artifact cache and
   required embedded, compiler-pinned Ruff formatting before Python hashes and
   source-map generation.

@@ -147,6 +147,7 @@ pub(super) fn examples(metadata: &[MetadataEntry]) -> Vec<Vec<String>> {
 }
 
 pub fn documentation(metadata: &[MetadataEntry]) -> SemanticDocumentation {
+    let default = metadata_default_documentation(metadata).map(str::to_owned);
     let Some(value) = metadata.iter().find_map(|entry| {
         (form_name(&entry.key)
             .as_deref()
@@ -156,24 +157,25 @@ pub fn documentation(metadata: &[MetadataEntry]) -> SemanticDocumentation {
     }) else {
         return SemanticDocumentation::default();
     };
-    if let FormKind::String(default) = &value.kind {
+    if matches!(&value.kind, FormKind::String(_)) {
         return SemanticDocumentation {
-            default: Some(default.clone()),
+            default,
             translations: BTreeMap::new(),
         };
     }
     let FormKind::Map(entries) = &value.kind else {
         return SemanticDocumentation::default();
     };
-    let mut result = SemanticDocumentation::default();
+    let mut result = SemanticDocumentation {
+        default,
+        translations: BTreeMap::new(),
+    };
     for pair in entries.chunks_exact(2) {
         let FormKind::String(text) = &pair[1].kind else {
             continue;
         };
         match &pair[0].kind {
-            FormKind::Keyword(name) if name.canonical.trim_start_matches(':') == "default" => {
-                result.default = Some(text.clone());
-            }
+            FormKind::Keyword(name) if name.canonical.trim_start_matches(':') == "default" => {}
             FormKind::String(raw_locale) => {
                 if let Ok(locale) = oxilangtag::LanguageTag::parse_and_normalize(raw_locale) {
                     result.translations.insert(locale.to_string(), text.clone());

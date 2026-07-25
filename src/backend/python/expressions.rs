@@ -176,10 +176,12 @@ impl<'hir> Backend<'hir> {
             }
             ExprKind::Let { .. } | ExprKind::Do(_) | ExprKind::If { .. } | ExprKind::Try { .. } => {
                 let temporary = self.fresh_temporary();
-                let statements = self.lower_value_block(expression, &temporary)?;
+                let mut statements = self.lower_value_block(expression, &temporary)?;
+                let value =
+                    collapse_terminal_assignment(&mut statements, py::Expr::name(temporary));
                 return Ok(Lowered {
                     prefix: statements,
-                    value: Some(py::Expr::name(temporary)),
+                    value: Some(value),
                 });
             }
             ExprKind::Lambda { parameters, body } => return self.lower_lambda(parameters, body),
@@ -356,9 +358,16 @@ impl<'hir> Backend<'hir> {
                 })?),
             }));
         }
-        let helper = self.fresh_helper("_osr_lambda");
+        let helper_prefix = py_parameters.positional.first().map_or_else(
+            || "_osr_lambda".to_owned(),
+            |parameter| format!("_osr_lambda_{}", parameter.name),
+        );
+        let helper = self.fresh_helper(&helper_prefix);
         let mut helper_body = lowered.prefix;
-        helper_body.push(py::Stmt::Return(lowered.value));
+        let value = lowered
+            .value
+            .map(|value| collapse_terminal_assignment(&mut helper_body, value));
+        helper_body.push(py::Stmt::Return(value));
         // Keep the helper in the expression prefix instead of a module-level
         // queue.  A complex lambda may close over a function-local binding;
         // emitting its helper at module scope would make that binding
@@ -426,11 +435,27 @@ impl<'hir> Backend<'hir> {
                     )
                 })?;
                 let mut statements = condition.prefix;
-                statements.push(py::Stmt::If(py::IfStmt {
-                    test: condition_value,
-                    body: self.lower_value_block(then_branch, temporary)?,
-                    orelse: self.lower_value_block(else_branch, temporary)?,
-                }));
+                let then_body = self.lower_value_block(then_branch, temporary)?;
+                let else_body = self.lower_value_block(else_branch, temporary)?;
+                if let (Some(body), Some(orelse)) = (
+                    single_assignment_expression(&then_body, temporary),
+                    single_assignment_expression(&else_body, temporary),
+                ) {
+                    statements.push(py::Stmt::Assign(py::Assign {
+                        targets: vec![py::Expr::name(temporary)],
+                        value: py::Expr::IfExp {
+                            body: Box::new(body.clone()),
+                            test: Box::new(condition_value),
+                            orelse: Box::new(orelse.clone()),
+                        },
+                    }));
+                } else {
+                    statements.push(py::Stmt::If(py::IfStmt {
+                        test: condition_value,
+                        body: then_body,
+                        orelse: else_body,
+                    }));
+                }
                 Ok(statements)
             }
             ExprKind::Try {
@@ -483,5 +508,36 @@ impl<'hir> Backend<'hir> {
                 Ok(statements)
             }
         }
+    }
+}
+
+fn single_assignment_expression<'a>(
+    statements: &'a [py::Stmt],
+    target: &str,
+) -> Option<&'a py::Expr> {
+    match statements {
+        [py::Stmt::Assign(py::Assign { targets, value })]
+            if targets.as_slice() == [py::Expr::name(target)] =>
+        {
+            Some(value)
+        }
+        _ => None,
+    }
+}
+
+fn collapse_terminal_assignment(statements: &mut Vec<py::Stmt>, result: py::Expr) -> py::Expr {
+    let replacement = match statements.last() {
+        Some(py::Stmt::Assign(py::Assign { targets, value }))
+            if targets.as_slice() == [result.clone()] =>
+        {
+            Some(value.clone())
+        }
+        _ => None,
+    };
+    if let Some(replacement) = replacement {
+        statements.pop();
+        replacement
+    } else {
+        result
     }
 }

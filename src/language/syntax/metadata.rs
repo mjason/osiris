@@ -218,6 +218,30 @@ pub(crate) fn metadata_aliases(metadata: &[MetadataEntry], canonical: &str) -> V
         .collect()
 }
 
+/// Return the authored fallback documentation without assigning it a locale.
+/// Tooling may project translations separately; generated targets use this
+/// stable slot for native docstrings.
+pub(crate) fn metadata_default_documentation(metadata: &[MetadataEntry]) -> Option<&str> {
+    let value = metadata.iter().find_map(|entry| {
+        (metadata_name(&entry.key)
+            .is_some_and(|name| name.trim_start_matches(':') == "doc"))
+        .then_some(&entry.value)
+    })?;
+    match &value.kind {
+        FormKind::String(value) => Some(value),
+        FormKind::Map(entries) => entries.chunks_exact(2).find_map(|pair| {
+            (metadata_name(&pair[0])
+                .is_some_and(|name| name.trim_start_matches(':') == "default"))
+            .then(|| match &pair[1].kind {
+                FormKind::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .flatten()
+        }),
+        _ => None,
+    }
+}
+
 pub(crate) fn metadata_preferred_names(
     metadata: &[MetadataEntry],
 ) -> BTreeMap<String, String> {

@@ -75,6 +75,8 @@ impl<'a> Lowerer<'a> {
         let python_key = python_name.nfkc().collect::<String>();
         if let Some(existing) = scope.current_python_name(&python_key)
             && existing != source_name.canonical
+            && !existing.starts_with('\0')
+            && !source_name.canonical.starts_with('\0')
         {
             self.error(
                 "OSR-N0002",

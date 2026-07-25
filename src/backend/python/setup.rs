@@ -86,18 +86,20 @@ impl<'hir> Backend<'hir> {
         // HIR has already checked global Python collisions.  Local bindings
         // can repeat across lexical scopes, which is legal in separate Python
         // functions, so retain their canonical spelling here for readability.
+        let local_binding_prefix = format!("{}::local-", hir.name);
         let mut global_bindings = hir
             .bindings
             .iter()
             .filter(|binding| {
-                matches!(
-                    binding.name.kind,
-                    crate::name::BindingKind::Module
-                        | crate::name::BindingKind::PythonModule
-                        | crate::name::BindingKind::Value
-                        | crate::name::BindingKind::Function
-                        | crate::name::BindingKind::Type
-                )
+                !binding.name.id.as_str().starts_with(&local_binding_prefix)
+                    && matches!(
+                        binding.name.kind,
+                        crate::name::BindingKind::Module
+                            | crate::name::BindingKind::PythonModule
+                            | crate::name::BindingKind::Value
+                            | crate::name::BindingKind::Function
+                            | crate::name::BindingKind::Type
+                    )
             })
             .collect::<Vec<_>>();
         global_bindings.sort_by_key(|binding| {
@@ -107,6 +109,7 @@ impl<'hir> Backend<'hir> {
                     .id
                     .as_str()
                     .starts_with(&format!("{}::", hir.name)),
+                binding.name.canonical.starts_with('\0'),
                 binding.name.id.as_str(),
             )
         });
@@ -121,11 +124,35 @@ impl<'hir> Backend<'hir> {
             reserved_names.insert(python.clone());
             names.insert(binding.name.id.clone(), python);
         }
-        for binding in &hir.bindings {
+        // Preserve authored local spellings first. Compiler-only identities
+        // then take a readable suffix when their projection would collide.
+        for binding in hir
+            .bindings
+            .iter()
+            .filter(|binding| !binding.name.canonical.starts_with('\0'))
+        {
             reserved_names.insert(binding.name.python.clone());
             names
                 .entry(binding.name.id.clone())
                 .or_insert_with(|| binding.name.python.clone());
+        }
+        for binding in hir
+            .bindings
+            .iter()
+            .filter(|binding| binding.name.canonical.starts_with('\0'))
+        {
+            if names.contains_key(&binding.name.id) {
+                continue;
+            }
+            let base = binding.name.python.clone();
+            let mut python = base.clone();
+            let mut suffix = 2_usize;
+            while reserved_names.contains(&python) {
+                python = format!("{base}_{suffix}");
+                suffix += 1;
+            }
+            reserved_names.insert(python.clone());
+            names.insert(binding.name.id.clone(), python);
         }
         // A facade binding and a compiler-generated intrinsic binding may
         // intentionally target the same linked helper. They must share one
@@ -170,9 +197,9 @@ impl<'hir> Backend<'hir> {
             names,
             reserved_names,
             temporary_counter: 0,
-            helper_counter: 0,
             direct_imports: BTreeMap::new(),
             from_imports: BTreeMap::new(),
+            used_module_bindings: BTreeSet::new(),
             typing: BTreeSet::new(),
             need_dataclass: false,
             need_dataclass_field: false,
@@ -312,7 +339,7 @@ impl<'hir> Backend<'hir> {
             return py::Expr::name(local.clone());
         }
 
-        let local = self.fresh_helper(&format!("_osr_{}", python_identifier(helper)));
+        let local = self.fresh_helper(&format!("_osiris_{}", python_identifier(helper)));
         self.runtime_helpers.insert(helper.to_owned());
         self.from_imports
             .entry(self.runtime_module.clone())
@@ -349,7 +376,14 @@ impl<'hir> Backend<'hir> {
         };
         let default_local = module.rsplit('.').next().unwrap_or(&module);
         let alias = (local != default_local).then_some(local);
-        self.direct_imports.insert(module, alias);
+        self.direct_imports.insert(
+            module,
+            DirectImport {
+                alias,
+                binding: import.binding.clone(),
+                python: import.python,
+            },
+        );
     }
 
     pub(super) fn imports(&self) -> Vec<py::Stmt> {
@@ -379,11 +413,19 @@ impl<'hir> Backend<'hir> {
                 level: 0,
             }));
         }
-        for (module, alias) in &self.direct_imports {
-            result.push(py::Stmt::Import(py::Import::Direct(vec![match alias {
-                Some(alias) => py::ImportAlias::renamed(module, alias),
-                None => py::ImportAlias::new(module),
-            }])))
+        for (module, import) in &self.direct_imports {
+            if !import.python
+                && !self.used_module_bindings.contains(&import.binding)
+                && self.from_imports.contains_key(module)
+            {
+                continue;
+            }
+            result.push(py::Stmt::Import(py::Import::Direct(vec![
+                match &import.alias {
+                    Some(alias) => py::ImportAlias::renamed(module, alias),
+                    None => py::ImportAlias::new(module),
+                },
+            ])))
         }
         for name in &self.typing {
             // Added below as one grouped statement; this loop only keeps

@@ -141,6 +141,18 @@ impl NameAllocator {
 /// Maps an Osiris identifier to a deterministic Python identifier.
 #[must_use]
 pub fn python_identifier(name: &str) -> String {
+    if let Some(internal) = name.strip_prefix('\0') {
+        if let Some(gensym) = internal.strip_prefix("osr-gensym:")
+            && let Some((id, hint)) = gensym.split_once(':')
+        {
+            return format!("_osr_{}_g{id}", visible_python_identifier(hint));
+        }
+        return format!("_osr_{}", visible_python_identifier(internal));
+    }
+    visible_python_identifier(name)
+}
+
+fn visible_python_identifier(name: &str) -> String {
     let mut result = String::new();
     for character in name.nfc() {
         match character {

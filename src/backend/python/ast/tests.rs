@@ -226,6 +226,37 @@ fn escapes_text_bytes_and_integral_floats_stably() {
 }
 
 #[test]
+fn docstrings_preserve_quotes_newlines_and_backslashes() {
+    let documentation = "First line.\nContains \"\"\" and C:\\temp.";
+    let module = Module::new(vec![Stmt::FunctionDef(Box::new(FunctionDef {
+        name: "documented".to_owned(),
+        parameters: Parameters::default(),
+        returns: None,
+        decorators: Vec::new(),
+        body: vec![Stmt::Docstring(documentation.to_owned()), Stmt::Pass],
+        is_async: false,
+    }))]);
+    let source = module.to_source().expect("docstring should render");
+    parse_with_python(&source);
+
+    let script = format!("{source}\nprint(documented.__doc__.encode().hex())\n");
+    let Ok(output) = Command::new("python3").args(["-c", &script]).output() else {
+        return;
+    };
+    assert!(
+        output.status.success(),
+        "Python rejected generated docstring:\n{source}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let expected = documentation
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+}
+
+#[test]
 fn rejects_structurally_invalid_nodes() {
     let invalid_assignment = Module::new(vec![Stmt::Assign(Assign {
         targets: vec![],

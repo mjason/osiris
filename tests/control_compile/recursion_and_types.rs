@@ -164,23 +164,23 @@ fn derived_clojure_control_macros_compile_and_execute() {
     );
     let generated = result.python.expect("generated control Python");
     assert!(
-        generated.source.contains("truthy as _u0_osiris_truthy"),
+        generated.source.contains("truthy as _osiris_truthy"),
         "{}",
         generated.source
     );
     assert!(
-        generated.source.contains("present as _u0_osiris_present"),
+        generated.source.contains("present as _osiris_present"),
         "{}",
         generated.source
     );
     assert!(generated.source.contains("seq"), "{}", generated.source);
     assert!(
-        generated.source.contains("doseq as _u0_osiris_doseq"),
+        generated.source.contains("doseq as _osiris_doseq"),
         "{}",
         generated.source
     );
     assert!(
-        generated.source.contains("return _u0_osiris_doseq"),
+        generated.source.contains("return _osiris_doseq"),
         "{}",
         generated.source
     );

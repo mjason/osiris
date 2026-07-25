@@ -60,7 +60,7 @@ fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
     assert!(source.contains("import host.runtime as host"), "{source}");
     assert!(
         source.contains(
-            "@host.register(extra_data=_osr_logical_map_0([(\"columns\", (\"value\", \"year\"))]))\n\
+            "@host.register(extra_data=_osiris_logical_map([(\"columns\", (\"value\", \"year\"))]))\n\
              def publish(context: Any, field: str = \"value\") -> Any:"
         ),
         "{source}"
@@ -75,8 +75,7 @@ fn emits_explicit_python_decorators_with_arguments_and_stable_order() {
 fn lowers_control_flow_and_structured_collections() {
     let source = compile("(defn ^Int choose [^Int x] (let [y (+ x 1)] (if (> y 0) y 0)))");
     assert!(source.contains("y = x + 1"), "{source}");
-    assert!(source.contains("if y > 0:"), "{source}");
-    assert!(source.contains("return y"), "{source}");
+    assert!(source.contains("return y if y > 0 else 0"), "{source}");
 }
 
 #[test]
@@ -109,15 +108,29 @@ fn lowers_nested_runtime_destructuring_to_readable_assignments() {
                  (+ left right))"#,
     );
     assert!(
-        parameters.contains("def entry_total(_u0_arg0: dict[str, int]) -> int:"),
+        parameters.contains("def entry_total(_osr_arg0: dict[str, int]) -> int:"),
         "{parameters}"
     );
     assert!(
-        parameters.contains("def pair_total(_u0_arg1: tuple[int, ...]) -> int:"),
+        parameters.contains("def pair_total(_osr_arg1: tuple[int, ...]) -> int:"),
         "{parameters}"
     );
     assert!(parameters.contains("[\"left\"]"), "{parameters}");
     assert!(parameters.contains("[0]"), "{parameters}");
+}
+
+#[test]
+fn emits_authored_default_documentation_as_python_docstrings() {
+    let source = compile(
+        r#"^{:doc {:default "Return the incremented value."
+                    "zh-CN" "返回加一后的值。"}}
+           (defn ^Int increment [^Int value] (+ value 1))"#,
+    );
+    assert!(
+        source.contains("\"\"\"Return the incremented value.\"\"\""),
+        "{source}"
+    );
+    assert!(!source.contains("返回加一后的值"), "{source}");
 }
 
 #[test]

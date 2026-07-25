@@ -138,7 +138,9 @@ It is separate from `dist/`, is never published, and can always be deleted.
 Unchanged builds leave an identical `dist/` untouched; a missing or stale
 `dist/` can be restored from the validated cache. Generated Python is formatted
 by the Ruff formatter embedded in `osr` before source maps are produced, so no
-external `ruff` command or project Ruff configuration is required.
+external `ruff` command or project Ruff configuration is required. Authored
+fallback documentation becomes Python docstrings, and compiler-owned names are
+kept recognizable without exposing hygienic internal identities.
 
 - `dist/hello.py` is the readable generated Python module.
 - `dist/hello.osri` is the public, versioned Osiris compilation

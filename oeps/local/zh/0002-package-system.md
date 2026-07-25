@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 7
+revision: 8
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 7
+source-revision: 8
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -304,6 +304,14 @@ profile。Formatting 必须在计算 generated-source hash 与 `.py.map` positio
 Formatter 必须嵌入 native compiler；build 不得依赖 ambient `ruff` executable、Python
 process 或项目自己的 Ruff configuration。
 
+**OEP-0002-R048：** 生成的 Python 必须是可检查的 source target，而不只是可执行的
+transport。Runtime declaration 上 authored fallback `:doc` metadata 必须成为 Python
+docstring。Authored identifier 必须保留 canonical、可读的 Python mapping；compiler-owned
+hygienic binding/helper 必须使用能看出用途的 private name，不得泄漏转义后的内部 identity。
+在保持 evaluation order 与 module initialization 时，backend 应折叠 expression-only control
+flow、terminal temporary 和重复 import。这些 projection 不得在 compiler 中把 standard
+macro 重建为语法；macro expansion 以及 standard-library/kernel boundary 仍是权威定义。
+
 ## 理由 (Rationale)
 
 配置故意保持小型。`source` 已定义 watch scope，第二个 watch field 会产生矛盾 tree；
@@ -388,6 +396,8 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
   invalidation、corruption fallback 和 failed-build safety；
 - generated Python/runtime fixture 对固定 Ruff profile 保持 idempotent，source map 指向
   formatting 后的 line layout；
+- generated-source fixture 保留 fallback docstring、可读 hygienic name、惯用的
+  expression-only control flow 与非重复 import；
 - watch 测试证明与 build 相同 scope、排除 output、合并 event、响应 config/lock change、
   无 Python 且可立即中断；
 - lock fixture 覆盖 registry、Git、URL、workspace、editable 与 path source；
@@ -397,6 +407,8 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 8，2026-07-25：要求生成 Python 保留 fallback docstring 与可读名称，并在不把
+  standard macro 重建进 compiler 的前提下移除安全的结构样板。
 - Revision 7，2026-07-25：定义有界的 project-local artifact cache，并要求在 Python
   hash/source map 生成前使用嵌入 compiler、固定版本的 Ruff formatter。
 - Revision 6，2026-07-23：要求 wheel map hash-validated 引用 packaged source、使用标准

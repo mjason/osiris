@@ -31,6 +31,7 @@ pub enum Stmt {
     Assign(Assign),
     AnnAssign(AnnAssign),
     AugAssign(AugAssign),
+    Docstring(String),
     Expr(Expr),
     FunctionDef(Box<FunctionDef>),
     Return(Option<Expr>),

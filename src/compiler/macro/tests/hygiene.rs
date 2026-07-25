@@ -204,7 +204,27 @@ fn hygienic_macro_output_reaches_readable_python_codegen() {
     let generated = result.python.expect("macro should compile");
     let python = &generated.source;
     assert!(python.contains("def twice_value(value: int) -> int:"));
-    assert!(python.contains("_u0_osr_gensym"));
+    assert!(python.contains("_osr_value_g0"));
+}
+
+#[test]
+fn readable_hygienic_names_yield_to_authored_identifiers() {
+    let source = "(module macro-collision)\n(defmacro twice [expr]\n  `(let [value# ~expr] (+ value# value#)))\n(defn ^Int collide [^Int _osr_value_g0]\n  (twice _osr_value_g0))";
+    let result = compile(
+        source,
+        &CompileOptions::new("macro-collision", PythonVersion::default()),
+    );
+    assert!(
+        result.analysis.diagnostics.is_empty(),
+        "{:?}",
+        result.analysis.diagnostics
+    );
+    let python = &result.python.expect("macro should compile").source;
+    assert!(
+        python.contains("def collide(_osr_value_g0: int) -> int:"),
+        "{python}"
+    );
+    assert!(python.contains("_osr_value_g0_2 = _osr_value_g0"), "{python}");
 }
 
 #[test]
@@ -230,8 +250,8 @@ fn control_prelude_reaches_typed_readable_python() {
         .source;
     assert!(python.contains("def choose(first: bool, second: bool) -> bool:"));
     assert!(python.contains("def maybe(ready: bool) -> Optional[bool]:"));
-    assert!(python.contains("if _u0_osiris_truthy(first):"));
-    assert!(python.contains("if _u0_osiris_truthy(ready):"));
+    assert!(python.contains("_osiris_truthy(first)"));
+    assert!(python.contains("_osiris_truthy(ready)"));
 }
 
 #[test]

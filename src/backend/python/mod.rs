@@ -34,6 +34,12 @@ pub struct RuntimeSupport {
     pub binding_ids: BTreeSet<String>,
 }
 
+struct DirectImport {
+    alias: Option<String>,
+    binding: crate::name::BindingId,
+    python: bool,
+}
+
 /// Changes whenever generated Python formatting can change without another
 /// public compiler ABI changing.
 pub const PYTHON_FORMATTER_ABI: &str = "ruff-python-formatter-0.0.4/default-v1";
@@ -159,9 +165,9 @@ struct Backend<'hir> {
     names: BTreeMap<crate::name::BindingId, String>,
     reserved_names: BTreeSet<String>,
     temporary_counter: usize,
-    helper_counter: usize,
-    direct_imports: BTreeMap<String, Option<String>>,
+    direct_imports: BTreeMap<String, DirectImport>,
     from_imports: BTreeMap<String, BTreeMap<String, Option<String>>>,
+    used_module_bindings: BTreeSet<crate::name::BindingId>,
     typing: BTreeSet<String>,
     need_dataclass: bool,
     need_dataclass_field: bool,

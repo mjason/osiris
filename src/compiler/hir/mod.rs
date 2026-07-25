@@ -275,7 +275,13 @@ impl Scope {
         self.python_frames
             .last_mut()
             .expect("scope frame exists")
-            .insert(python_name, canonical_name);
+            .entry(python_name)
+            .and_modify(|existing| {
+                if existing.starts_with('\0') && !canonical_name.starts_with('\0') {
+                    existing.clone_from(&canonical_name);
+                }
+            })
+            .or_insert(canonical_name);
     }
 
     fn current_contains(&self, name: &str) -> bool {

@@ -6,6 +6,11 @@ impl<'hir> Backend<'hir> {
         function: &hir::Function,
     ) -> Result<py::Stmt, BackendError> {
         let binding_name = self.python_name(&function.binding).to_owned();
+        let documentation = self
+            .binding(&function.binding)
+            .ok()
+            .and_then(|binding| crate::syntax::metadata_default_documentation(&binding.metadata))
+            .map(str::to_owned);
         let decorators = self.lower_decorators(&function.decorators)?;
         let mut parameters = py::Parameters::default();
         let keyword_only_from =
@@ -60,6 +65,9 @@ impl<'hir> Backend<'hir> {
         }
         let returns = Some(self.annotation(&function.return_type, Some(function.body.span))?);
         let mut body = self.lower_tail(&function.body)?;
+        if let Some(documentation) = documentation {
+            body.insert(0, py::Stmt::Docstring(documentation));
+        }
         if body.is_empty() {
             body.push(py::Stmt::Pass);
         }
@@ -101,7 +109,7 @@ impl<'hir> Backend<'hir> {
         }
         let mut body = Vec::new();
         if let Some(doc) = &structure.doc {
-            body.push(py::Stmt::Expr(py::Expr::string(doc.clone())));
+            body.push(py::Stmt::Docstring(doc.clone()));
         }
         for field in &structure.fields {
             let target = py::Expr::name(self.python_name(&field.binding).to_owned());

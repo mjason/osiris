@@ -17,7 +17,7 @@ use crate::{
     macro_expand::ExpansionTrace,
     name::BindingKind,
     source::Span,
-    syntax::{Form, FormKind, MetadataEntry},
+    syntax::{Form, FormKind, MetadataEntry, metadata_default_documentation},
     types::{CallSummaries, DataProperties, EffectRow, TemporalSummary, Type},
 };
 

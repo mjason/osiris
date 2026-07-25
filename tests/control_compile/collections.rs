@@ -22,12 +22,12 @@ fn authored_map_and_set_literals_keep_boolean_and_integer_values_distinct() {
     assert!(
         generated
             .source
-            .contains("logical_map as _osr_logical_map_")
+            .contains("logical_map as _osiris_logical_map")
     );
     assert!(
         generated
             .source
-            .contains("logical_set as _osr_logical_set_")
+            .contains("logical_set as _osiris_logical_set")
     );
 
     let root = temporary_directory();
@@ -237,11 +237,11 @@ fn public_reducer_can_expose_the_reduced_protocol_type() {
     assert!(result.interface.is_some());
     let python = result.python.expect("generated Python").source;
     assert!(
-        python.contains("from __osiris_runtime__ import Reduced as _u0_osiris_Reduced"),
+        python.contains("from __osiris_runtime__ import Reduced as _osiris_Reduced"),
         "{python}"
     );
     assert!(
-        python.contains("Union[int, _u0_osiris_Reduced[int]]"),
+        python.contains("Union[int, _osiris_Reduced[int]]"),
         "{python}"
     );
 }
