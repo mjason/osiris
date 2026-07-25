@@ -60,6 +60,18 @@ fn malformed_or_partial_entries_are_cache_misses() {
     )
     .unwrap();
     assert!(cache.load("key").is_none());
+
+    let empty = CacheManifest {
+        format_version: FORMAT_VERSION,
+        key: "key".to_owned(),
+        artifacts: Vec::new(),
+    };
+    fs::write(
+        root.join(".osiris/cache/workspace-v1/manifest.json"),
+        serde_json::to_vec(&empty).unwrap(),
+    )
+    .unwrap();
+    assert!(cache.load("key").is_none());
     let _ = fs::remove_dir_all(root);
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+- Present localized names, migration aliases, signatures, and examples more clearly through LSP and LSC.
+- Keep formatting aligned for wide Unicode identifiers and the canonical Osiris style.
+- Require the matching compiler release with parallel builds, validated project caching, and more readable generated Python.
+
 ## 0.3.3
 
 - Load public standard-library source from the validated installed resource tree.

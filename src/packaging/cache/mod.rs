@@ -56,6 +56,7 @@ impl WorkspaceCache {
         let manifest: CacheManifest = serde_json::from_slice(&bytes).ok()?;
         if manifest.format_version != FORMAT_VERSION
             || manifest.key != key
+            || manifest.artifacts.is_empty()
             || manifest.artifacts.len() > MAX_ARTIFACTS
         {
             return None;
