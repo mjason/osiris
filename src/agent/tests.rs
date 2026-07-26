@@ -1,4 +1,4 @@
-use super::client::{extract_chat_completions_text, extract_responses_text};
+use super::client::{chat_completions_body, extract_chat_completions_text, extract_responses_text};
 use super::*;
 use std::{
     fs,
@@ -44,6 +44,25 @@ fn parses_both_responses_api_text_shapes() {
 }
 
 #[test]
+fn disables_thinking_for_deepseek_chat_completions() {
+    let deepseek = AgentConfig {
+        model: "deepseek-v4-flash".to_owned(),
+        ..AgentConfig::default()
+    };
+    let body = chat_completions_body(&deepseek, "hello");
+    assert_eq!(body["thinking"]["type"], "disabled");
+    assert!(body.get("reasoning_effort").is_none());
+
+    let other = AgentConfig {
+        model: "gpt-compatible".to_owned(),
+        ..AgentConfig::default()
+    };
+    let body = chat_completions_body(&other, "hello");
+    assert!(body.get("thinking").is_none());
+    assert!(body.get("reasoning_effort").is_none());
+}
+
+#[test]
 fn parses_model_json_without_compiler_owned_fields() {
     let response = parse_model_response(
         r#"{"answer":"Use reduce.","examples":[],"references":[]}"#,
@@ -52,6 +71,21 @@ fn parses_model_json_without_compiler_owned_fields() {
     .unwrap();
     assert_eq!(response.session_id, "session-1");
     assert_eq!(response.answer, "Use reduce.");
+}
+
+#[test]
+fn extracts_model_json_from_reasoning_and_markdown_wrappers() {
+    let wrapped = "<think>consider {not json}</think>\n```json\n{\"answer\":\"ok\",\"examples\":[],\"references\":[]}\n```\ntrailing";
+    let response = parse_model_response(wrapped, "session-1").unwrap();
+    assert_eq!(response.answer, "ok");
+
+    let calls = parse_tool_calls(
+        "I will inspect it.\n{\"toolCalls\":[{\"id\":\"one\",\"operation\":\"workspace-search\",\"arguments\":{\"query\":\"Point\"}}]}",
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(calls[0].id, "one");
+    assert!(model_json_text("reasoning only").is_err());
 }
 
 #[test]
@@ -244,6 +278,10 @@ fn prompts_require_a_standalone_module_form() {
     let prompt = build_prompt("Show Point", "en", &material, &SessionFile::default(), &[]);
     assert!(prompt.contains("`(module example.point)`"));
     assert!(prompt.contains("never put a body inside it"));
+    assert!(prompt.contains("Answer directly when retrieved syntax"));
+    assert!(prompt.contains("Never search generic concepts"));
+    assert!(prompt.contains("MUST request workspace tools"));
+    assert!(prompt.contains("OUTPUT GATE"));
 
     let response = LsaResponse {
         schema: RESPONSE_SCHEMA.to_owned(),

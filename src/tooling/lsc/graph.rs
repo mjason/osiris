@@ -410,11 +410,24 @@ async fn search_database(
         return Ok(Vec::new());
     }
     let connection = connection(path).await?;
-    let fts_query = query
+    let terms = query
         .split_whitespace()
         .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
-        .collect::<Vec<_>>()
-        .join(" AND ");
+        .collect::<Vec<_>>();
+    let exact = terms.join(" AND ");
+    let result = query_database(&connection, &exact, query, limit).await?;
+    if !result.is_empty() || terms.len() < 2 {
+        return Ok(result);
+    }
+    query_database(&connection, &terms.join(" OR "), query, limit).await
+}
+
+async fn query_database(
+    connection: &Connection,
+    fts_query: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<JsonValue>, String> {
     let mut rows = connection
         .query(
             "SELECT COALESCE(target.payload, n.payload), bm25(graph_node_fts),

@@ -36,13 +36,21 @@ fn call_chat_completions(
     api_key: &str,
     prompt: &str,
 ) -> Result<String, String> {
-    let body = serde_json::json!({
+    let body = chat_completions_body(config, prompt);
+    let value = post_json(config, api_key, "chat/completions", body)?;
+    extract_chat_completions_text(&value)
+}
+
+pub(super) fn chat_completions_body(config: &AgentConfig, prompt: &str) -> serde_json::Value {
+    let mut body = serde_json::json!({
         "model": config.model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": false
     });
-    let value = post_json(config, api_key, "chat/completions", body)?;
-    extract_chat_completions_text(&value)
+    if config.model.to_ascii_lowercase().contains("deepseek") {
+        body["thinking"] = serde_json::json!({"type": "disabled"});
+    }
+    body
 }
 
 fn post_json(

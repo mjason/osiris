@@ -129,7 +129,7 @@ pub(super) fn run_tool_loop(
 }
 
 pub(super) fn parse_tool_calls(text: &str) -> Result<Option<Vec<LsaToolCall>>, String> {
-    let json = model_json_text(text);
+    let json = model_json_text(text)?;
     let value: serde_json::Value = serde_json::from_str(json)
         .map_err(|error| format!("LLM returned invalid LSA JSON: {error}"))?;
     if value.get("toolCalls").is_none() {

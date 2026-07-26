@@ -123,6 +123,12 @@ fn conceptual_search_uses_rich_documentation_and_localized_names() {
         "demo.text::function::format-message"
     );
     assert_eq!(localized.result[0]["data"]["matchReasons"][0], "alias-of");
+    let broad = service.workspace_search("unknown-concept 格式化消息 another-missing-term", None);
+    assert_eq!(broad.status, "ok", "{broad:?}");
+    assert_eq!(
+        broad.result[0]["data"]["bindingId"],
+        "demo.text::function::format-message"
+    );
     let python_implementation = service.workspace_search("PRIVATE_IMPLEMENTATION_MARKER", None);
     assert_eq!(
         python_implementation.status, "notFound",
