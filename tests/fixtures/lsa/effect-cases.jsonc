@@ -2,6 +2,17 @@
   "schema": "osiris-lsa-effect-suite/v1",
   "cases": [
     {
+      "id": "constant-stack-recursion",
+      "locale": "zh-CN",
+      "request": "如何写一个计算 5 的阶乘的递归例子？使用常量栈递归并实际返回计算结果。",
+      "answerContainsAny": ["loop", "recur", "递归"],
+      "referenceContains": "language/syntax",
+      "exampleContains": "(recur",
+      "resultEquals": 120,
+      "minimumExamples": 1,
+      "maximumExamples": 1
+    },
+    {
       "id": "typed-reduce",
       "locale": "zh-CN",
       "request": "解释 osiris.core/reduce，并给一个完整的最小例子。",

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9
+
+- Use the official DeepSeek endpoint and native tool calling for project-aware LSA requests.
+- Improve LSA JSON reliability, compiler-validated examples, and bounded LSC evidence.
+- Add configurable thinking, reasoning effort, and streamed provider responses to `osiris.jsonc`.
+
 ## 0.3.7
 
 - Add project-aware symbol, definition, signature, reference, and source context for LSA through the LSC/LSP boundary.

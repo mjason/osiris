@@ -76,7 +76,7 @@ trailing commas are accepted. A typical configuration is deliberately small:
   "displayLocale": "zh-CN",
   "agent": {
     "model": "deepseek-v4-flash",
-    "baseUrl": "https://openrouter.ai/api/v1",
+    "baseUrl": "https://api.deepseek.com/v1",
     "wireApi": "chatCompletions"
   }
 }

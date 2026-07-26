@@ -877,7 +877,15 @@ workspace module 和 private runtime component，并使用与 `osr run` 相同�
 和 Python import 语义。Evaluation 必须使用 private temporary runtime distribution、移除
 credential 与无关环境变量、限制执行时间和输出大小，并把 runtime failure 保留为
 diagnostic。只有 declaration 而没有结果表达式的 module 可以成功 evaluation 并返回 null
-result。
+result。当一次 provider response 同时包含成功与失败的 example candidate 时，LSA 必须只
+返回成功通过 compilation 和 evaluation 的 candidate。当请求要求 example，且经过一次
+有界 repair request 后仍没有 candidate 成功时，LSA 必须用 compiler-owned validation
+failure 说明覆盖 model-authored answer；失败 candidate 的 diagnostic 只能作为失败证据
+保留，禁止把 model 的解释或失败源码作为正确答案交付。
+当 provider 在取得成功的 symbol-context result 后遗漏 answer 时，LSA 可以把
+compiler-owned hover、signature 和 definition location 直接投影为事实兜底。该投影不得包含
+model inference；当 caller 明确要求不生成 example 时，也不得因此触发 example repair
+request。
 
 **OEP-0001-R081：** LSA locale selection 必须使用 well-formed canonical BCP 47 tag，
 优先级为 `--locale`、project `displayLocale`、最后 conservative request-language detection。
@@ -889,15 +897,26 @@ history 必须是可编辑 JSONC、使用 versioned schema、原子替换、位�
 且绝不能包含 API key。Malformed、unknown-schema、mismatched、oversized 或 path-escaping
 session 必须 fail closed。每个 response（包括首轮）都必须返回 session ID。
 
-**OEP-0001-R083：** 每个 LSA turn 必须使用一次有限的初始 OpenAI-compatible request；
-示例被 compiler diagnostic 拒绝时，最多可以再请求一次进行修复。禁止进入无界的
-model/validation loop。
+**OEP-0001-R083：** 每个 LSA turn 必须使用一次有限的初始 OpenAI-compatible exchange，
+只能通过下述有界只读 tool protocol 继续该 exchange；示例被 compiler diagnostic 拒绝时，
+最多可以再请求一次进行修复。禁止进入无界的 model/validation loop。
 初始 wire adapter 包含使用 `POST /responses` 的 `responses`，以及使用
 `POST /chat/completions` 的 `chatCompletions`；必须通过显式配置选择，禁止静默重试另一种
 protocol。只有显式选择的 source file 和有界的 retrieved documentation/context 可以发送
 给 provider；LSA 不得隐式上传 project source tree。Provider failure 必须在不暴露
 credential 的情况下报告。Reader、compiler、formatter、LSC、LSP、build 和 generated
 program 都不得依赖 LSA。
+
+对于支持 native function calling 的 Chat Completions provider，LSA 应把只读 LSC
+operation 暴露为 native tool，而不是要求 model 在 prose JSON 中编码 tool call。LSA 必须
+回放 assistant 的 `tool_calls` message，并使用匹配的 `role: tool` 与 `tool_call_id` 返回每个
+compiler-owned result。Tool round 与总调用数必须有界。DeepSeek 最终响应必须使用 JSON
+Mode，在 prompt 中明确说明并示例化要求的 JSON object，关闭 `thinking`，并省略
+`reasoning_effort`。空 JSON 或结构不完整的 JSON 是 provider failure，不是答案。Static
+instruction 和 schema 应保持为稳定 message prefix，使 provider 可以复用自动 prefix/KV
+cache；retrieved material、conversation 与压缩后的 tool evidence 放在该 prefix 之后。Search
+result、reference 与 source 在返回 provider 前必须有界，但不得丢弃选中定义的 signature、
+documentation 或 source location。
 
 ## 理由 (Rationale)
 

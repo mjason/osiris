@@ -1053,6 +1053,18 @@ import semantics as `osr run`. Evaluation MUST use a private temporary runtime
 distribution, remove credentials and unrelated environment variables, enforce
 finite time and output limits, and preserve a runtime failure as a diagnostic.
 A declaration-only module MAY be evaluated successfully with a null result.
+When one provider response contains both successful and failed example
+candidates, LSA MUST return only the candidates that compiled and evaluated
+successfully. When the request requires an example and no candidate succeeds
+after the one bounded repair request, LSA MUST replace the model-authored answer
+with a compiler-owned validation-failure statement and retain the failed
+candidate diagnostics only as failure evidence. It MUST NOT present the model's
+explanation or failed source as a correct answer.
+When the provider omits its answer after obtaining a successful symbol-context
+result, LSA MAY project the compiler-owned hover, signature, and definition
+location directly as a factual fallback. Such a projection MUST contain no
+model inference and MUST NOT trigger an example-repair request when the caller
+explicitly requested no example.
 
 **OEP-0001-R081:** LSA locale selection MUST use a well-formed canonical BCP 47
 tag and the precedence `--locale`, project `displayLocale`, then conservative
@@ -1068,7 +1080,8 @@ MUST fail closed. Every response, including the first turn, MUST return its
 session ID.
 
 **OEP-0001-R083:** Each LSA turn MUST use one finite initial OpenAI-compatible
-request and MAY use at most one additional request to repair examples rejected
+exchange, MAY continue it only through the bounded read-only tool protocol
+below, and MAY use at most one additional request to repair examples rejected
 by compiler diagnostics. It MUST NOT enter an unbounded model/validation loop.
 The initial wire adapters are `responses`, using `POST /responses`, and
 `chatCompletions`, using `POST /chat/completions`; selection MUST be explicit
@@ -1078,6 +1091,21 @@ be sent to that provider; LSA MUST NOT implicitly upload the project source
 tree. Provider failures MUST be reported without exposing credentials. LSA
 MUST not be required by the reader, compiler, formatter, LSC, LSP, build, or
 generated program.
+
+For a Chat Completions provider that supports native function calling, LSA
+SHOULD expose its read-only LSC operations as native tools rather than asking
+the model to encode tool calls in prose JSON. It MUST replay the assistant
+`tool_calls` message and return each compiler-owned result with the matching
+`role: tool` and `tool_call_id`. Tool rounds and total calls MUST be bounded.
+Final DeepSeek responses MUST use JSON Mode, explicitly describe and exemplify
+the required JSON object in the prompt, disable `thinking`, and omit
+`reasoning_effort`. Empty or structurally incomplete JSON is a failed provider
+response, not an answer. Static instructions and schemas SHOULD remain a stable
+message prefix so providers may reuse an automatic prefix/KV cache; retrieved
+material, conversation, and compact tool evidence follow that prefix. Search
+results, references, and source MUST be bounded before they are sent back to
+the provider, without discarding the selected definition, signature,
+documentation, or source location.
 
 ## Rationale
 

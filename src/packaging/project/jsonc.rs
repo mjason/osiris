@@ -16,6 +16,9 @@ struct AgentJsonc {
     model: Option<String>,
     base_url: Option<String>,
     wire_api: Option<String>,
+    thinking: Option<bool>,
+    reasoning_effort: Option<String>,
+    stream: Option<bool>,
 }
 
 impl<'de> Deserialize<'de> for JsoncConfig {

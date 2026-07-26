@@ -97,7 +97,7 @@ OEP-0002-R005 定义的可选 `exclude` field，不得包含其他 compiler fiel
   "displayLocale": "zh-CN",
   "agent": {
     "model": "deepseek-v4-flash",
-    "baseUrl": "https://openrouter.ai/api/v1",
+    "baseUrl": "https://api.deepseek.com/v1",
     "wireApi": "chatCompletions"
   }
 }
@@ -391,14 +391,21 @@ hygienic binding/helper 必须使用能看出用途的 private name，不得泄�
 flow、terminal temporary 和重复 import。这些 projection 不得在 compiler 中把 standard
 macro 重建为语法；macro expansion 以及 standard-library/kernel boundary 仍是权威定义。
 
-**OEP-0002-R049：** 可选 `agent` object 只能接受 `model`、`baseUrl` 和 `wireApi`。
-内置默认值必须分别是 `deepseek-v4-flash`、`https://openrouter.ai/api/v1` 与
-`chatCompletions`。
+**OEP-0002-R049：** 可选 `agent` object 只能接受 `model`、`baseUrl`、`wireApi`、
+`thinking`、`reasoningEffort` 和 `stream`。前三项内置默认值必须分别是
+`deepseek-v4-flash`、`https://api.deepseek.com/v1` 与 `chatCompletions`；`thinking` 与
+`stream` 必须默认为 false，`reasoningEffort` 默认不得发送且只能接受 `low`、`medium` 或
+`high`。
 第一版 `wireApi` 只能接受 `responses` 与 `chatCompletions`。`OSR_MODEL`、`OSR_BASE_URL`、
-`OSR_WIRE_API` 必须覆盖
+`OSR_WIRE_API`、`OSR_THINKING`、`OSR_REASONING_EFFORT` 与 `OSR_STREAM` 必须覆盖
 project value，API key 只能从 `OSR_API_KEY` 读取。必须按 dotenv semantic 加载 project-root
 `.env`，且不得替换 process 已提供的 environment variable。Credential 不得写入
 `osiris.jsonc`、log、provider error 或 session history。
+默认使用 DeepSeek 官方 endpoint，因此默认设置只需要 DeepSeek API key。兼容 gateway 仍可
+通过显式 `baseUrl` 覆盖，但不得作为 distribution default 内嵌。
+`osr init` 必须把完整默认 `agent` object 作为已注释的 JSONC 写入，包括 `model`、
+全部六个 field。这样 generated project 保持最小，同时每个 override 都能在原地发现；
+取消该 block 的注释后，行为必须与 built-in default 相同。
 
 LSA session 必须存放在 `.osiris/cache/agent/<session-id>/session.jsonc`。该状态是用户可
 编辑 JSONC，不是 build-cache entry：必须可安全删除，不得影响 compilation，不得进入

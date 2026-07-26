@@ -1,4 +1,7 @@
-use super::client::{chat_completions_body, extract_chat_completions_text, extract_responses_text};
+use super::client::{
+    chat_completions_body, extract_chat_completions_text, extract_responses_text,
+    parse_sse_response,
+};
 use super::*;
 use std::{
     fs,
@@ -51,6 +54,7 @@ fn disables_thinking_for_deepseek_chat_completions() {
     };
     let body = chat_completions_body(&deepseek, "hello");
     assert_eq!(body["thinking"]["type"], "disabled");
+    assert_eq!(body["response_format"]["type"], "json_object");
     assert!(body.get("reasoning_effort").is_none());
 
     let other = AgentConfig {
@@ -60,6 +64,39 @@ fn disables_thinking_for_deepseek_chat_completions() {
     let body = chat_completions_body(&other, "hello");
     assert!(body.get("thinking").is_none());
     assert!(body.get("reasoning_effort").is_none());
+}
+
+#[test]
+fn provider_execution_options_are_emitted_without_weakening_json_mode() {
+    let config = AgentConfig {
+        thinking: true,
+        reasoning_effort: Some("medium".to_owned()),
+        stream: true,
+        ..AgentConfig::default()
+    };
+    let body = chat_completions_body(&config, "hello");
+    assert_eq!(body["thinking"]["type"], "enabled");
+    assert_eq!(body["reasoning_effort"], "medium");
+    assert_eq!(body["stream"], true);
+    assert_eq!(body["response_format"]["type"], "json_object");
+}
+
+#[test]
+fn aggregates_streamed_content_and_native_tool_call_fragments() {
+    let stream = concat!(
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"workspace_\",\"arguments\":\"{\\\"query\\\":\\\"\"}}]}}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"search\",\"arguments\":\"Point\\\"}\"}}]}}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let value = parse_sse_response(stream.as_bytes(), "chat/completions").unwrap();
+    assert_eq!(
+        value.pointer("/choices/0/message/tool_calls/0/function/name"),
+        Some(&serde_json::json!("workspace_search"))
+    );
+    assert_eq!(
+        value.pointer("/choices/0/message/tool_calls/0/function/arguments"),
+        Some(&serde_json::json!(r#"{"query":"Point"}"#))
+    );
 }
 
 #[test]
@@ -177,6 +214,77 @@ fn an_explicit_example_request_rejects_an_empty_example_list() {
 }
 
 #[test]
+fn explicit_no_example_requests_do_not_enter_example_repair() {
+    assert!(!expects_example("解释这个 API，不要生成例子。"));
+    assert!(!expects_example("Explain this API without examples."));
+    assert!(!expects_example(
+        "この API を説明してください。サンプルは不要です。"
+    ));
+}
+
+#[test]
+fn response_quality_keeps_only_successful_candidates() {
+    let mut response = LsaResponse {
+        schema: RESPONSE_SCHEMA.to_owned(),
+        session_id: "session-1".to_owned(),
+        answer: "answer".to_owned(),
+        examples: vec![
+            LsaExample {
+                code: "valid".to_owned(),
+                result: Some(serde_json::json!(1)),
+                compiled: true,
+                evaluated: true,
+                diagnostics: Vec::new(),
+            },
+            LsaExample {
+                code: "invalid".to_owned(),
+                result: None,
+                compiled: false,
+                evaluated: false,
+                diagnostics: vec!["error".to_owned()],
+            },
+        ],
+        references: Vec::new(),
+        language_service: Vec::new(),
+    };
+    retain_usable_examples(&mut response, "如何写一个递归呢");
+    assert_eq!(response.examples.len(), 1);
+    assert_eq!(response.examples[0].code, "valid");
+    assert_eq!(response_issue_count(&response, "如何写一个递归呢"), 0);
+}
+
+#[test]
+fn missing_model_answer_enters_validation_repair() {
+    let response = parse_model_response(r#"{"examples":[],"references":[]}"#, "session-1").unwrap();
+    assert_eq!(response_issue_count(&response, "Explain only"), 1);
+}
+
+#[test]
+fn successful_symbol_context_can_supply_a_factual_fallback_answer() {
+    let evidence = vec![LanguageServiceEvidence {
+        call_id: "symbol-1".to_owned(),
+        operation: "symbol-context".to_owned(),
+        status: "ok".to_owned(),
+        result: serde_json::json!({
+            "context": {
+                "hover": {"value": {"contents": {"value": "**Point** · structure\n\nA point."}}},
+                "signatureHelp": {"value": {"signatures": [{"label": "Point(x: Int) -> Point"}]}},
+                "definition": {"value": {
+                    "uri": "osiris-workspace:///src/point.osr",
+                    "range": {"start": {"line": 4, "character": 2}}
+                }}
+            }
+        }),
+        message: None,
+    }];
+
+    let answer = language_service_fallback_answer("zh-CN", &evidence).unwrap();
+    assert!(answer.contains("A point."));
+    assert!(answer.contains("定义位置"));
+    assert!(answer.contains("point.osr:5:3"));
+}
+
+#[test]
 fn syntax_retrieval_finds_later_structures_section() {
     let material = collect_material(
         Path::new("."),
@@ -187,6 +295,13 @@ fn syntax_retrieval_finds_later_structures_section() {
     .unwrap();
     assert!(material.text.contains("## Structures"));
     assert!(material.text.contains("(defstruct Threshold"));
+}
+
+#[test]
+fn chinese_recursion_request_retrieves_loop_and_recur_syntax() {
+    let material = collect_material(Path::new("."), None, "如何写一个递归呢", None).unwrap();
+    assert!(material.text.contains("Use `loop`"), "{}", material.text);
+    assert!(material.text.contains("`recur`"), "{}", material.text);
 }
 
 #[test]
@@ -275,13 +390,35 @@ fn prompts_require_a_standalone_module_form() {
         text: "## Structures".to_owned(),
         references: Vec::new(),
     };
-    let prompt = build_prompt("Show Point", "en", &material, &SessionFile::default(), &[]);
+    let prompt = build_prompt(
+        "Show Point",
+        "en",
+        &material,
+        &SessionFile::default(),
+        &[],
+        false,
+    );
     assert!(prompt.contains("`(module example.point)`"));
     assert!(prompt.contains("never put a body inside it"));
-    assert!(prompt.contains("Answer directly when retrieved syntax"));
+    assert!(prompt.contains("Answer language, syntax, standard-library"));
     assert!(prompt.contains("Never search generic concepts"));
     assert!(prompt.contains("MUST request workspace tools"));
     assert!(prompt.contains("OUTPUT GATE"));
+    assert!(prompt.contains("FACT BOUNDARY"));
+    assert!(prompt.contains("(defn ^Int factorial"));
+    assert!(prompt.contains(r#"{"answer":"Concise factual answer.""#));
+    assert!(prompt.contains("Always include all three keys"));
+
+    let native = build_prompt(
+        "Explain project Point",
+        "en",
+        &material,
+        &SessionFile::default(),
+        &[],
+        true,
+    );
+    assert!(native.contains("call an API-provided workspace tool"));
+    assert!(!native.contains("the only permitted response is a toolCalls JSON object"));
 
     let response = LsaResponse {
         schema: RESPONSE_SCHEMA.to_owned(),
@@ -573,6 +710,7 @@ fn calls_an_openai_compatible_responses_endpoint() {
         model: "test-model".to_owned(),
         base_url: format!("http://{address}"),
         wire_api: "responses".to_owned(),
+        ..AgentConfig::default()
     };
     let output = call_provider(&config, "test-key", "Explain reduce").unwrap();
     assert!(output.contains("\"answer\":\"hello\""));
@@ -590,7 +728,7 @@ fn provider_tool_loop_returns_compiler_owned_results_before_final_answer() {
         ];
         for output in outputs {
             let (mut stream, _) = listener.accept().unwrap();
-            read_http_request(&mut stream);
+            let _ = read_http_request(&mut stream);
             let body = serde_json::json!({"output_text": output}).to_string();
             write!(
                 stream,
@@ -605,6 +743,7 @@ fn provider_tool_loop_returns_compiler_owned_results_before_final_answer() {
         model: "test-model".to_owned(),
         base_url: format!("http://{address}"),
         wire_api: "responses".to_owned(),
+        ..AgentConfig::default()
     };
     let mut service = WorkspaceToolService::unavailable(
         "no configured Osiris project language service is available",
@@ -628,7 +767,78 @@ fn provider_tool_loop_returns_compiler_owned_results_before_final_answer() {
     assert!(response.answer.contains("No project service"));
 }
 
-fn read_http_request(stream: &mut impl Read) {
+#[test]
+fn deepseek_uses_native_tool_calls_and_returns_tool_results() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut first, _) = listener.accept().unwrap();
+        let first_request = read_http_request(&mut first);
+        assert!(first_request.contains("\"tools\":"));
+        assert!(first_request.contains("\"workspace_search\""));
+        assert!(first_request.contains("\"response_format\":{\"type\":\"json_object\"}"));
+        assert!(!first_request.contains("reasoning_effort"));
+        let first_body = serde_json::json!({
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "native-1",
+                        "type": "function",
+                        "function": {
+                            "name": "workspace_search",
+                            "arguments": "{\"query\":\"Point\"}"
+                        }
+                    }]
+                }
+            }]
+        })
+        .to_string();
+        write_http_response(&mut first, &first_body);
+
+        let (mut second, _) = listener.accept().unwrap();
+        let second_request = read_http_request(&mut second);
+        assert!(second_request.contains("\"role\":\"tool\""));
+        assert!(second_request.contains("\"tool_call_id\":\"native-1\""));
+        assert!(second_request.contains("no configured Osiris project"));
+        let final_json =
+            r#"{"answer":"Project service unavailable.","examples":[],"references":[]}"#;
+        let second_body = serde_json::json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": final_json}
+            }]
+        })
+        .to_string();
+        write_http_response(&mut second, &second_body);
+    });
+    let config = AgentConfig {
+        model: "deepseek-v4-flash".to_owned(),
+        base_url: format!("http://{address}"),
+        wire_api: "chatCompletions".to_owned(),
+        ..AgentConfig::default()
+    };
+    let mut service = WorkspaceToolService::unavailable(
+        "no configured Osiris project language service is available",
+    );
+    let mut evidence = Vec::new();
+    let output = run_tool_loop(
+        &config,
+        "test-key",
+        "Return JSON or use project tools.",
+        &mut service,
+        &mut evidence,
+    )
+    .unwrap();
+    server.join().unwrap();
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].call_id, "native-1");
+    assert!(output.contains("Project service unavailable"));
+}
+
+fn read_http_request(stream: &mut impl Read) -> String {
     let mut request = Vec::new();
     let mut buffer = [0_u8; 4096];
     loop {
@@ -654,4 +864,15 @@ fn read_http_request(stream: &mut impl Read) {
             break;
         }
     }
+    String::from_utf8(request).unwrap()
+}
+
+fn write_http_response(stream: &mut impl Write, body: &str) {
+    write!(
+        stream,
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    )
+    .unwrap();
 }

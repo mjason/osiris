@@ -392,15 +392,18 @@ fn retrieve_syntax_sections(markdown: &str, request: &str) -> String {
     starts.extend(markdown.match_indices("\n## ").map(|(index, _)| index + 1));
     starts.push(markdown.len());
 
-    let terms = request_terms(request);
+    let terms = syntax_terms(request);
     let mut sections = starts
         .windows(2)
         .filter_map(|range| {
             let section = &markdown[range[0]..range[1]];
             let lower = section.to_lowercase();
+            let heading = lower.lines().next().unwrap_or_default();
             let score = terms
                 .iter()
-                .map(|term| lower.matches(term).count())
+                .map(|term| {
+                    lower.matches(term).count() + heading.matches(term).count().saturating_mul(20)
+                })
                 .sum::<usize>();
             (score > 0).then_some((score, range[0], section))
         })
@@ -414,7 +417,7 @@ fn retrieve_syntax_sections(markdown: &str, request: &str) -> String {
     );
 
     let mut output = String::new();
-    for (_, start, section) in sections.into_iter().take(1) {
+    for (_, start, section) in sections.into_iter().take(2) {
         if start == 0 {
             continue;
         }
@@ -424,6 +427,50 @@ fn retrieve_syntax_sections(markdown: &str, request: &str) -> String {
     output.push_str("\n\n## Manual preamble\n");
     output.push_str(&markdown.chars().take(1_000).collect::<String>());
     output
+}
+
+fn syntax_terms(request: &str) -> Vec<String> {
+    let request_lower = request.to_lowercase();
+    let mut terms = request_terms(request);
+    let concepts: &[(&[&str], &[&str])] = &[
+        (
+            &[
+                "recursion",
+                "recursive",
+                "loop",
+                "recur",
+                "递归",
+                "循环",
+                "再帰",
+            ],
+            &["recursion", "loop", "recur", "trampoline"],
+        ),
+        (
+            &["function", "defn", "函数", "関数"],
+            &["function", "defn", "parameter", "return", "type"],
+        ),
+        (
+            &["threading", "thread", "管道", "线程", "スレッド"],
+            &["threading", "->", "->>"],
+        ),
+        (
+            &["structure", "defstruct", "结构", "構造"],
+            &["structure", "defstruct", "field", "type"],
+        ),
+        (&["macro", "宏", "マクロ"], &["macro", "defmacro", "syntax"]),
+        (
+            &["import", "导入", "引入", "インポート"],
+            &["module", "import", "refer", "alias"],
+        ),
+    ];
+    for (markers, expansions) in concepts {
+        if markers.iter().any(|marker| request_lower.contains(marker)) {
+            terms.extend(expansions.iter().map(|term| (*term).to_owned()));
+        }
+    }
+    terms.sort();
+    terms.dedup();
+    terms
 }
 
 fn request_terms(request: &str) -> Vec<String> {

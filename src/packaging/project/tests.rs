@@ -232,14 +232,20 @@ fn loads_explicit_lsa_provider_configuration() {
           "agent": {
             "model": "example-model",
             "baseUrl": "https://example.com/v1",
-            "wireApi": "responses"
+            "wireApi": "chatCompletions",
+            "thinking": true,
+            "reasoningEffort": "high",
+            "stream": true
           }
         }"#,
     );
     let config = ProjectConfig::load(&path).expect("agent configuration should load");
     assert_eq!(config.agent.model, "example-model");
     assert_eq!(config.agent.base_url, "https://example.com/v1");
-    assert_eq!(config.agent.wire_api, "responses");
+    assert_eq!(config.agent.wire_api, "chatCompletions");
+    assert!(config.agent.thinking);
+    assert_eq!(config.agent.reasoning_effort.as_deref(), Some("high"));
+    assert!(config.agent.stream);
     let root = path.parent().expect("fixture has parent");
     let _ = fs::remove_dir_all(root);
 }

@@ -75,14 +75,20 @@ pub struct AgentConfig {
     pub model: String,
     pub base_url: String,
     pub wire_api: String,
+    pub thinking: bool,
+    pub reasoning_effort: Option<String>,
+    pub stream: bool,
 }
 
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             model: "deepseek-v4-flash".to_owned(),
-            base_url: "https://openrouter.ai/api/v1".to_owned(),
+            base_url: "https://api.deepseek.com/v1".to_owned(),
             wire_api: "chatCompletions".to_owned(),
+            thinking: false,
+            reasoning_effort: None,
+            stream: false,
         }
     }
 }
@@ -236,12 +242,38 @@ impl ProjectConfig {
                 .and_then(|agent| agent.wire_api.clone())
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| AgentConfig::default().wire_api),
+            thinking: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.thinking)
+                .unwrap_or_default(),
+            reasoning_effort: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.reasoning_effort.clone()),
+            stream: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.stream)
+                .unwrap_or_default(),
         };
         if !matches!(agent.wire_api.as_str(), "responses" | "chatCompletions") {
             return Err(ConfigError::Invalid(format!(
                 "agent.wireApi `{}` is unsupported; LSA supports `responses` and `chatCompletions`",
                 agent.wire_api
             )));
+        }
+        if agent.reasoning_effort.as_deref().is_some_and(|value| {
+            !matches!(value, "low" | "medium" | "high")
+        }) {
+            return Err(ConfigError::Invalid(
+                "agent.reasoningEffort must be `low`, `medium`, or `high`".to_owned(),
+            ));
+        }
+        if agent.stream && agent.wire_api != "chatCompletions" {
+            return Err(ConfigError::Invalid(
+                "agent.stream currently requires agent.wireApi `chatCompletions`".to_owned(),
+            ));
         }
 
         Ok(Self {

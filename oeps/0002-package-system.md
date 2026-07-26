@@ -121,7 +121,7 @@ compiler fields:
   "displayLocale": "zh-CN",
   "agent": {
     "model": "deepseek-v4-flash",
-    "baseUrl": "https://openrouter.ai/api/v1",
+    "baseUrl": "https://api.deepseek.com/v1",
     "wireApi": "chatCompletions"
   }
 }
@@ -483,15 +483,26 @@ NOT reconstruct standard macros as compiler syntax: macro expansion and the
 standard-library/kernel boundary remain authoritative.
 
 **OEP-0002-R049:** The optional `agent` object MUST accept only `model`,
-`baseUrl`, and `wireApi`. Their built-in defaults MUST be
-`deepseek-v4-flash`, `https://openrouter.ai/api/v1`, and `chatCompletions`.
+`baseUrl`, `wireApi`, `thinking`, `reasoningEffort`, and `stream`. The first
+three built-in defaults MUST be `deepseek-v4-flash`,
+`https://api.deepseek.com/v1`, and `chatCompletions`; `thinking` and `stream`
+MUST default to false, while `reasoningEffort` MUST be absent by default and
+accept only `low`, `medium`, or `high`.
 `wireApi` MUST accept only `responses` and `chatCompletions` in the initial
-version. `OSR_MODEL`, `OSR_BASE_URL`, and
-`OSR_WIRE_API` MUST override project values, and the API key MUST be read only
+version. `OSR_MODEL`, `OSR_BASE_URL`, `OSR_WIRE_API`, `OSR_THINKING`,
+`OSR_REASONING_EFFORT`, and `OSR_STREAM` MUST override project values, and the
+API key MUST be read only
 from `OSR_API_KEY`. A project-root `.env` MUST be loaded with dotenv semantics
 without replacing an environment variable already supplied by the process.
 Credentials MUST NOT be written to `osiris.jsonc`, logs, provider errors, or
 session history.
+The official DeepSeek endpoint is the default so the default setup requires
+only a DeepSeek API key. A compatible gateway remains an explicit `baseUrl`
+override and MUST NOT be embedded as a distribution default.
+`osr init` MUST write the complete default `agent` object as commented JSONC,
+including all six fields. This keeps the generated project
+minimal while making every override discoverable in place; uncommenting the
+block MUST preserve the same behavior as the built-in defaults.
 
 LSA sessions MUST be stored at
 `.osiris/cache/agent/<session-id>/session.jsonc`. This state is user-editable
