@@ -84,8 +84,8 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(names.len(), COMMANDS.len());
         for required in [
-            "init", "check", "build", "compile", "watch", "run", "fmt", "expand", "lsc", "lsp",
-            "syntax", "doc",
+            "init", "check", "build", "compile", "watch", "run", "fmt", "expand", "lsc", "lsa",
+            "lsp", "syntax", "doc",
         ] {
             assert!(names.contains(required));
         }

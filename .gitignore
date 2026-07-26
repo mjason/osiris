@@ -23,3 +23,5 @@ node_modules/
 /src/osiris/*.pyd
 /src/osiris/*.dll
 /src/osiris/*.dylib
+
+.env

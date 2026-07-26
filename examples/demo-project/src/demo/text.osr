@@ -1,0 +1,24 @@
+(module demo.text)
+
+~python<text-tools>
+def normalize_text(value: str) -> str:
+    return value.strip().casefold()
+</text-tools>
+
+(extern python text-tools
+  (defn ^Str normalize-text [^Str value]))
+
+(export
+  [normalize])
+
+~osiris<normalize-example>
+(normalize "  Hello, Osiris  ")
+;; => "hello, osiris"
+</normalize-example>
+
+^{:doc
+  {:default "Normalize text through an embedded Python module."
+   "zh-CN" "通过内嵌 Python 模块规范化文本。"}
+  :examples [normalize-example]}
+(defn ^Str normalize [^Str value]
+  (normalize-text value))

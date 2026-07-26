@@ -31,6 +31,28 @@
       "minLength": 1,
       "default": "zh-CN",
       "description": "Default BCP 47 language tag for LSP labels and documentation. Examples include zh-CN, en, and ja; the compiler performs canonical validation and RFC 4647 lookup."
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "default": "deepseek-v4-flash"
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://openrouter.ai/api/v1"
+        },
+        "wireApi": {
+          "type": "string",
+          "enum": ["responses", "chatCompletions"],
+          "default": "chatCompletions",
+          "description": "OpenAI-compatible wire protocol: responses calls /responses; chatCompletions calls /chat/completions."
+        }
+      }
     }
   },
   "$defs": {

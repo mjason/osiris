@@ -1,0 +1,4 @@
+.venv/
+.osiris/
+dist/
+__pycache__/

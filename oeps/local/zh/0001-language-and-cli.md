@@ -12,11 +12,11 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-25
-revision: 15
+updated: 2026-07-26
+revision: 18
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 15
+source-revision: 18
 translation-status: Current
 requires: [0]
 replaces: []
@@ -850,6 +850,55 @@ generated-artifact metadata 必须在判断 compatibility 的位置记录 langua
 version。Compiler package 的 patch/minor release 不得仅因 package version 改变就隐式改变
 language compatibility。
 
+### Language Server Agent
+
+**OEP-0001-R079：** 有限的 Language Server Agent command 必须使用以下 grammar：
+
+```text
+osr lsa [--session <id>] [--locale <bcp47>] [--file <path>]
+        [--format json|text] <request>
+```
+
+`lsa` 表示 Language Server Agent。它是 Osiris 解释和示例服务，不是 coding agent。
+它可以检索内嵌 syntax、标准库 record/example、compiler fact、之前的 LSA turn，以及
+通过 `--file` 显式选择的 source file。它不得应用 patch、执行 shell command、调用
+Python agent runtime，也不得修改 project source 或 package metadata。
+
+**OEP-0001-R080：** LSA 默认必须返回一个 versioned JSON object。每个 result 必须包含
+`sessionId`、`answer`、`examples` 与 `references`。`--format text` 可以提供同一 result 的
+human projection。每个 Osiris example 返回前必须经过 canonical reader/formatter 和
+compiler。Result 必须说明 compilation 是否成功，失败时保留 validation diagnostic；只有
+实际执行过 generated program 才能宣称已 evaluation。Model text 不是 compiler evidence。
+已编译且符合自动求值条件的 example 必须使用当前 project Python 执行；`result` 只能包含
+捕获到的 runtime value，禁止保留 model prediction。Provider output 必须是 Osiris source，
+绝不能是 generated Python。Evaluation 必须把 example 作为临时入口加入当前 project
+workspace 进行编译，解析普通 Osiris import 与 extension interface，释放全部 generated
+workspace module 和 private runtime component，并使用与 `osr run` 相同的 embedded-Python
+和 Python import 语义。Evaluation 必须使用 private temporary runtime distribution、移除
+credential 与无关环境变量、限制执行时间和输出大小，并把 runtime failure 保留为
+diagnostic。只有 declaration 而没有结果表达式的 module 可以成功 evaluation 并返回 null
+result。
+
+**OEP-0001-R081：** LSA locale selection 必须使用 well-formed canonical BCP 47 tag，
+优先级为 `--locale`、project `displayLocale`、最后 conservative request-language detection。
+Locale 只能改变 presentation。LSA 与 LSC 在这里有意不同：LSC 为有限 compiler query
+保留 authored `:default` semantic，LSA 则为 caller 生成自然语言 answer。
+
+**OEP-0001-R082：** LSA follow-up request 必须指定 project-local session ID。Session
+history 必须是可编辑 JSONC、使用 versioned schema、原子替换、位于 build artifact 之外，
+且绝不能包含 API key。Malformed、unknown-schema、mismatched、oversized 或 path-escaping
+session 必须 fail closed。每个 response（包括首轮）都必须返回 session ID。
+
+**OEP-0001-R083：** 每个 LSA turn 必须使用一次有限的初始 OpenAI-compatible request；
+示例被 compiler diagnostic 拒绝时，最多可以再请求一次进行修复。禁止进入无界的
+model/validation loop。
+初始 wire adapter 包含使用 `POST /responses` 的 `responses`，以及使用
+`POST /chat/completions` 的 `chatCompletions`；必须通过显式配置选择，禁止静默重试另一种
+protocol。只有显式选择的 source file 和有界的 retrieved documentation/context 可以发送
+给 provider；LSA 不得隐式上传 project source tree。Provider failure 必须在不暴露
+credential 的情况下报告。Reader、compiler、formatter、LSC、LSP、build 和 generated
+program 都不得依赖 LSA。
+
 ## 理由 (Rationale)
 
 固定 reader 让解析、格式化、恢复与 LSP 行为可预测。小型 kernel 避免宏伪造
@@ -1008,6 +1057,13 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 18，2026-07-26：要求对符合条件的 LSA example 提供有界 execution evidence，
+  并禁止使用 model 预测的 result。
+- Revision 17，2026-07-25：确认 OpenCode `@ai-sdk/openai-compatible` provider 使用
+  `/chat/completions` 后加入显式 `chatCompletions` wire adapter；保留 Responses 且禁止
+  隐式 protocol fallback，并把 compiler-diagnostic example repair 限制为最多一次额外请求。
+- Revision 16，2026-07-25：定义 `osr lsa` Language Server Agent，用于解释与生成经过
+  compiler 验证的示例，并规定 locale、session、provider、源码披露和 non-coding-agent 边界。
 - Revision 15，2026-07-25：规定 generic embedded block 是普通可 export `Str` binding，
   embedded Python label 是由 symbolic `extern python` 使用的 private provider handle，并加入
   Rich Metadata 对 same-module `~markdown`/`~osiris` content 的 static reference。

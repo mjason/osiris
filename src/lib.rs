@@ -1,3 +1,4 @@
+pub mod agent;
 #[path = "packaging/artifact/mod.rs"]
 pub mod artifact;
 #[path = "language/ast/mod.rs"]

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5
+
+- Add the Language Server Agent for compiler-validated explanations, examples, follow-up sessions, and captured runtime results.
+- Validate generated examples in the complete project workspace, including imports, embedded Python, standard runtime support, and records resolution.
+- Ship and continuously test a complete multi-module `uv` demo project.
+
 ## 0.3.4
 
 - Present localized names, migration aliases, signatures, and examples more clearly through LSP and LSC.

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/osiris.schema.json",
+  "source": ["src"],
+  "outDir": "dist",
+  "targetPython": "3.11",
+  "strict": true,
+  "displayLocale": "zh-CN",
+  "agent": {
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "wireApi": "chatCompletions"
+  }
+}

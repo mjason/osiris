@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{ProjectConfig, PythonVersion};
+use super::{AgentConfig, ProjectConfig, PythonVersion};
 
 static NEXT_TEST: AtomicUsize = AtomicUsize::new(0);
 
@@ -220,8 +220,48 @@ fn minimal_configuration_uses_defaults() {
     let config = ProjectConfig::load(&path).expect("minimal configuration should load");
     assert_eq!(config.target_python, PythonVersion::DEFAULT_TARGET);
     assert_eq!(config.default_output_dir(), config.root.join("dist"));
+    assert_eq!(config.agent, AgentConfig::default());
     let root = path.parent().expect("fixture has parent");
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn loads_explicit_lsa_provider_configuration() {
+    let path = fixture(
+        r#"{
+          "agent": {
+            "model": "example-model",
+            "baseUrl": "https://example.com/v1",
+            "wireApi": "responses"
+          }
+        }"#,
+    );
+    let config = ProjectConfig::load(&path).expect("agent configuration should load");
+    assert_eq!(config.agent.model, "example-model");
+    assert_eq!(config.agent.base_url, "https://example.com/v1");
+    assert_eq!(config.agent.wire_api, "responses");
+    let root = path.parent().expect("fixture has parent");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rejects_unknown_or_unsupported_lsa_provider_configuration() {
+    for (source, expected) in [
+        (
+            r#"{"agent": {"model": "example", "secret": "value"}}"#,
+            "unknown field",
+        ),
+        (
+            r#"{"agent": {"wireApi": "legacy-completions"}}"#,
+            "supports `responses` and `chatCompletions`",
+        ),
+    ] {
+        let path = fixture(source);
+        let error = ProjectConfig::load(&path).expect_err("invalid agent config must fail");
+        assert!(error.to_string().contains(expected), "{error}");
+        let root = path.parent().expect("fixture has parent");
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[test]

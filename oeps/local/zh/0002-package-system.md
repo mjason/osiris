@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 10
+revision: 12
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 10
+source-revision: 12
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -94,11 +94,17 @@ OEP-0002-R005 定义的可选 `exclude` field，不得包含其他 compiler fiel
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN"
+  "displayLocale": "zh-CN",
+  "agent": {
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "wireApi": "chatCompletions"
+  }
 }
 ```
 
-`$schema` 是 editor aid；其他五项是 compiler field。本版本 config 禁止包含 `watch`、
+`$schema` 是 editor aid；`source`、`outDir`、`targetPython`、`strict`、`displayLocale` 是
+compiler field；`agent` 配置可选 LSA client。本版本 config 禁止包含 `watch`、
 `extensions`、`buildGroups` 或 `trust`。
 
 **OEP-0002-R004：** `source` 必须是非空、有序、互不重复的 project-relative source
@@ -385,6 +391,20 @@ hygienic binding/helper 必须使用能看出用途的 private name，不得泄�
 flow、terminal temporary 和重复 import。这些 projection 不得在 compiler 中把 standard
 macro 重建为语法；macro expansion 以及 standard-library/kernel boundary 仍是权威定义。
 
+**OEP-0002-R049：** 可选 `agent` object 只能接受 `model`、`baseUrl` 和 `wireApi`。
+内置默认值必须分别是 `deepseek-v4-flash`、`https://openrouter.ai/api/v1` 与
+`chatCompletions`。
+第一版 `wireApi` 只能接受 `responses` 与 `chatCompletions`。`OSR_MODEL`、`OSR_BASE_URL`、
+`OSR_WIRE_API` 必须覆盖
+project value，API key 只能从 `OSR_API_KEY` 读取。必须按 dotenv semantic 加载 project-root
+`.env`，且不得替换 process 已提供的 environment variable。Credential 不得写入
+`osiris.jsonc`、log、provider error 或 session history。
+
+LSA session 必须存放在 `.osiris/cache/agent/<session-id>/session.jsonc`。该状态是用户可
+编辑 JSONC，不是 build-cache entry：必须可安全删除，不得影响 compilation，不得进入
+`outDir`/package，并且必须被 project source discovery 忽略。实现必须把 session ID 限制为
+单个 path component，并原子替换经过验证、带版本的 session。
+
 ## 理由 (Rationale)
 
 配置故意保持小型。`source` 已定义 watch scope，第二个 watch field 会产生矛盾 tree；
@@ -492,6 +512,10 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 12，2026-07-25：加入显式 `responses`/`chatCompletions` provider selection，
+  并将 Chat Completions 设为 compatibility-first default。
+- Revision 11，2026-07-25：加入 OpenAI-compatible LSA provider 配置、dotenv/environment
+  precedence、credential boundary 和 project-local 可编辑 session layout。
 - Revision 10，2026-07-25：把 embedded Python provider handle 规定为 module-private
   implementation detail，并要求 consumer reachability 从 validated Osiris `extern` binding
   开始。

@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-25
-revision: 10
+revision: 12
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -118,12 +118,18 @@ compiler fields:
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN"
+  "displayLocale": "zh-CN",
+  "agent": {
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "wireApi": "chatCompletions"
+  }
 }
 ```
 
 `$schema` is an editor aid. `source`, `outDir`, `targetPython`, `strict`, and
-`displayLocale` are compiler fields. The config MUST NOT contain `watch`,
+`displayLocale` are compiler fields; `agent` configures the optional LSA client.
+The config MUST NOT contain `watch`,
 `extensions`, `buildGroups`, or `trust` fields in this version.
 
 **OEP-0002-R004:** `source` MUST be a non-empty ordered set of distinct,
@@ -476,6 +482,24 @@ preserves evaluation order and module initialization. These projections MUST
 NOT reconstruct standard macros as compiler syntax: macro expansion and the
 standard-library/kernel boundary remain authoritative.
 
+**OEP-0002-R049:** The optional `agent` object MUST accept only `model`,
+`baseUrl`, and `wireApi`. Their built-in defaults MUST be
+`deepseek-v4-flash`, `https://openrouter.ai/api/v1`, and `chatCompletions`.
+`wireApi` MUST accept only `responses` and `chatCompletions` in the initial
+version. `OSR_MODEL`, `OSR_BASE_URL`, and
+`OSR_WIRE_API` MUST override project values, and the API key MUST be read only
+from `OSR_API_KEY`. A project-root `.env` MUST be loaded with dotenv semantics
+without replacing an environment variable already supplied by the process.
+Credentials MUST NOT be written to `osiris.jsonc`, logs, provider errors, or
+session history.
+
+LSA sessions MUST be stored at
+`.osiris/cache/agent/<session-id>/session.jsonc`. This state is user-editable
+JSONC, not a build-cache entry: it MUST be safe to delete, MUST NOT affect
+compilation, MUST NOT enter `outDir` or a package, and MUST be ignored by
+project source discovery. Implementations MUST constrain session identifiers
+to one path component and atomically replace a validated versioned session.
+
 ## Rationale
 
 The configuration is deliberately small. `source` already defines the watch
@@ -612,6 +636,11 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 12, 2026-07-25: Added explicit `responses` and `chatCompletions`
+  provider selection and made Chat Completions the compatibility-first default.
+- Revision 11, 2026-07-25: Added the OpenAI-compatible LSA provider
+  configuration, dotenv/environment precedence, credential boundary, and
+  project-local editable session layout.
 - Revision 10, 2026-07-25: Made embedded Python provider handles module-private
   implementation details and required consumer reachability to begin at their
   validated Osiris `extern` bindings.

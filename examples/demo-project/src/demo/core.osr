@@ -1,0 +1,29 @@
+(module demo.core)
+
+(export
+  [increment-all sum-values])
+
+~osiris<increment-all-example>
+(increment-all [1 2 3])
+;; => [2 3 4]
+</increment-all-example>
+
+^{:doc
+  {:default "Increment every integer in a vector."
+   "zh-CN" "将向量中的每个整数加一。"}
+  :examples [increment-all-example]}
+(defn ^{:type (Vector Int)} increment-all
+  [^{:type (Vector Int)} values]
+  (mapv (fn [^Int value] (+ value 1)) values))
+
+~osiris<sum-values-example>
+(sum-values [2 3 4])
+;; => 9
+</sum-values-example>
+
+^{:doc
+  {:default "Sum all integers in a vector."
+   "zh-CN" "对向量中的所有整数求和。"}
+  :examples [sum-values-example]}
+(defn ^Int sum-values [^{:type (Vector Int)} values]
+  (reduce (fn [^Int total ^Int value] (+ total value)) 0 values))

@@ -2,7 +2,7 @@
 document-id: tooling/cli
 title: Osiris Command-Line Interface
 language: en
-revision: 1
+revision: 2
 ---
 
 # Osiris Command-Line Interface
@@ -76,6 +76,36 @@ BCP 47 tag and is matched with RFC 4647 lookup.
 
 `osr lsp` runs the editor protocol over standard Content-Length framed stdin
 and stdout. It uses the same compiler queries and formatter as LSC and `fmt`.
+
+## Language Server Agent
+
+`osr lsa "<request>"` explains Osiris APIs and returns complete examples that
+have been formatted and checked by the compiler. It is deliberately not a
+coding agent: it does not edit source or run shell commands. The example is
+compiled as a temporary entry in the current Osiris workspace and executed
+with the current project Python. Normal Osiris imports, extension interfaces,
+`py/import`, and `~python` use the same staging semantics as `osr run`; the
+provider still returns only Osiris source, never generated Python.
+JSON is the default output so another agent can consume the result directly;
+use `--format text` for terminal reading.
+Successful execution sets `evaluated: true` and replaces any model-authored
+result with the captured runtime value. Execution uses a credential-cleared
+temporary runtime with finite time and output limits. Compilation or execution
+failure may cause one diagnostic-driven repair request; LSA never enters an
+unbounded generation loop.
+
+Every response includes a `sessionId`. Continue a conversation with
+`osr lsa --session <id> "<follow-up>"`. Editable JSONC history is stored under
+`.osiris/cache/agent/<session-id>/session.jsonc`. `--file <path>` explicitly
+adds one project source file as context; project source is not uploaded
+implicitly.
+
+LSA uses the OpenAI-compatible protocol selected by the `agent` object in
+`osiris.jsonc`: `responses` calls `/responses`, while `chatCompletions` calls
+`/chat/completions` and is the compatibility-first default. `OSR_API_KEY` is
+required. `OSR_MODEL`, `OSR_BASE_URL`, and `OSR_WIRE_API` override project
+values, and a project-root `.env` is supported. The locale precedence is
+`--locale`, project `displayLocale`, then request language detection.
 
 ## Embedded Documentation
 

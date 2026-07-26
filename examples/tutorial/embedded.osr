@@ -4,7 +4,7 @@
 ;; block, while Python's language service remains responsible for features
 ;; inside the body.
 ~python<text-tools>
-def normalize(value: str) -> str:
+def normalize_text(value: str) -> str:
     return value.strip().casefold()
 </text-tools>
 

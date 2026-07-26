@@ -1,0 +1,46 @@
+{
+  "schema": "osiris-lsa-effect-suite/v1",
+  "cases": [
+    {
+      "id": "typed-reduce",
+      "locale": "zh-CN",
+      "request": "解释 osiris.core/reduce，并给一个完整的最小例子。",
+      "answerContainsAny": ["归约", "reduce"],
+      "referenceContains": "osiris.core::function::reduce",
+      "resultEquals": 10,
+      "minimumExamples": 1,
+      "followUp": {
+        "request": "继续解释为什么示例里的回调要写成带类型的 fn，不需要再给例子。",
+        "answerContainsAny": ["类型", "函数值", "operator", "回调"]
+      }
+    },
+    {
+      "id": "thread-last",
+      "locale": "zh-CN",
+      "request": "解释 ->> threading macro，并给一个把 [1 2 3 4] 先用 mapv 每项乘以 2、再用 reduce 求和得到 20 的完整最小例子。",
+      "answerContainsAny": ["线程", "thread", "最后"],
+      "referenceContains": "language/syntax",
+      "resultEquals": 20,
+      "minimumExamples": 1
+    },
+    {
+      "id": "typed-structure",
+      "locale": "en",
+      "request": "Explain defstruct and provide one complete minimal module with a typed Point structure.",
+      "answerContainsAny": ["nominal", "structure", "defstruct"],
+      "referenceContains": "language/syntax",
+      "exampleContains": "(defstruct Point",
+      "minimumExamples": 1
+    },
+    {
+      "id": "standard-import",
+      "locale": "zh-CN",
+      "request": "解释 osiris.string/upper，并给一个显式 import 后转换 hello 的完整最小例子。",
+      "answerContainsAny": ["大写", "upper", "uppercase"],
+      "referenceContains": "osiris.string::function::upper",
+      "exampleContains": "(import osiris.string",
+      "resultEquals": "HELLO",
+      "minimumExamples": 1
+    }
+  ]
+}

@@ -73,7 +73,12 @@ trailing commas are accepted. A typical configuration is deliberately small:
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN"
+  "displayLocale": "zh-CN",
+  "agent": {
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "wireApi": "chatCompletions"
+  }
 }
 ```
 
@@ -103,6 +108,20 @@ locale sent by an LSP client takes precedence over the project value. `osr
 init` writes `"displayLocale": "zh-CN"` by default. LSC intentionally does not
 inherit it: pass `--locale <bcp47>` when a finite CLI query needs a particular
 language.
+
+`osr lsa "<request>"` is the finite Language Server Agent for explaining
+Osiris and generating compiler-validated examples. Examples are compiled as
+temporary entries in the current workspace and executed with the project
+Python; ordinary imports and `~python` use the same staging rules as `osr run`.
+Only the captured runtime value is reported as `result`. It returns JSON by
+default and includes a `sessionId`; pass that ID with `--session` for a follow-up. The
+API key is read from `OSR_API_KEY` in the environment or project `.env`.
+`OSR_MODEL`, `OSR_BASE_URL`, and `OSR_WIRE_API` override the `agent` object.
+The default `chatCompletions` calls `/chat/completions`; set `wireApi` or
+`OSR_WIRE_API` to `responses` for `/responses`. Protocol fallback is never
+implicit.
+Use `--file <path>` to explicitly include one local source file as context.
+Session JSONC is kept under `.osiris/cache/agent/` and never enters `dist`.
 
 With that configuration and [`examples/hello.osr`](examples/hello.osr):
 

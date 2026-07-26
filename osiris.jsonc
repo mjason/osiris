@@ -1,6 +1,7 @@
 {
   "$schema": "./schemas/osiris.schema.json",
   "source": ["examples"],
+  "exclude": ["examples/demo-project"],
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,

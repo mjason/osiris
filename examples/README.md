@@ -1,5 +1,20 @@
 # Osiris examples
 
+[`demo-project`](demo-project) is the canonical runnable example. It is a
+complete `uv` project with its own `pyproject.toml`, `osiris.jsonc`, source
+root, multiple imported modules, and embedded Python boundary:
+
+```console
+cd examples/demo-project
+uv sync
+uv run osr check
+uv run osr run src/demo/main.osr
+```
+
+The remaining files are compiler-repository fixtures collected by the root
+`osiris.jsonc`. They stay useful for focused syntax and generated-artifact
+inspection, but they are not a substitute for the complete demo project.
+
 `osiris.jsonc` 中的 `source = ["examples"]` 将本目录设为 Osiris source
 root。模块名由相对路径确定：
 
@@ -57,7 +72,7 @@ cargo run --bin osr -- build
 
 ```clojure
 ~python<text-tools>
-def normalize(value: str) -> str:
+def normalize_text(value: str) -> str:
     return value.strip().casefold()
 </text-tools>
 

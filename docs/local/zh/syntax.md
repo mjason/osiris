@@ -556,3 +556,6 @@ Compiler 携带完整 standard resource tree 的 SHA-256 identity。Resource 缺
 写完或修改源码后运行 `osr fmt` 和 `osr check`。使用 `osr lsc` 可以从 CLI 访问与
 IDE 通过 LSP 获得的相同诊断、hover、completion、signature、navigation、symbol 和
 semantic fact。
+需要解释或完整生成示例时，使用 `osr lsa "<需求>"`。LSA 会标明每个示例的 compiler
+validation 结果，并且绝不编辑 project source。需要结合某个本地源码解释时，显式传入
+`--file <path>`。

@@ -67,6 +67,24 @@ pub struct ProjectConfig {
     pub target_python: PythonVersion,
     pub strict: bool,
     pub display_locale: Option<String>,
+    pub agent: AgentConfig,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentConfig {
+    pub model: String,
+    pub base_url: String,
+    pub wire_api: String,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            model: "deepseek-v4-flash".to_owned(),
+            base_url: "https://openrouter.ai/api/v1".to_owned(),
+            wire_api: "chatCompletions".to_owned(),
+        }
+    }
 }
 
 impl ProjectConfig {
@@ -199,6 +217,32 @@ impl ProjectConfig {
             .transpose()?;
         let exclude = compile_exclude_patterns(jsonc.exclude.unwrap_or_default())?;
         let output_dir = root.join(output_relative);
+        let agent = AgentConfig {
+            model: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.model.clone())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| AgentConfig::default().model),
+            base_url: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.base_url.clone())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| AgentConfig::default().base_url),
+            wire_api: jsonc
+                .agent
+                .as_ref()
+                .and_then(|agent| agent.wire_api.clone())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| AgentConfig::default().wire_api),
+        };
+        if !matches!(agent.wire_api.as_str(), "responses" | "chatCompletions") {
+            return Err(ConfigError::Invalid(format!(
+                "agent.wireApi `{}` is unsupported; LSA supports `responses` and `chatCompletions`",
+                agent.wire_api
+            )));
+        }
 
         Ok(Self {
             root,
@@ -211,6 +255,7 @@ impl ProjectConfig {
             target_python,
             strict: jsonc.strict.unwrap_or(true),
             display_locale,
+            agent,
         })
     }
 

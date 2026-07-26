@@ -1,0 +1,22 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "osiris-demo"
+version = "0.1.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "osiris-lang" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "osiris-lang", directory = "../../" }]
+
+[[package]]
+name = "osiris-lang"
+source = { directory = "../../" }

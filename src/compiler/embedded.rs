@@ -106,8 +106,8 @@ pub(super) fn compile_python_modules(
         })
         .collect::<BTreeMap<_, _>>();
     let authored_modules = providers
-        .iter()
-        .map(|(handle, _)| (crate::name::python_identifier(handle), handle.clone()))
+        .keys()
+        .map(|handle| (crate::name::python_identifier(handle), handle.clone()))
         .collect::<BTreeMap<_, _>>();
     let roots = module
         .items

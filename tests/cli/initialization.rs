@@ -55,6 +55,9 @@ exit 9
     assert!(osiris.contains("\"outDir\": \"dist\""));
     assert!(osiris.contains("\"targetPython\": \"3.11\""));
     assert!(osiris.contains("\"displayLocale\": \"zh-CN\""));
+    assert!(osiris.contains("\"model\": \"deepseek-v4-flash\""));
+    assert!(osiris.contains("\"baseUrl\": \"https://openrouter.ai/api/v1\""));
+    assert!(osiris.contains("\"wireApi\": \"chatCompletions\""));
     assert_eq!(
         fs::read_to_string(project.join(".uv-add-invocation")).unwrap(),
         "add --dev osiris-lang>=0.3,<0.4\n"

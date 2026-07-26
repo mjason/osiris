@@ -25,7 +25,7 @@ pub struct LockedDistribution {
     pub normalized_name: String,
     pub version: String,
     pub source: String,
-    /// Local project roots are the only packages allowed to omit this.
+    /// Local project roots and directory sources may omit this in `uv.lock`.
     pub source_hash: Option<String>,
     pub source_hashes: Vec<String>,
     pub dependencies: Vec<LockedDependency>,

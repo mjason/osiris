@@ -73,6 +73,26 @@ fn accepts_uv_virtual_project_root_without_a_source_hash() {
 }
 
 #[test]
+fn accepts_uv_directory_dependency_without_locked_version_or_hash() {
+    let source = lock("python_version >= '3.11'")
+        .replace(
+            "source = { editable = \".\" }",
+            "source = { virtual = \".\" }",
+        )
+        .replace(
+            "version = \"2.1.0\"\nsource = { registry = \"https://pypi.org/simple\" }\nsdist = { hash = \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" }",
+            "source = { directory = \"../numpy\" }",
+        );
+
+    let parsed = UvLock::parse(&source, PythonVersion::new(3, 11))
+        .expect("uv directory dependencies may defer version metadata to their build");
+    let package = parsed.package("numpy").expect("directory dependency");
+    assert_eq!(package.version, "0");
+    assert_eq!(package.source, "path");
+    assert!(package.source_hash.is_none());
+}
+
+#[test]
 fn target_inapplicable_pin_cannot_satisfy_an_edge() {
     let parsed = UvLock::parse(&lock("python_version >= '3.12'"), PythonVersion::new(3, 11))
         .expect("non-applicable candidates are omitted");

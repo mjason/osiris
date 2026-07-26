@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn complete_demo_project_checks_and_runs() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/demo-project");
+    let check = osr(&["check", path_argument(&root)]);
+    assert!(
+        check.status.success(),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    let entry = root.join("src/demo/main.osr");
+    let run = osr(&["run", path_argument(&entry)]);
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "{'values': (2, 3, 4, 5), 'total': 14, 'message': 'hello, osiris'}\n"
+    );
+}
+
+#[test]
 fn run_executes_fully_expanded_threading_pipeline() {
     let fixture = SourceFixture::new(
         "(py/import builtins :as py)\n\

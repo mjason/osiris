@@ -7,6 +7,15 @@ struct JsoncConfig {
     target_python: Option<String>,
     strict: Option<bool>,
     display_locale: Option<String>,
+    agent: Option<AgentJsonc>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AgentJsonc {
+    model: Option<String>,
+    base_url: Option<String>,
+    wire_api: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for JsoncConfig {
@@ -44,6 +53,7 @@ impl<'de> Deserialize<'de> for JsoncConfig {
                         "targetPython" => config.target_python = map.next_value()?,
                         "strict" => config.strict = map.next_value()?,
                         "displayLocale" => config.display_locale = map.next_value()?,
+                        "agent" => config.agent = map.next_value()?,
                         _ => {
                             let _: serde_json::Value = map.next_value()?;
                             unknown.insert(key);

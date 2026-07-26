@@ -176,9 +176,11 @@ pub(super) fn parse_package(
         .and_then(toml::Value::as_str)
         .is_some_and(|value| value == ".");
     let project_root = editable || virtual_root;
+    let local_directory = source_table
+        .is_some_and(|source| source.contains_key("directory") || source.contains_key("path"));
     let version = match table.get("version").and_then(toml::Value::as_str) {
         Some(value) if !value.is_empty() => value.to_owned(),
-        _ if project_root => "0".to_owned(),
+        _ if project_root || local_directory => "0".to_owned(),
         _ => {
             return Err(DependencyError::InvalidLock(
                 path.to_path_buf(),
@@ -195,7 +197,7 @@ pub(super) fn parse_package(
     .map_err(|message| DependencyError::InvalidLock(path.to_path_buf(), message))?;
     let source = source_descriptor(source_table, editable);
     let source_hashes = source_hashes(table, path)?;
-    if !project_root && source_hashes.is_empty() {
+    if !project_root && !local_directory && source_hashes.is_empty() {
         return Err(DependencyError::InvalidLock(
             path.to_path_buf(),
             format!("package `{name}` has no source hash"),
