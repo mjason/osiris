@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.6
+
+- Upgrade the VS Code language client and its transitive dependencies to resolve the reported high-severity security advisories.
+- Require VS Code 1.91 or newer to match the supported host range of the updated language client.
+
 ## 0.3.5
 
 - Add the Language Server Agent for compiler-validated explanations, examples, follow-up sessions, and captured runtime results.

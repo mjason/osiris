@@ -2,11 +2,11 @@
   "name": "osiris",
   "displayName": "Osiris",
   "description": "Language support for the Osiris Lisp-to-Python compiler",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "publisher": "mjason",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages"
@@ -132,6 +132,6 @@
     "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.8.0",
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.0"
   }
 }
