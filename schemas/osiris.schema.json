@@ -2,55 +2,78 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
   "title": "Osiris compiler configuration",
+  "description": "Project-local compiler settings. Python package metadata and dependencies belong in pyproject.toml; build, watch, and run behavior is selected by osr commands.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema location used by JSON-aware editors. It does not affect compilation."
+    },
     "source": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/relativePath" },
-      "default": ["src"]
+      "default": ["src"],
+      "description": "Ordered project-relative Osiris source roots. A file path below a source root determines its dotted module name.",
+      "examples": [["src"], ["src", "generated"]]
     },
-    "outDir": { "$ref": "#/$defs/relativePath", "default": "dist" },
+    "outDir": {
+      "$ref": "#/$defs/relativePath",
+      "default": "dist",
+      "description": "Project-relative destination for complete build artifacts. It is always excluded from source discovery.",
+      "examples": ["dist", "build/osiris"]
+    },
     "exclude": {
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/relativeGlob" },
-      "description": "Project-root-relative glob patterns shared by compilation and language tooling. A value without glob syntax also excludes all descendants."
+      "default": [],
+      "description": "Project-root-relative glob patterns shared by build, watch, check, format, LSC, module discovery, and LSP. A value without glob syntax excludes that path and all descendants.",
+      "examples": [["src/generated", "src/**/fixtures/**"]]
     },
     "targetPython": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+$",
-      "default": "3.11"
+      "default": "3.11",
+      "description": "Python language version used for analysis and generated code. One build targets exactly one Python version; the minimum is 3.11.",
+      "examples": ["3.11", "3.12"]
     },
-    "strict": { "type": "boolean", "default": true },
+    "strict": {
+      "type": "boolean",
+      "default": true,
+      "description": "Treat unresolved dynamic boundaries, incomplete public contracts, and unsupported configuration as errors. It does not change reader syntax."
+    },
     "displayLocale": {
       "type": "string",
       "minLength": 1,
       "default": "zh-CN",
-      "description": "Default BCP 47 language tag for LSP labels and documentation. Examples include zh-CN, en, and ja; the compiler performs canonical validation and RFC 4647 lookup."
+      "description": "Default BCP 47 language tag for LSP labels and documentation. It never changes binding identity or generated code. LSA uses it after an explicit --locale and before request-language detection.",
+      "examples": ["zh-CN", "en", "ja"]
     },
     "agent": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Optional OpenAI-compatible provider settings for osr lsa. Keep OSR_API_KEY in the environment or project .env, never in this object.",
       "properties": {
         "model": {
           "type": "string",
           "minLength": 1,
-          "default": "deepseek-v4-flash"
+          "default": "deepseek-v4-flash",
+          "description": "Provider model identifier. OSR_MODEL takes precedence."
         },
         "baseUrl": {
           "type": "string",
           "format": "uri",
-          "default": "https://openrouter.ai/api/v1"
+          "default": "https://openrouter.ai/api/v1",
+          "description": "OpenAI-compatible API base URL. OSR_BASE_URL takes precedence; credentials must not be included in the URL."
         },
         "wireApi": {
           "type": "string",
           "enum": ["responses", "chatCompletions"],
           "default": "chatCompletions",
-          "description": "OpenAI-compatible wire protocol: responses calls /responses; chatCompletions calls /chat/completions."
+          "description": "OpenAI-compatible wire protocol: responses calls /responses; chatCompletions calls /chat/completions. OSR_WIRE_API takes precedence."
         }
       }
     }

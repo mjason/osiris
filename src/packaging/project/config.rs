@@ -272,7 +272,9 @@ impl ProjectConfig {
             self.root.join(path)
         };
         absolute.strip_prefix(&self.root).is_ok_and(|relative| {
-            absolute.starts_with(&self.output_dir) || self.exclude.is_match(relative)
+            absolute.starts_with(&self.output_dir)
+                || relative.starts_with(".osiris")
+                || self.exclude.is_match(relative)
         })
     }
 

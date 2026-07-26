@@ -74,7 +74,7 @@ exit 9
 
 #[cfg(unix)]
 #[test]
-fn init_extension_configures_the_build_backend_and_public_module() {
+fn init_package_configures_the_build_backend_and_public_module() {
     let fixture = SourceFixture::new("none\n");
     let bin = fixture.directory.join("bin");
     fs::create_dir(&bin).unwrap();
@@ -107,7 +107,7 @@ exit 9
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_osr"))
-        .args(["init", "--extension", path_argument(&project)])
+        .args(["init", "--package", path_argument(&project)])
         .env("PATH", path)
         .output()
         .unwrap();
@@ -134,7 +134,7 @@ exit 9
 }
 
 #[test]
-fn init_extension_refuses_to_replace_an_existing_build_backend() {
+fn init_package_refuses_to_replace_an_existing_build_backend() {
     let fixture = SourceFixture::new("none\n");
     fs::write(
         fixture.directory.join("pyproject.toml"),
@@ -148,7 +148,7 @@ fn init_extension_refuses_to_replace_an_existing_build_backend() {
     let output = osr(&[
         "init",
         "--existing",
-        "--extension",
+        "--package",
         path_argument(&fixture.directory),
     ]);
 

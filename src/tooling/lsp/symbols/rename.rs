@@ -12,6 +12,17 @@ pub(super) struct WorkspaceSymbolIndex {
     pub(super) ambiguous_provider_names: BTreeSet<(String, String)>,
     pub(super) pending_import_members: Vec<PendingImportMember>,
     pub(super) semantic_symbols: Vec<WorkspaceSemanticSymbol>,
+    pub(super) relations: Vec<WorkspaceRelation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WorkspaceRelation {
+    pub(super) from: String,
+    pub(super) to: String,
+    pub(super) kind: String,
+    pub(super) uri: String,
+    pub(super) range: Range,
 }
 
 #[derive(Clone, Debug)]

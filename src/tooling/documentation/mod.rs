@@ -216,19 +216,27 @@ fn validate_query_document(query: &str) -> Result<(), String> {
 
 /// Load the complete authored syntax manual through the embedded snapshot.
 pub fn syntax_markdown() -> Result<SyntaxDocument, String> {
+    document_markdown("language/syntax")?
+        .ok_or_else(|| "embedded snapshot does not contain language/syntax".to_owned())
+}
+
+/// Load one complete authored Markdown document through the embedded snapshot.
+pub(crate) fn document_markdown(id: &str) -> Result<Option<SyntaxDocument>, String> {
     block_on(async {
         let connection = embedded_connection().await?;
-        let document = load_document(&connection, "language/syntax")
+        let Some(document) = load_document(&connection, id)
             .await
             .map_err(|error| error.to_string())?
-            .ok_or_else(|| "embedded snapshot does not contain language/syntax".to_owned())?;
-        Ok(SyntaxDocument {
+        else {
+            return Ok(None);
+        };
+        Ok(Some(SyntaxDocument {
             id: document.id.to_string(),
             title: document.title,
             revision: document.revision,
             content_hash: document.content_hash,
             markdown: document.markdown,
-        })
+        }))
     })
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7
+
+- Add project-aware symbol, definition, signature, reference, and source context for LSA through the LSC/LSP boundary.
+- Validate `osiris.jsonc` with the published project schema and surface project-loading diagnostics consistently.
+- Add the cached libSQL semantic graph with automatic refresh and explicit cache recovery commands.
+
 ## 0.3.6
 
 - Upgrade the VS Code language client and its transitive dependencies to resolve the reported high-severity security advisories.

@@ -201,7 +201,7 @@ impl LspState {
             .collect::<BTreeMap<_, _>>();
         let mut paths = Vec::new();
         for root in &project.source_roots {
-            collect_workspace_sources(root, &mut paths).ok()?;
+            collect_workspace_sources(root, &project, &mut paths).ok()?;
         }
         paths.retain(|path| !project.is_excluded(path));
         paths.sort();

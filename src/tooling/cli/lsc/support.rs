@@ -1,11 +1,11 @@
 use super::*;
 
-pub(super) struct At {
-    pub(super) path: String,
-    pub(super) position: Position,
+pub(crate) struct At {
+    pub(crate) path: String,
+    pub(crate) position: Position,
 }
 
-pub(super) fn parse_at(raw: &str) -> Result<At, String> {
+pub(crate) fn parse_at(raw: &str) -> Result<At, String> {
     let (head, column) = raw
         .rsplit_once(':')
         .ok_or_else(|| "--at must use PATH:LINE:COLUMN".to_owned())?;

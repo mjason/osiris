@@ -55,11 +55,40 @@ fn parses_model_json_without_compiler_owned_fields() {
 }
 
 #[test]
+fn parses_bounded_language_service_tool_calls() {
+    let calls = parse_tool_calls(
+        r#"{"toolCalls":[{"id":"search-1","operation":"workspace-search","arguments":{"query":"format message"}}]}"#,
+    )
+    .unwrap()
+    .expect("tool calls");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].id, "search-1");
+    assert_eq!(calls[0].operation, "workspace-search");
+    assert_eq!(calls[0].arguments["query"], "format message");
+    assert!(
+        parse_tool_calls(r#"{"answer":"done","examples":[],"references":[]}"#)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn model_cannot_supply_compiler_owned_language_service_evidence() {
+    let response = parse_model_response(
+        r#"{"answer":"claim","examples":[],"references":["invented"],"languageService":[{"callId":"fake","operation":"hover","status":"ok","result":{"invented":true}}]}"#,
+        "session-1",
+    )
+    .unwrap();
+    assert!(response.language_service.is_empty());
+}
+
+#[test]
 fn exact_standard_api_requests_outrank_namespace_matches() {
     let material = collect_material(
         Path::new("."),
         None,
         "Explain osiris.core/reduce with an example",
+        None,
     )
     .unwrap();
     let reduce = material
@@ -80,6 +109,7 @@ fn standard_api_retrieval_does_not_use_substring_name_matches() {
         Path::new("."),
         None,
         "Explain defstruct and provide one complete example",
+        None,
     )
     .unwrap();
     for unrelated in [
@@ -100,6 +130,7 @@ fn an_explicit_example_request_rejects_an_empty_example_list() {
         answer: "Explanation".to_owned(),
         examples: Vec::new(),
         references: Vec::new(),
+        language_service: Vec::new(),
     };
     assert_eq!(response_issue_count(&response, "Provide an example"), 1);
     assert_eq!(response_issue_count(&response, "Only explain this"), 0);
@@ -111,10 +142,91 @@ fn syntax_retrieval_finds_later_structures_section() {
         Path::new("."),
         None,
         "Explain defstruct with a Point example",
+        None,
     )
     .unwrap();
     assert!(material.text.contains("## Structures"));
     assert!(material.text.contains("(defstruct Threshold"));
+}
+
+#[test]
+fn project_questions_retrieve_configuration_and_publication_guidance() {
+    let material = collect_material(
+        Path::new("."),
+        None,
+        "如何设置输出目录并把 Osiris 库发布到 PyPI？",
+        None,
+    )
+    .unwrap();
+    assert!(material.references.iter().any(|item| item == "tooling/cli"));
+    assert!(
+        !material
+            .references
+            .iter()
+            .any(|item| item == "language/syntax")
+    );
+    assert!(material.text.contains("## Project Configuration"));
+    assert!(material.text.contains("## Publishing a Package"));
+    assert!(material.text.contains("uv publish dist/*"));
+}
+
+#[test]
+fn explicitly_requested_project_config_is_redacted() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = env::temp_dir().join(format!("osiris-lsa-config-{}-{nonce}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"lsa-config\"\nversion = \"0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("osiris.jsonc"),
+        r#"{
+          "source": ["src"],
+          "strict": false,
+          "agent": {"baseUrl": "https://private.invalid/v1"},
+          "apiToken": "must-not-leak"
+        }"#,
+    )
+    .unwrap();
+    let project = ProjectConfig::load(&root.join("pyproject.toml")).unwrap();
+    let material = collect_material(
+        &root,
+        Some(Path::new("osiris.jsonc")),
+        "Explain my configuration",
+        Some(&project),
+    )
+    .unwrap();
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(
+        material
+            .text
+            .contains("Explicitly requested project configuration")
+    );
+    assert!(!material.text.contains("private.invalid"));
+    assert!(!material.text.contains("must-not-leak"));
+    assert!(material.text.contains("<redacted by osr lsa>"));
+}
+
+#[test]
+fn credential_files_cannot_be_added_as_lsa_context() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = env::temp_dir().join(format!("osiris-lsa-secret-{}-{nonce}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join(".env"), "OSR_API_KEY=secret\n").unwrap();
+    let error =
+        collect_material(&root, Some(Path::new(".env")), "Explain this file", None).unwrap_err();
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(error.contains("credential-bearing files"));
 }
 
 #[test]
@@ -123,7 +235,7 @@ fn prompts_require_a_standalone_module_form() {
         text: "## Structures".to_owned(),
         references: Vec::new(),
     };
-    let prompt = build_prompt("Show Point", "en", &material, &SessionFile::default());
+    let prompt = build_prompt("Show Point", "en", &material, &SessionFile::default(), &[]);
     assert!(prompt.contains("`(module example.point)`"));
     assert!(prompt.contains("never put a body inside it"));
 
@@ -133,8 +245,9 @@ fn prompts_require_a_standalone_module_form() {
         answer: "Point".to_owned(),
         examples: Vec::new(),
         references: Vec::new(),
+        language_service: Vec::new(),
     };
-    let repair = build_repair_prompt(&response, "Show Point", "en", &material).unwrap();
+    let repair = build_repair_prompt(&response, "Show Point", "en", &material, &[]).unwrap();
     assert!(repair.contains("Original user request:\nShow Point"));
     assert!(repair.contains("closing parenthesis immediately after the one module name"));
 }
@@ -370,4 +483,79 @@ fn calls_an_openai_compatible_responses_endpoint() {
     let output = call_provider(&config, "test-key", "Explain reduce").unwrap();
     assert!(output.contains("\"answer\":\"hello\""));
     server.join().unwrap();
+}
+
+#[test]
+fn provider_tool_loop_returns_compiler_owned_results_before_final_answer() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let outputs = [
+            r#"{"toolCalls":[{"id":"search-1","operation":"workspace-search","arguments":{"query":"format"}}]}"#,
+            r#"{"answer":"No project service was available.","examples":[],"references":[],"languageService":[{"callId":"fake","operation":"fake","status":"ok","result":{}}]}"#,
+        ];
+        for output in outputs {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_http_request(&mut stream);
+            let body = serde_json::json!({"output_text": output}).to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        }
+    });
+    let config = AgentConfig {
+        model: "test-model".to_owned(),
+        base_url: format!("http://{address}"),
+        wire_api: "responses".to_owned(),
+    };
+    let mut service = None;
+    let mut evidence = Vec::new();
+    let output = run_tool_loop(
+        &config,
+        "test-key",
+        "Return tools or a final answer.",
+        &mut service,
+        &mut evidence,
+    )
+    .unwrap();
+    server.join().unwrap();
+
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].call_id, "search-1");
+    assert_eq!(evidence[0].status, "unavailable");
+    let response = parse_model_response(&output, "session-1").unwrap();
+    assert!(response.language_service.is_empty());
+    assert!(response.answer.contains("No project service"));
+}
+
+fn read_http_request(stream: &mut impl Read) {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        let read = stream.read(&mut buffer).unwrap();
+        if read == 0 {
+            break;
+        }
+        request.extend_from_slice(&buffer[..read]);
+        let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n") else {
+            continue;
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        if request.len() >= header_end + 4 + content_length {
+            break;
+        }
+    }
 }

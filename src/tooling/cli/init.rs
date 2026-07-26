@@ -18,7 +18,7 @@ const STARTER_SOURCE: &str = r#"(module main)
 (py.print "Hello from Osiris")
 "#;
 
-fn extension_starter_source(module: &str) -> String {
+fn package_starter_source(module: &str) -> String {
     format!(
         r#"(module {module}.core)
 
@@ -80,7 +80,7 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     }
 
     let pyproject = root.join("pyproject.toml");
-    let setup = match configure_pyproject(&pyproject, arguments.extension) {
+    let setup = match configure_pyproject(&pyproject, arguments.package) {
         Ok(configured) => configured,
         Err(message) => return init_failure(message),
     };
@@ -91,7 +91,7 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     if let Err(error) = create_starter(
         &root,
         &source_root,
-        arguments.extension.then_some(setup.module.as_str()),
+        arguments.package.then_some(setup.module.as_str()),
     ) {
         return init_failure(format!("could not create starter source: {error}"));
     }
@@ -101,7 +101,7 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
         }
     }
 
-    let next = if arguments.extension {
+    let next = if arguments.package {
         "uv lock && uv build --python 3.11"
     } else {
         "uv run osr run src/main.osr"
@@ -116,12 +116,12 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
 struct InitArguments<'a> {
     path: &'a str,
     existing: bool,
-    extension: bool,
+    package: bool,
 }
 
 fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, String> {
     let mut existing = false;
-    let mut extension = false;
+    let mut package = false;
     let mut path = None;
     for argument in arguments {
         match argument.as_str() {
@@ -129,10 +129,10 @@ fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, Strin
                 return Err("duplicate option '--existing' for 'init'".to_owned());
             }
             "--existing" => existing = true,
-            "--extension" if extension => {
-                return Err("duplicate option '--extension' for 'init'".to_owned());
+            "--package" if package => {
+                return Err("duplicate option '--package' for 'init'".to_owned());
             }
-            "--extension" => extension = true,
+            "--package" => package = true,
             option if option.starts_with('-') => {
                 return Err(format!("unknown option '{option}' for 'init'"));
             }
@@ -148,7 +148,7 @@ fn parse_init_arguments(arguments: &[String]) -> Result<InitArguments<'_>, Strin
     Ok(InitArguments {
         path,
         existing,
-        extension,
+        package,
     })
 }
 
@@ -184,7 +184,7 @@ struct ProjectSetup {
     module: String,
 }
 
-fn configure_pyproject(path: &Path, extension: bool) -> Result<ProjectSetup, String> {
+fn configure_pyproject(path: &Path, package: bool) -> Result<ProjectSetup, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
     let mut document = source
@@ -196,10 +196,10 @@ fn configure_pyproject(path: &Path, extension: bool) -> Result<ProjectSetup, Str
         .and_then(|project| project.get("name"))
         .and_then(Item::as_str)
         .ok_or_else(|| "[project].name is required".to_owned())?;
-    let module = extension_module_name(distribution);
+    let module = package_module_name(distribution);
     let needs_dependency = !has_osiris_dependency(&document);
-    if extension {
-        configure_extension_backend(&mut document)?;
+    if package {
+        configure_package_backend(&mut document)?;
         fs::write(path, document.to_string())
             .map_err(|error| format!("could not write {}: {error}", path.display()))?;
     }
@@ -209,7 +209,7 @@ fn configure_pyproject(path: &Path, extension: bool) -> Result<ProjectSetup, Str
     })
 }
 
-fn configure_extension_backend(document: &mut DocumentMut) -> Result<(), String> {
+fn configure_package_backend(document: &mut DocumentMut) -> Result<(), String> {
     if !document.contains_key("build-system") {
         document["build-system"] = Item::Table(Table::new());
     }
@@ -250,7 +250,7 @@ fn configure_extension_backend(document: &mut DocumentMut) -> Result<(), String>
     Ok(())
 }
 
-fn extension_module_name(distribution: &str) -> String {
+fn package_module_name(distribution: &str) -> String {
     let mut module = normalize_distribution_name(distribution).replace('-', "_");
     if module.starts_with(|character: char| character.is_ascii_digit()) {
         module.insert(0, '_');
@@ -348,14 +348,14 @@ fn dependency_name(requirement: &str) -> String {
 fn create_starter(
     root: &Path,
     source_root: &Path,
-    extension_module: Option<&str>,
+    package_module: Option<&str>,
 ) -> std::io::Result<()> {
-    let (relative, contents) = extension_module.map_or_else(
+    let (relative, contents) = package_module.map_or_else(
         || (PathBuf::from("main.osr"), STARTER_SOURCE.to_owned()),
         |module| {
             (
                 PathBuf::from(module).join("core.osr"),
-                extension_starter_source(module),
+                package_starter_source(module),
             )
         },
     );
@@ -381,16 +381,17 @@ mod tests {
         let new = parse_init_arguments(&new_arguments).unwrap();
         assert_eq!(new.path, "demo");
         assert!(!new.existing);
-        assert!(!new.extension);
+        assert!(!new.package);
         let existing_arguments = ["--existing".to_owned()];
         let existing = parse_init_arguments(&existing_arguments).unwrap();
         assert_eq!(existing.path, ".");
         assert!(existing.existing);
-        assert!(!existing.extension);
-        let extension_arguments = ["--extension".to_owned(), "demo-ext".to_owned()];
-        let extension = parse_init_arguments(&extension_arguments).unwrap();
-        assert_eq!(extension.path, "demo-ext");
-        assert!(extension.extension);
+        assert!(!existing.package);
+        let package_arguments = ["--package".to_owned(), "demo-package".to_owned()];
+        let package = parse_init_arguments(&package_arguments).unwrap();
+        assert_eq!(package.path, "demo-package");
+        assert!(package.package);
+        assert!(parse_init_arguments(&["--extension".to_owned(), "legacy".to_owned()]).is_err());
     }
 
     #[test]

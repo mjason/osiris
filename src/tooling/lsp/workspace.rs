@@ -23,13 +23,17 @@ pub(super) fn project_options(
 
 pub(super) fn collect_workspace_sources(
     directory: &Path,
+    project: &ProjectConfig,
     paths: &mut Vec<PathBuf>,
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
+        if project.is_excluded(&entry.path()) {
+            continue;
+        }
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
-            collect_workspace_sources(&entry.path(), paths)?;
+            collect_workspace_sources(&entry.path(), project, paths)?;
         } else if file_type.is_file()
             && entry
                 .path()

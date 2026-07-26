@@ -7,6 +7,7 @@ pub(super) fn run_lsa(arguments: &[String]) -> CliOutcome {
     let mut session = None;
     let mut locale = None;
     let mut file = None;
+    let mut at = None;
     let mut format = crate::agent::OutputFormat::Json;
     let mut index = 0;
     while let Some(argument) = arguments.get(index) {
@@ -56,6 +57,24 @@ pub(super) fn run_lsa(arguments: &[String]) -> CliOutcome {
                 file = Some(PathBuf::from(value));
                 index += 1;
             }
+            "--at" => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return CliOutcome::usage_error("missing value for '--at'");
+                };
+                if at.is_some() {
+                    return CliOutcome::usage_error("duplicate option '--at' for 'lsa'");
+                }
+                let parsed = match super::lsc::support::parse_at(value) {
+                    Ok(value) => value,
+                    Err(error) => return CliOutcome::usage_error(error),
+                };
+                at = Some(crate::lsc::SourcePosition {
+                    path: parsed.path.into(),
+                    line: parsed.position.line + 1,
+                    column: parsed.position.character + 1,
+                });
+                index += 1;
+            }
             "-h" | "--help" => return CliOutcome::success(help()),
             value if value.starts_with('-') => {
                 return CliOutcome::usage_error(format!("unknown option '{value}' for 'lsa'"));
@@ -72,6 +91,7 @@ pub(super) fn run_lsa(arguments: &[String]) -> CliOutcome {
         session,
         locale,
         file,
+        at,
     };
     match crate::agent::run(&options).and_then(|response| crate::agent::render(&response, format)) {
         Ok(stdout) => CliOutcome::success(stdout),
@@ -80,5 +100,5 @@ pub(super) fn run_lsa(arguments: &[String]) -> CliOutcome {
 }
 
 fn help() -> String {
-    "Usage: osr lsa [options] <request>\n\nOptions:\n  --session <id>  Continue a project-local session.\n  --locale <tag>  Select the response language.\n  --file <path>   Add one project source file as context.\n  --format json|text  Select the output format (default: json).\n".to_owned()
+    "Usage: osr lsa [options] <request>\n\nOptions:\n  --session <id>  Continue a project-local session.\n  --locale <tag>  Select the response language.\n  --file <path>   Add one Osiris source, interface, or osiris.jsonc as explicit context.\n  --at <path:line:column>  Anchor the question to an exact source position.\n  --format json|text  Select the output format (default: json).\n".to_owned()
 }

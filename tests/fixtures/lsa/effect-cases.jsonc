@@ -41,6 +41,25 @@
       "exampleContains": "(import osiris.string",
       "resultEquals": "HELLO",
       "minimumExamples": 1
+    },
+    {
+      "id": "project-api-graph",
+      "locale": "zh-CN",
+      "request": "项目里的 increment-all API 是做什么的？参数、返回值和定义位置是什么？不要生成例子。",
+      "answerContainsAny": ["increment-all", "整数", "向量"],
+      "referenceContains": "osiris-workspace:///examples/hello.osr",
+      "minimumExamples": 0,
+      "maximumExamples": 0,
+      "minimumLanguageServiceEvidence": 1
+    },
+    {
+      "id": "project-config-publish",
+      "locale": "zh-CN",
+      "request": "如何修改编译输出目录，并把一个可复用的 Osiris 库发布到 PyPI？不要生成源码示例。",
+      "answerContainsAny": ["outDir", "uv publish", "PyPI"],
+      "referenceContains": "tooling/cli",
+      "minimumExamples": 0,
+      "maximumExamples": 0
     }
   ]
 }

@@ -5,29 +5,34 @@
 //! request, and validates returned Osiris examples before presenting them.
 
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
-use oxilangtag::LanguageTag;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     formatter,
+    lsc::{SourcePosition, ToolResult, WorkspaceService},
     project::{AgentConfig, ConfigError, ProjectConfig},
 };
 
 use client::call_provider;
 use context::{ContextMaterial, collect_material};
+use session::{
+    MAX_SESSION_TURNS, SessionFile, SessionTurn, detect_locale, load_session, new_session_id,
+    normalize_locale, save_session, validate_session_id,
+};
+#[cfg(test)]
+use tools::parse_tool_calls;
+use tools::{collect_source_references, evidence_from_result, run_tool_loop};
 
 mod client;
 mod context;
 mod evaluator;
+mod session;
+mod tools;
 
-const MAX_SESSION_BYTES: u64 = 1024 * 1024;
-const MAX_SESSION_TURNS: usize = 100;
-const SESSION_SCHEMA: &str = "osiris-lsa-session/v1";
 const RESPONSE_SCHEMA: &str = "osiris-lsa/v1";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +41,7 @@ pub struct LsaOptions {
     pub session: Option<String>,
     pub locale: Option<String>,
     pub file: Option<PathBuf>,
+    pub at: Option<SourcePosition>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,6 +62,20 @@ pub struct LsaResponse {
     pub examples: Vec<LsaExample>,
     #[serde(default)]
     pub references: Vec<String>,
+    /// Compiler-owned LSC/LSP evidence. Provider-authored values are discarded.
+    #[serde(default)]
+    pub language_service: Vec<LanguageServiceEvidence>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageServiceEvidence {
+    pub call_id: String,
+    pub operation: String,
+    pub status: String,
+    pub result: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,24 +92,6 @@ pub struct LsaExample {
     pub diagnostics: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SessionFile {
-    schema: String,
-    session_id: String,
-    #[serde(default)]
-    locale: Option<String>,
-    #[serde(default)]
-    turns: Vec<SessionTurn>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SessionTurn {
-    role: String,
-    content: String,
-}
-
 /// Execute one LSA request and return a stable JSON-ready response.
 pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
     if options.request.trim().is_empty() {
@@ -97,7 +99,11 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
     }
     let project = match ProjectConfig::discover(Path::new(".")) {
         Ok(project) => Some(project),
-        Err(ConfigError::NotFound(_)) => None,
+        Err(ConfigError::NotFound(_)) => {
+            return Err(
+                "lsa requires an Osiris project with pyproject.toml and osiris.jsonc".to_owned(),
+            );
+        }
         Err(error) => return Err(format!("could not load project configuration: {error}")),
     };
     let root = project.as_ref().map_or_else(
@@ -122,7 +128,12 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
         .join(&session_id)
         .join("session.jsonc");
     let mut session = load_session(&session_path, &session_id)?;
-    let material = collect_material(&root, options.file.as_deref(), &options.request)?;
+    let material = collect_material(
+        &root,
+        options.file.as_deref(),
+        &options.request,
+        project.as_ref(),
+    )?;
     let locale = options
         .locale
         .as_deref()
@@ -134,15 +145,63 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
                 .and_then(|project| project.display_locale.clone())
         })
         .unwrap_or_else(|| detect_locale(&options.request));
-    let prompt = build_prompt(&options.request, &locale, &material, &session);
-    let model_text = call_provider(&config, &api_key, &prompt)?;
+    let mut language_service = Vec::new();
+    let mut service = match project.as_ref() {
+        Some(project) => match WorkspaceService::open(&project.root, Some(&locale)) {
+            Ok(service) => Some(service),
+            Err(error) => {
+                language_service.push(LanguageServiceEvidence {
+                    call_id: "initialize".to_owned(),
+                    operation: "workspace-service".to_owned(),
+                    status: "unavailable".to_owned(),
+                    result: serde_json::Value::Null,
+                    message: Some(error),
+                });
+                None
+            }
+        },
+        None => None,
+    };
+    if let Some(at) = &options.at {
+        let result = service.as_mut().map_or_else(
+            || ToolResult {
+                schema: "osiris.lsc-tool/v1".to_owned(),
+                operation: "symbol-context".to_owned(),
+                status: "unavailable".to_owned(),
+                result: serde_json::Value::Null,
+                message: Some("project language services are unavailable".to_owned()),
+            },
+            |service| service.position_context(at),
+        );
+        language_service.push(evidence_from_result("--at", result));
+    }
+    let prompt = build_prompt(
+        &options.request,
+        &locale,
+        &material,
+        &session,
+        &language_service,
+    );
+    let model_text = run_tool_loop(
+        &config,
+        &api_key,
+        &prompt,
+        &mut service,
+        &mut language_service,
+    )?;
     let mut response = validate_response(
         parse_model_response(&model_text, &session_id)?,
         project.as_ref(),
     );
     let failed = response_issue_count(&response, &options.request);
     if failed > 0 {
-        let repair_prompt = build_repair_prompt(&response, &options.request, &locale, &material)?;
+        let repair_prompt = build_repair_prompt(
+            &response,
+            &options.request,
+            &locale,
+            &material,
+            &language_service,
+        )?;
         if let Ok(repaired_text) = call_provider(&config, &api_key, &repair_prompt)
             && let Ok(repaired) = parse_model_response(&repaired_text, &session_id)
         {
@@ -154,6 +213,10 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
     }
     // References are retrieval evidence. Provider-authored labels are not trusted.
     response.references = material.references;
+    response.language_service = language_service;
+    for evidence in &response.language_service {
+        collect_source_references(&evidence.result, &mut response.references);
+    }
     response.references.sort();
     response.references.dedup();
     session.locale = Some(locale);
@@ -189,6 +252,7 @@ fn build_prompt(
     locale: &str,
     material: &ContextMaterial,
     session: &SessionFile,
+    language_service: &[LanguageServiceEvidence],
 ) -> String {
     let history = session
         .turns
@@ -200,8 +264,9 @@ fn build_prompt(
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "You are Osiris Language Server Agent. Answer in locale {locale}. You only explain Osiris and provide examples. Retrieved Osiris syntax and standard API records are the authority for language facts: never deny or replace a form that they explicitly define, and use its exact documented spelling. Do not propose file edits or shell commands. Return one JSON object with fields answer (string), examples (array of objects with code), and references (array of strings). The compiler owns compiled, evaluated, diagnostics, and result; omit those fields because model claims are discarded. Put all source examples in examples, never inline source in answer.\n\nConversation:\n{history}\n\nUser request:\n{request}\n\nRetrieved material:\n{}\n\nNon-negotiable compiler constraints: Every example code contains only valid Osiris source and is a complete compilable module using current syntax. Its first top-level form is exactly a standalone module declaration such as `(module example.point)`; close that form before writing declarations or expressions, and never put a body inside it. For a minimal example, follow the module declaration with only the forms the request needs; do not add defn, export, println, IO, or empty collection cases unless required. Make the requested value-producing expression the final top-level form so execution can capture its result. Use Python content only through documented Osiris interop such as `~python` when the request requires it; never return generated Python. If a defn is necessary, annotate its return type and every parameter type. Public osiris.core bindings and kernel operators are automatically referred; do not import osiris.core merely to access them. Kernel operators such as + are callable syntax but are not first-class function values. `(reduce + ...)` and `(map + ...)` are invalid Osiris examples. Always wrap an operator passed as a value in a typed callback; for integer reduction use exactly `(fn [^Int total ^Int value] (+ total value))`. Authored documentation snippets may omit required module and type context or show operator shorthand; adapt them instead of copying them.",
+        "You are Osiris Language Server Agent. Answer in locale {locale}. You explain the Osiris language and the current project, and provide project-adapted examples when requested. This is a read-only example and explanation assistant, never a coding agent. Retrieved syntax, manuals, standard API records, and compiler-owned language-service results are the authority. Never invent a project symbol, signature, definition, reference, or source location. Clearly label any interpretation not established by those facts. Do not propose file edits or shell commands beyond commands explicitly required by the requested workflow.\n\nYou may either request read-only language-service tools or return the final response. To request tools, return exactly {{\"toolCalls\":[{{\"id\":\"unique-id\",\"operation\":\"workspace-search\",\"arguments\":{{\"query\":\"concept or API name\"}}}}]}}. Available operations are workspace-search (conceptual symbol search), symbol-context (query one unambiguous API and obtain hover, definition, signature help, references, document symbols, and bounded source), and source-context (obtain one bounded top-level Osiris form for a URI/range already returned by a prior tool). Use at most four calls in a round. For a feature request whose implementation location is unknown, search the workspace using concise domain concepts, inspect the best relevant symbols, then write an example using the real project APIs. If a result is ambiguous, expose candidates or search with a qualified name; never guess. Do not request arbitrary paths.\n\nFor the final response, return one JSON object with fields answer (string), examples (array of objects with code), and references (array of strings). The compiler owns languageService, compiled, evaluated, diagnostics, result, and final references; omit those fields because model claims are discarded. Put all Osiris source examples in examples, never inline source in answer. A configuration or tooling explanation does not require a source example unless the user asks for one.\n\nConversation:\n{history}\n\nUser request:\n{request}\n\nRetrieved material:\n{}\n\nCompiler-owned language-service evidence already available:\n{}\n\nNon-negotiable compiler constraints: Every example code contains only valid Osiris source and is a complete compilable module using current syntax. Its first top-level form is exactly a standalone module declaration such as `(module example.point)`; close that form before writing declarations or expressions, and never put a body inside it. For a minimal example, follow the module declaration with only the forms the request needs; do not add defn, export, println, IO, or empty collection cases unless required. Make the requested value-producing expression the final top-level form so execution can capture its result. Use Python content only through documented Osiris interop such as `~python` when the request requires it; never return generated Python. If a defn is necessary, annotate its return type and every parameter type. Public osiris.core bindings and kernel operators are automatically referred; do not import osiris.core merely to access them. Kernel operators such as + are callable syntax but are not first-class function values. `(reduce + ...)` and `(map + ...)` are invalid Osiris examples. Always wrap an operator passed as a value in a typed callback; for integer reduction use exactly `(fn [^Int total ^Int value] (+ total value))`. Authored documentation snippets may omit required module and type context or show operator shorthand; adapt them instead of copying them.",
         material.text,
+        serde_json::to_string_pretty(language_service).unwrap_or_else(|_| "[]".to_owned()),
     )
 }
 
@@ -210,11 +275,13 @@ fn build_repair_prompt(
     request: &str,
     locale: &str,
     material: &ContextMaterial,
+    language_service: &[LanguageServiceEvidence],
 ) -> Result<String, String> {
     let response = serde_json::to_string(response).map_err(|error| error.to_string())?;
     Ok(format!(
-        "You are repairing Osiris examples after compiler validation and execution. Return one replacement JSON object with answer, examples, and references, in locale {locale}. Include only valid Osiris source in each example; omit compiled, evaluated, diagnostics, and result because the compiler owns that evidence. Never return generated Python; Python content is allowed only through documented Osiris interop such as `~python` when required. The retrieved material below is authoritative: correct any previous factual claim that contradicts it and use the exact documented form requested by the user. Preserve every requirement from the original request. Replace every failed example with a complete module that fixes every diagnostic and ends with the requested value-producing expression. Its first top-level form must be a standalone declaration such as `(module example.point)` with the closing parenthesis immediately after the one module name; declarations and expressions are later sibling forms, never a module body. If the user requested an example and the previous examples list is empty, add at least one complete example. Keep only the forms needed by the request: remove defn, export, println, output helpers, and empty collection cases unless essential. If a declaration remains, annotate its return and every parameter type. `(reduce + ...)` and `(map + ...)` are invalid because operators are not function values. For integer reduction replace them with `(reduce (fn [^Int total ^Int value] (+ total value)) initial values)`. Return JSON only.\n\nOriginal user request:\n{request}\n\nValidated previous response:\n{response}\n\nAuthoritative retrieved material:\n{}",
+        "You are repairing Osiris examples after compiler validation and execution. Return one replacement JSON object with answer, examples, and references, in locale {locale}. Include only valid Osiris source in each example; omit languageService, compiled, evaluated, diagnostics, and result because the compiler owns that evidence. Never invent project symbols or locations beyond the language-service evidence. Never return generated Python; Python content is allowed only through documented Osiris interop such as `~python` when required. The retrieved material below is authoritative: correct any previous factual claim that contradicts it and use the exact documented form requested by the user. Preserve every requirement from the original request. Replace every failed example with a complete module that fixes every diagnostic and ends with the requested value-producing expression. Its first top-level form must be a standalone declaration such as `(module example.point)` with the closing parenthesis immediately after the one module name; declarations and expressions are later sibling forms, never a module body. If the user requested an example and the previous examples list is empty, add at least one complete example. Keep only the forms needed by the request: remove defn, export, println, output helpers, and empty collection cases unless essential. If a declaration remains, annotate its return and every parameter type. `(reduce + ...)` and `(map + ...)` are invalid because operators are not function values. For integer reduction replace them with `(reduce (fn [^Int total ^Int value] (+ total value)) initial values)`. Return JSON only.\n\nOriginal user request:\n{request}\n\nValidated previous response:\n{response}\n\nAuthoritative retrieved material:\n{}\n\nCompiler-owned language-service evidence:\n{}",
         material.text,
+        serde_json::to_string_pretty(language_service).unwrap_or_else(|_| "[]".to_owned()),
     ))
 }
 
@@ -249,16 +316,20 @@ fn expects_example(request: &str) -> bool {
 }
 
 fn parse_model_response(text: &str, session_id: &str) -> Result<LsaResponse, String> {
+    let mut response: LsaResponse = serde_json::from_str(model_json_text(text))
+        .map_err(|error| format!("LLM returned invalid LSA JSON: {error}"))?;
+    response.session_id = session_id.to_owned();
+    response.language_service.clear();
+    Ok(response)
+}
+
+fn model_json_text(text: &str) -> &str {
     let trimmed = text.trim();
-    let json = trimmed
+    trimmed
         .strip_prefix("```json")
         .and_then(|value| value.strip_suffix("```"))
         .map(str::trim)
-        .unwrap_or(trimmed);
-    let mut response: LsaResponse = serde_json::from_str(json)
-        .map_err(|error| format!("LLM returned invalid LSA JSON: {error}"))?;
-    response.session_id = session_id.to_owned();
-    Ok(response)
+        .unwrap_or(trimmed)
 }
 
 fn validate_example_in_workspace(
@@ -315,111 +386,6 @@ fn validate_example(example: LsaExample) -> LsaExample {
     validate_example_in_workspace(example, None)
 }
 
-fn load_session(path: &Path, session_id: &str) -> Result<SessionFile, String> {
-    if !path.is_file() {
-        return Ok(SessionFile {
-            schema: SESSION_SCHEMA.to_owned(),
-            session_id: session_id.to_owned(),
-            ..SessionFile::default()
-        });
-    }
-    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-    if metadata.len() > MAX_SESSION_BYTES {
-        return Err("LSA session exceeded the 1 MiB limit".to_owned());
-    }
-    let source = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let session: SessionFile = json5::from_str(&source).map_err(|error| error.to_string())?;
-    if session.schema != SESSION_SCHEMA {
-        return Err(format!(
-            "unsupported LSA session schema `{}`",
-            session.schema
-        ));
-    }
-    if session.session_id != session_id {
-        return Err("session file id does not match requested session".to_owned());
-    }
-    validate_session(&session)?;
-    Ok(session)
-}
-
-fn save_session(path: &Path, session: &SessionFile) -> Result<(), String> {
-    validate_session(session)?;
-    fs::create_dir_all(path.parent().expect("session path parent"))
-        .map_err(|error| error.to_string())?;
-    let contents = serde_json::to_string_pretty(session).map_err(|error| error.to_string())?;
-    if contents.len() as u64 > MAX_SESSION_BYTES {
-        return Err("LSA session exceeded the 1 MiB limit".to_owned());
-    }
-    let temporary = path.with_extension("jsonc.tmp");
-    fs::write(&temporary, format!("{contents}\n")).map_err(|error| error.to_string())?;
-    fs::rename(temporary, path).map_err(|error| error.to_string())
-}
-
-fn validate_session(session: &SessionFile) -> Result<(), String> {
-    if session.turns.len() > MAX_SESSION_TURNS {
-        return Err(format!(
-            "LSA session exceeded the {MAX_SESSION_TURNS}-turn limit"
-        ));
-    }
-    if session
-        .turns
-        .iter()
-        .any(|turn| !matches!(turn.role.as_str(), "user" | "assistant"))
-    {
-        return Err("LSA session contains an unsupported turn role".to_owned());
-    }
-    Ok(())
-}
-
-fn validate_session_id(session_id: &str) -> Result<(), String> {
-    if session_id.is_empty()
-        || session_id.len() > 128
-        || matches!(session_id, "." | "..")
-        || !session_id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-    {
-        return Err("session id may contain only letters, numbers, '-', '_' and '.'".to_owned());
-    }
-    Ok(())
-}
-
-fn new_session_id() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    format!("session-{nanos}")
-}
-
-fn detect_locale(request: &str) -> String {
-    if request
-        .chars()
-        .any(|character| ('\u{3040}'..='\u{30ff}').contains(&character))
-    {
-        return "ja".to_owned();
-    }
-    if request
-        .chars()
-        .any(|character| ('\u{ac00}'..='\u{d7af}').contains(&character))
-    {
-        return "ko".to_owned();
-    }
-    if request
-        .chars()
-        .any(|character| ('\u{4e00}'..='\u{9fff}').contains(&character))
-    {
-        "zh-CN".to_owned()
-    } else {
-        "en".to_owned()
-    }
-}
-
-fn normalize_locale(locale: &str) -> Result<String, String> {
-    LanguageTag::parse_and_normalize(locale)
-        .map(|tag| tag.to_string())
-        .map_err(|error| format!("invalid BCP 47 locale `{locale}`: {error}"))
-}
-
 pub fn render(response: &LsaResponse, format: OutputFormat) -> Result<String, String> {
     match format {
         OutputFormat::Json => {
@@ -448,6 +414,24 @@ pub fn render(response: &LsaResponse, format: OutputFormat) -> Result<String, St
                         .as_ref()
                         .map_or_else(|| "null".to_owned(), serde_json::Value::to_string);
                     output.push_str(&format!("result: {result}\n"));
+                }
+            }
+            if !response.language_service.is_empty() {
+                output.push_str("\nLanguage service evidence:\n");
+                for evidence in &response.language_service {
+                    output.push_str(&format!(
+                        "- {} [{}] {}\n",
+                        evidence.operation, evidence.status, evidence.call_id
+                    ));
+                    if let Some(message) = &evidence.message {
+                        output.push_str(&format!("  {message}\n"));
+                    }
+                }
+            }
+            if !response.references.is_empty() {
+                output.push_str("\nSources:\n");
+                for reference in &response.references {
+                    output.push_str(&format!("- {reference}\n"));
                 }
             }
             Ok(output)

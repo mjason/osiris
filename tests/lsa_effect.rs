@@ -24,6 +24,10 @@ struct EffectCase {
     result_equals: Option<serde_json::Value>,
     minimum_examples: usize,
     #[serde(default)]
+    minimum_language_service_evidence: usize,
+    #[serde(default)]
+    maximum_examples: Option<usize>,
+    #[serde(default)]
     follow_up: Option<EffectFollowUp>,
 }
 
@@ -43,7 +47,10 @@ fn fixed_effect_suite_is_well_formed() {
         assert!(!case.id.trim().is_empty());
         assert!(!case.request.trim().is_empty());
         assert!(!case.answer_contains_any.is_empty());
-        assert!(case.minimum_examples > 0);
+        assert!(
+            case.maximum_examples
+                .is_none_or(|maximum| case.minimum_examples <= maximum)
+        );
         if let Some(follow_up) = case.follow_up {
             assert!(!follow_up.request.trim().is_empty());
             assert!(!follow_up.answer_contains_any.is_empty());
@@ -68,6 +75,7 @@ fn live_lsa_effect_suite() {
             session: None,
             locale: Some(case.locale.clone()),
             file: None,
+            at: None,
         })
         .unwrap_or_else(|error| panic!("{}: {error}", case.id));
 
@@ -98,6 +106,21 @@ fn live_lsa_effect_suite() {
             case.id,
             case.minimum_examples
         );
+        assert!(
+            response.language_service.len() >= case.minimum_language_service_evidence,
+            "{}: expected at least {} language-service evidence item(s), got {}",
+            case.id,
+            case.minimum_language_service_evidence,
+            response.language_service.len()
+        );
+        if let Some(maximum) = case.maximum_examples {
+            assert!(
+                response.examples.len() <= maximum,
+                "{}: expected at most {maximum} example(s), got {}",
+                case.id,
+                response.examples.len()
+            );
+        }
         if let Some(expected) = &case.example_contains {
             assert!(
                 response
@@ -172,6 +195,7 @@ fn validate_follow_up(
         session: Some(initial.session_id.clone()),
         locale: Some(locale.to_owned()),
         file: None,
+        at: None,
     })
     .unwrap_or_else(|error| panic!("{case_id} follow-up: {error}"));
 

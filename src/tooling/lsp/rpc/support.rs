@@ -101,6 +101,8 @@ fn initialize_result() -> JsonValue {
             },
             "definitionProvider": true,
             "referencesProvider": true,
+            "documentSymbolProvider": true,
+            "workspaceSymbolProvider": true,
             "renameProvider": {
                 "prepareProvider": true,
             },
@@ -118,6 +120,7 @@ fn initialize_result() -> JsonValue {
                 "osirisSymbol": true,
                 "osirisExpandPreview": true,
                 "osirisStandardSource": true,
+                "osirisWorkspaceGraph": true,
             },
         },
         "serverInfo": {

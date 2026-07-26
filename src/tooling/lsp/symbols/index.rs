@@ -30,6 +30,7 @@ pub(super) fn index_analysis_symbols(
     index.source_uris.insert(uri.to_owned());
     index.sources.insert(uri.to_owned(), source.to_owned());
     let semantic = SemanticDocument::from_analysis(analysis, uri);
+    index_module_relations(index, analysis, &semantic, uri, source);
     let local_prefix = format!("{}::", analysis.hir.name);
     for symbol in &semantic.symbols {
         index
@@ -97,6 +98,92 @@ pub(super) fn index_analysis_symbols(
             uri: uri.to_owned(),
             symbol,
         }));
+}
+
+fn index_module_relations(
+    index: &mut WorkspaceSymbolIndex,
+    analysis: &Analysis,
+    semantic: &SemanticDocument,
+    uri: &str,
+    source: &str,
+) {
+    let module = format!("module:{}", analysis.hir.name);
+    for item in &analysis.hir.items {
+        match &item.kind {
+            hir::ItemKind::Import(import) if !import.python => {
+                index.relations.push(WorkspaceRelation {
+                    from: module.clone(),
+                    to: format!("module:{}", import.module),
+                    kind: "imports".to_owned(),
+                    uri: uri.to_owned(),
+                    range: span_to_range(source, item.span),
+                });
+            }
+            hir::ItemKind::Function(function) => {
+                for operation in semantic.operation_graph.nodes.iter().filter(|operation| {
+                    operation.kind == "call"
+                        && operation.span.start >= item.span.start
+                        && operation.span.end <= item.span.end
+                }) {
+                    if let Some(target) = &operation.binding_id {
+                        index.relations.push(WorkspaceRelation {
+                            from: function.binding.as_str().to_owned(),
+                            to: target.clone(),
+                            kind: "calls".to_owned(),
+                            uri: uri.to_owned(),
+                            range: span_to_range(source, operation.span),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for binding in &analysis.hir.exports {
+        index.relations.push(WorkspaceRelation {
+            from: module.clone(),
+            to: binding.as_str().to_owned(),
+            kind: "exports".to_owned(),
+            uri: uri.to_owned(),
+            range: Range::default(),
+        });
+    }
+    for alias in &analysis.hir.aliases {
+        index.relations.push(WorkspaceRelation {
+            from: format!("alias:{}:{}", analysis.hir.name, alias.spelling),
+            to: alias.target.as_str().to_owned(),
+            kind: "alias-of".to_owned(),
+            uri: uri.to_owned(),
+            range: span_to_range(source, alias.span),
+        });
+    }
+    for symbol in &semantic.symbols {
+        for reference in &symbol.references {
+            let owner = analysis
+                .hir
+                .items
+                .iter()
+                .filter(|item| {
+                    item.span.start <= reference.start && reference.end <= item.span.end
+                })
+                .min_by_key(|item| item.span.end.saturating_sub(item.span.start))
+                .and_then(|item| match &item.kind {
+                    hir::ItemKind::Function(function) => {
+                        Some(function.binding.as_str().to_owned())
+                    }
+                    hir::ItemKind::Value(value) => Some(value.binding.as_str().to_owned()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| module.clone());
+            index.relations.push(WorkspaceRelation {
+                from: owner,
+                to: symbol.binding_id.clone(),
+                kind: "references".to_owned(),
+                uri: uri.to_owned(),
+                range: span_to_range(source, *reference),
+            });
+        }
+    }
 }
 
 pub(super) fn index_symbol_rename_occurrences(

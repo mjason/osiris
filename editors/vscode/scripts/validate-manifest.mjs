@@ -17,5 +17,11 @@ if (grammar.scopeName !== manifest.contributes.grammars[0].scopeName) {
 if (!manifest.contributes.languages[0].extensions.includes(".osr")) {
   throw new Error("The extension must register .osr files");
 }
+if (
+  manifest.contributes.jsonValidation?.[0]?.fileMatch !== "osiris.jsonc" ||
+  !manifest.contributes.jsonValidation[0].url.endsWith("/schemas/osiris.schema.json")
+) {
+  throw new Error("The extension must associate osiris.jsonc with its published JSON Schema");
+}
 
 console.log(`validated Osiris VS Code extension ${manifest.version}`);

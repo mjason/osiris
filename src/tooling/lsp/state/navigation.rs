@@ -223,6 +223,282 @@ impl LspState {
                 .collect(),
         )
     }
+
+    /// Standard LSP workspace symbols enriched with compiler-owned semantic data.
+    #[must_use]
+    pub fn workspace_symbols(&self, query: &str) -> Vec<JsonValue> {
+        let Some(document) = self.documents.values().next() else {
+            return Vec::new();
+        };
+        let mut symbols = BTreeMap::<&str, (&WorkspaceSemanticSymbol, bool)>::new();
+        for entry in &document.workspace_symbols.semantic_symbols {
+            let provider = document
+                .workspace_symbols
+                .definitions
+                .get(&entry.symbol.binding_id)
+                .is_some_and(|definition| definition.uri == entry.uri);
+            match symbols.entry(&entry.symbol.binding_id) {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert((entry, provider));
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot)
+                    if provider && !slot.get().1 =>
+                {
+                    slot.insert((entry, true));
+                }
+                _ => {}
+            }
+        }
+        let mut matches = symbols
+            .into_values()
+            .filter_map(|(entry, _)| {
+                let (score, reasons) = workspace_symbol_score(&entry.symbol, query)?;
+                let location = if let Some(location) = document
+                    .workspace_symbols
+                    .definitions
+                    .get(&entry.symbol.binding_id)
+                {
+                    location.clone()
+                } else {
+                    Location {
+                        uri: entry.uri.clone(),
+                        range: span_to_range(
+                            document.workspace_symbols.sources.get(&entry.uri)?,
+                            entry.symbol.definition,
+                        ),
+                    }
+                };
+                Some((
+                    score,
+                    entry.symbol.binding_id.clone(),
+                    json!({
+                        "name": entry.symbol.source_spelling,
+                        "kind": lsp_symbol_kind(entry.symbol.kind),
+                        "location": location,
+                        "containerName": entry.symbol.binding_id.split("::").next().unwrap_or_default(),
+                        "data": {
+                            "bindingId": entry.symbol.binding_id,
+                            "canonical": entry.symbol.canonical,
+                            "type": entry.symbol.ty,
+                            "documentation": entry.symbol.documentation,
+                            "examples": entry.symbol.examples,
+                            "names": entry.symbol.names,
+                            "aliases": entry.symbol.aliases,
+                            "summary": entry.symbol.summary,
+                            "score": score,
+                            "matchReasons": reasons,
+                        },
+                    }),
+                ))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        matches.into_iter().map(|(_, _, value)| value).collect()
+    }
+
+    /// Standard LSP document symbols for definitions owned by one source URI.
+    #[must_use]
+    pub fn document_symbols(&self, uri: &str) -> Option<Vec<JsonValue>> {
+        let document = self.document(uri)?;
+        let source = document.workspace_symbols.sources.get(uri)?;
+        let mut seen = BTreeSet::new();
+        let mut symbols = document
+            .workspace_symbols
+            .semantic_symbols
+            .iter()
+            .filter(|entry| entry.uri == uri)
+            .filter(|entry| seen.insert(entry.symbol.binding_id.clone()))
+            .filter(|entry| {
+                document
+                    .workspace_symbols
+                    .definitions
+                    .get(&entry.symbol.binding_id)
+                    .is_some_and(|location| location.uri == uri)
+            })
+            .map(|entry| {
+                let range = span_to_range(source, entry.symbol.span);
+                let selection_range = span_to_range(source, entry.symbol.definition);
+                json!({
+                    "name": entry.symbol.source_spelling,
+                    "detail": entry.symbol.ty.to_string(),
+                    "kind": lsp_symbol_kind(entry.symbol.kind),
+                    "range": range,
+                    "selectionRange": selection_range,
+                    "data": {"bindingId": entry.symbol.binding_id},
+                })
+            })
+            .collect::<Vec<_>>();
+        symbols.sort_by_key(|symbol| {
+            (
+                symbol["range"]["start"]["line"].as_u64().unwrap_or_default(),
+                symbol["range"]["start"]["character"]
+                    .as_u64()
+                    .unwrap_or_default(),
+            )
+        });
+        Some(symbols)
+    }
+
+    /// Compiler-owned graph snapshot used by LSC's persistent project index.
+    #[must_use]
+    pub fn workspace_graph(&self) -> JsonValue {
+        let Some(document) = self.documents.values().next() else {
+            return json!({"nodes": [], "edges": []});
+        };
+        let symbol_nodes = self
+            .workspace_symbols("")
+            .into_iter()
+            .map(|symbol| {
+                json!({
+                    "id": symbol["data"]["bindingId"],
+                    "kind": "symbol",
+                    "name": symbol["name"],
+                    "module": symbol["containerName"],
+                    "location": symbol["location"],
+                    "type": symbol["data"]["type"],
+                    "documentation": symbol["data"]["documentation"],
+                    "examples": symbol["data"]["examples"],
+                    "names": symbol["data"]["names"],
+                    "aliases": symbol["data"]["aliases"],
+                    "summary": symbol["data"]["summary"],
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut synthetic = BTreeMap::<String, JsonValue>::new();
+        for relation in &document.workspace_symbols.relations {
+            for id in [&relation.from, &relation.to] {
+                if let Some(module) = id.strip_prefix("module:") {
+                    synthetic.entry(id.clone()).or_insert_with(|| {
+                        json!({
+                            "id": id,
+                            "kind": "module",
+                            "name": module,
+                            "module": module,
+                            "location": null,
+                        })
+                    });
+                } else if let Some(alias) = id.strip_prefix("alias:") {
+                    let (module, name) = alias.rsplit_once(':').unwrap_or(("", alias));
+                    synthetic.entry(id.clone()).or_insert_with(|| {
+                        json!({
+                            "id": id,
+                            "kind": "alias",
+                            "name": name,
+                            "module": module,
+                            "location": null,
+                        })
+                    });
+                }
+            }
+        }
+        let mut nodes = synthetic.into_values().collect::<Vec<_>>();
+        nodes.extend(symbol_nodes);
+        nodes.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
+        json!({
+            "schema": "osiris.workspace-graph/v1",
+            "nodes": nodes,
+            "edges": document.workspace_symbols.relations,
+        })
+    }
+}
+
+fn workspace_symbol_score(symbol: &SemanticSymbol, query: &str) -> Option<(u16, Vec<&'static str>)> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Some((1, vec!["all"]));
+    }
+    let mut score = 0;
+    let mut reasons = Vec::new();
+    for (value, reason, weight) in [
+        (symbol.binding_id.as_str(), "binding-id", 120),
+        (symbol.canonical.as_str(), "canonical-name", 110),
+        (symbol.source_spelling.as_str(), "source-name", 105),
+    ] {
+        update_match_score(value, &query, weight, reason, &mut score, &mut reasons);
+    }
+    for alias in &symbol.aliases {
+        update_match_score(
+            &alias.spelling,
+            &query,
+            100,
+            "alias",
+            &mut score,
+            &mut reasons,
+        );
+    }
+    for names in symbol.names.localized.values() {
+        update_match_score(
+            &names.preferred,
+            &query,
+            100,
+            "localized-name",
+            &mut score,
+            &mut reasons,
+        );
+        for alias in &names.aliases {
+            update_match_score(
+                alias,
+                &query,
+                90,
+                "localized-alias",
+                &mut score,
+                &mut reasons,
+            );
+        }
+    }
+    if symbol
+        .documentation
+        .default
+        .iter()
+        .chain(symbol.documentation.translations.values())
+        .any(|value| value.to_lowercase().contains(&query))
+    {
+        score = score.max(45);
+        reasons.push("documentation");
+    }
+    if symbol
+        .examples
+        .iter()
+        .flatten()
+        .any(|value| value.to_lowercase().contains(&query))
+    {
+        score = score.max(35);
+        reasons.push("example");
+    }
+    (score > 0).then_some((score, reasons))
+}
+
+fn update_match_score(
+    value: &str,
+    query: &str,
+    weight: u16,
+    reason: &'static str,
+    score: &mut u16,
+    reasons: &mut Vec<&'static str>,
+) {
+    let value = value.to_lowercase();
+    let candidate = if value == query {
+        weight
+    } else if value.starts_with(query) {
+        weight.saturating_sub(15)
+    } else if value.contains(query) {
+        weight.saturating_sub(30)
+    } else {
+        return;
+    };
+    *score = (*score).max(candidate);
+    reasons.push(reason);
+}
+
+const fn lsp_symbol_kind(kind: BindingKind) -> u8 {
+    match kind {
+        BindingKind::Function => 12,
+        BindingKind::Macro => 12,
+        BindingKind::Type => 23,
+        BindingKind::Field => 8,
+        BindingKind::Module | BindingKind::PythonModule => 2,
+        BindingKind::Parameter | BindingKind::Value => 13,
+    }
 }
 
 fn semantic_symbol_accepts(symbol: &SemanticSymbol, query: &str) -> bool {

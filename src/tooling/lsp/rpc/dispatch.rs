@@ -146,6 +146,17 @@ fn dispatch(
                 serialize_value(state.references(&params.text_document.uri, params.position))?;
             Ok(result_outcome(result))
         }
+        "textDocument/documentSymbol" => {
+            let uri = required_uri(params)?;
+            ensure_document(state, uri)?;
+            let result = state.document_symbols(uri).unwrap_or_default();
+            Ok(result_outcome(serialize_value(result)?))
+        }
+        "workspace/symbol" => {
+            let params: WorkspaceSymbolParams = decode_params(params)?;
+            let result = state.workspace_symbols(&params.query);
+            Ok(result_outcome(serialize_value(result)?))
+        }
         "textDocument/prepareRename" => {
             let params: PositionParams = decode_params(params)?;
             ensure_document(state, &params.text_document.uri)?;
@@ -228,6 +239,11 @@ fn dispatch(
                 .or_else(|| find_string(params, &["query"]));
             let symbols = state.symbols(uri, query.as_deref()).unwrap_or_default();
             Ok(result_outcome(serialize_value(symbols)?))
+        }
+        "osiris/workspaceGraph" => {
+            let uri = required_uri(params)?;
+            ensure_document(state, uri)?;
+            Ok(result_outcome(state.workspace_graph()))
         }
         "osiris/standardSource" => {
             let uri = required_uri(params)?;

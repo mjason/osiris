@@ -72,6 +72,25 @@ pub(super) fn finish_symbol_index(index: &mut WorkspaceSymbolIndex) {
             right.symbol.definition.start,
         ))
     });
+    index.relations.sort_by(|left, right| {
+        (
+            &left.from,
+            &left.to,
+            &left.kind,
+            &left.uri,
+            left.range.start.line,
+            left.range.start.character,
+        )
+            .cmp(&(
+                &right.from,
+                &right.to,
+                &right.kind,
+                &right.uri,
+                right.range.start.line,
+                right.range.start.character,
+            ))
+    });
+    index.relations.dedup();
 }
 
 pub(super) fn collect_function_interfaces(

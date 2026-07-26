@@ -2,7 +2,7 @@
 document-id: tooling/cli
 title: Osiris Command-Line Interface
 language: en
-revision: 2
+revision: 3
 ---
 
 # Osiris Command-Line Interface
@@ -15,8 +15,8 @@ language-server operation. Concise command help is available with
 ## Projects
 
 `osr init <project>` creates a uv-compatible project, `osr init --existing`
-adds Osiris to an existing uv project, and `osr init --extension <project>`
-creates a PyPI extension project using the `osiris_build` backend. Dependency
+adds Osiris to an existing uv project, and `osr init --package <project>`
+creates a publishable Osiris package using the `osiris_build` backend. Dependency
 resolution, locking, installation, and publication remain ordinary uv/PyPI
 operations.
 
@@ -31,6 +31,73 @@ artifacts are readable Python, `.osri` interfaces, and `.py.map` source maps.
 Use `--out-dir` to select an output directory and `--emit` to select artifact
 kinds. Project and explicit builds link reachable support into the owning
 Python package's private `__osiris_runtime__` package.
+
+## Project Configuration
+
+`osiris.jsonc` contains only compiler and tooling settings. It accepts JSONC
+comments and trailing commas. The supported fields are:
+
+- `source`: project-relative source roots; defaults to `["src"]`.
+- `outDir`: project-relative build destination; defaults to `"dist"` and is
+  always excluded from source discovery.
+- `exclude`: project-relative paths or glob patterns removed from the shared
+  build, watch, check, format, LSC, and LSP source scope.
+- `targetPython`: the single Python language target; defaults to `"3.11"`.
+- `strict`: whether unresolved dynamic boundaries and incomplete public
+  contracts are errors; defaults to `true`.
+- `displayLocale`: a BCP 47 locale used by editor presentation and as an LSA
+  fallback, for example `"zh-CN"`, `"en"`, or `"ja"`.
+- `agent`: optional `model`, `baseUrl`, and `wireApi` settings for LSA. The API
+  key belongs in `OSR_API_KEY` or `.env`, never in `osiris.jsonc`.
+
+For example, this changes the complete build destination while excluding test
+fixtures inside the source tree:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json",
+  "source": ["src"],
+  "outDir": "build/osiris",
+  "exclude": ["src/**/fixtures/**"],
+  "targetPython": "3.11",
+  "strict": true,
+  "displayLocale": "zh-CN"
+}
+```
+
+Package name, version, Python dependencies, indexes, and publication metadata
+belong in `pyproject.toml`. There is no `watch`, `extensions`, `buildGroups`, or
+`trust` field: watch is a command, dependencies are ordinary Python packages,
+and trust is expressed by language-level contracts.
+
+## Publishing a Package
+
+Create and publish a reusable Osiris library through the normal Python package
+workflow:
+
+```console
+osr init --package acme-text
+cd acme-text
+uv lock
+uv build --python 3.11
+uv publish dist/*
+```
+
+`osr init --existing --package .` converts an existing compatible uv package.
+The scaffold selects `osiris_build`, pins a compatible `osiris-lang` build
+requirement, creates a canonical public module, and leaves package metadata in
+`pyproject.toml`. The wheel contains authored `.osr` source, compiled Python,
+`.osri` interfaces, source maps, static metadata, and only the reachable private
+runtime support it needs. Consumers install it like any other dependency:
+
+```console
+uv add acme-text
+uv run osr check src/main.osr
+```
+
+Do not create a separate Osiris registry or list packages in `osiris.jsonc`.
+The compiler discovers validated static interfaces from the consumer's locked
+Python dependency graph without importing package code.
 
 ## Canonical Formatting
 
@@ -67,12 +134,40 @@ osr lsc expand <path>
 osr lsc syntax <path>
 osr lsc semantic <path>
 osr lsc symbol <name-or-binding-id>
+osr lsc workspace-search <concept-or-api-name>
+osr lsc symbol-context <api-name-or-binding-id>
+osr lsc symbol-context --at <path>:<line>:<column>
+osr lsc source-context --at <path>:<line>:<column>
+osr lsc cache status
+osr lsc cache rebuild
 ```
 
 Text is the default. `--format json` returns one versioned object. With no
 `--locale`, LSC selects authored `:default` documentation and the canonical
 name; it does not inherit project `displayLocale`. An explicit locale must be a
 BCP 47 tag and is matched with RFC 4647 lookup.
+
+The composite queries use a compiler-owned semantic graph stored at
+`.osiris/cache/language-graph.sqlite3`. The disposable libSQL cache indexes
+Osiris modules, symbols, types, Rich Metadata, examples, imports, calls,
+references, exports, and aliases. It includes statically discovered Osiris
+extension interfaces used by the project, but not ordinary Python packages or
+raw embedded-Python bodies. Results use stable `osiris-workspace:///` source
+URIs, so neither the cache nor an LSA request exposes the machine's project
+path. Deleting the database only causes it to be rebuilt.
+
+Graph-only searches validate a content fingerprint before full workspace
+analysis. A per-input manifest means the normal check only inspects file
+metadata and rereads files whose size or modification stamp changed. A fresh
+cache opens directly without starting LSP; source, configuration, lock, target,
+strictness, or reachable interface changes are detected and rebuilt
+automatically. `osr lsc cache status` performs this check without rebuilding.
+`osr lsc cache rebuild` ignores both the matching fingerprint and manifest,
+rereads all inputs, and performs a complete atomic rebuild for recovery or
+diagnosis; it is not needed after ordinary edits.
+Both commands report `inputCount`, `reusedHashes`, and `hashedInputs` in JSON;
+the text form prints the same counts. A fresh cache should normally report zero
+hashed inputs, while a manual rebuild reports zero reused hashes.
 
 `osr lsp` runs the editor protocol over standard Content-Length framed stdin
 and stdout. It uses the same compiler queries and formatter as LSC and `fmt`.
@@ -81,7 +176,9 @@ and stdout. It uses the same compiler queries and formatter as LSC and `fmt`.
 
 `osr lsa "<request>"` explains Osiris APIs and returns complete examples that
 have been formatted and checked by the compiler. It is deliberately not a
-coding agent: it does not edit source or run shell commands. The example is
+coding agent: it does not edit source or run shell commands. LSA requires a
+configured Osiris/uv project; there is no reduced standalone evaluation mode.
+Each example is
 compiled as a temporary entry in the current Osiris workspace and executed
 with the current project Python. Normal Osiris imports, extension interfaces,
 `py/import`, and `~python` use the same staging semantics as `osr run`; the
@@ -94,11 +191,31 @@ temporary runtime with finite time and output limits. Compilation or execution
 failure may cause one diagnostic-driven repair request; LSA never enters an
 unbounded generation loop.
 
+For a project-aware request, LSA may perform up to four rounds of read-only LSC
+queries. It searches the semantic graph, follows relevant relationships, and
+then asks LSP for applicable hover, definition, signature-help, reference,
+document-symbol, and workspace-symbol facts. Missing capabilities, ambiguous
+symbols, unavailable source, and request failures remain explicit evidence;
+LSA does not silently choose a candidate. Use an exact source anchor when the
+question concerns a particular expression:
+
+```console
+osr lsa --at src/app.osr:18:7 "What does this API do, and show a valid example"
+```
+
+The JSON response contains compiler-owned `languageService` entries. Each
+entry records the operation, status, bounded result, and source URI/range.
+Model-authored evidence is discarded.
+
 Every response includes a `sessionId`. Continue a conversation with
 `osr lsa --session <id> "<follow-up>"`. Editable JSONC history is stored under
 `.osiris/cache/agent/<session-id>/session.jsonc`. `--file <path>` explicitly
-adds one project source file as context; project source is not uploaded
-implicitly.
+adds one `.osr`/`.osri` file or the project's `osiris.jsonc` as initial context.
+Project configuration is never uploaded implicitly. For project-aware source
+questions, only LSC-selected, bounded Osiris facts and enclosing forms are sent;
+the whole workspace is never sent. Provider URLs and credential-shaped values
+are redacted, and `.env`, excluded paths, output, cache, and raw Python
+implementation bodies are rejected.
 
 LSA uses the OpenAI-compatible protocol selected by the `agent` object in
 `osiris.jsonc`: `responses` calls `/responses`, while `chatCompletions` calls

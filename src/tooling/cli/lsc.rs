@@ -7,7 +7,7 @@ use super::*;
 use crate::lsp::{Location, LspState, Position};
 
 mod standard;
-mod support;
+pub(super) mod support;
 
 use standard::*;
 use support::*;
@@ -56,6 +56,10 @@ fn parse_request(arguments: &[String]) -> Result<LscRequest, String> {
         "syntax",
         "semantic",
         "symbol",
+        "workspace-search",
+        "symbol-context",
+        "source-context",
+        "cache",
     ];
     if !supported.contains(&operation.as_str()) {
         return Err(format!("unknown lsc operation '{operation}'"));
@@ -164,8 +168,77 @@ fn execute(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
         "syntax" => source_view(request, SourceView::Syntax),
         "semantic" => source_view(request, SourceView::Semantic),
         "symbol" => symbol(request),
+        "workspace-search" => graph_workspace_search(request),
+        "symbol-context" => graph_symbol_context(request),
+        "source-context" => graph_source_context(request),
+        "cache" => graph_cache(request),
         _ => unreachable!("operation was validated"),
     }
+}
+
+fn graph_cache(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
+    let report = match request.arguments.as_slice() {
+        [operation] if operation == "status" => {
+            crate::lsc::WorkspaceService::cache_status(Path::new("."))?
+        }
+        [operation] if operation == "rebuild" => {
+            crate::lsc::WorkspaceService::rebuild_cache(Path::new("."), request.locale.as_deref())?
+        }
+        [] => return Err("cache requires 'status' or 'rebuild'".to_owned()),
+        [operation] => return Err(format!("unknown lsc cache operation '{operation}'")),
+        _ => return Err("cache accepts exactly one operation: 'status' or 'rebuild'".to_owned()),
+    };
+    let value = serde_json::to_value(&report).map_err(|error| error.to_string())?;
+    let text = format!(
+        "cache {}: {} ({} inputs, {} reused, {} hashed)\n",
+        report.status, report.path, report.input_count, report.reused_hashes, report.hashed_inputs
+    );
+    Ok((value, text, false))
+}
+
+fn graph_workspace_search(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
+    let query = required_single(&request.arguments, "QUERY")?;
+    let mut service =
+        crate::lsc::WorkspaceService::open(Path::new("."), request.locale.as_deref())?;
+    render_tool_result(service.workspace_search(query, None))
+}
+
+fn graph_symbol_context(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
+    let mut service =
+        crate::lsc::WorkspaceService::open(Path::new("."), request.locale.as_deref())?;
+    let result = if request
+        .arguments
+        .first()
+        .is_some_and(|value| value == "--at")
+    {
+        let at = parse_at_only(&request.arguments)?;
+        service.position_context(&crate::lsc::SourcePosition {
+            path: at.path.into(),
+            line: at.position.line + 1,
+            column: at.position.character + 1,
+        })
+    } else {
+        service.symbol_context(required_single(&request.arguments, "API-NAME")?)
+    };
+    render_tool_result(result)
+}
+
+fn graph_source_context(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
+    let at = parse_at_only(&request.arguments)?;
+    let mut service =
+        crate::lsc::WorkspaceService::open(Path::new("."), request.locale.as_deref())?;
+    render_tool_result(service.position_context(&crate::lsc::SourcePosition {
+        path: at.path.into(),
+        line: at.position.line + 1,
+        column: at.position.character + 1,
+    }))
+}
+
+fn render_tool_result(result: crate::lsc::ToolResult) -> Result<(JsonValue, String, bool), String> {
+    let failed = matches!(result.status.as_str(), "error" | "unavailable");
+    let value = serde_json::to_value(&result).map_err(|error| error.to_string())?;
+    let text = serde_json::to_string_pretty(&value).map_err(|error| error.to_string())? + "\n";
+    Ok((value, text, failed))
 }
 
 fn diagnostics(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {

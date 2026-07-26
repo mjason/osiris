@@ -2,7 +2,7 @@
   "name": "osiris",
   "displayName": "Osiris",
   "description": "Language support for the Osiris Lisp-to-Python compiler",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "publisher": "mjason",
   "license": "MIT",
   "engines": {
@@ -54,6 +54,12 @@
         "language": "osiris",
         "scopeName": "source.osiris",
         "path": "./syntaxes/osiris.tmLanguage.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "osiris.jsonc",
+        "url": "https://raw.githubusercontent.com/mjason/osiris/main/schemas/osiris.schema.json"
       }
     ],
     "commands": [

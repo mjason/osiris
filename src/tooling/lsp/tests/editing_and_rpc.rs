@@ -145,7 +145,16 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
         })
         .to_string(),
     );
-    assert_eq!(initialize.response.as_ref().expect("response")["id"], 1);
+    let initialize_response = initialize.response.as_ref().expect("response");
+    assert_eq!(initialize_response["id"], 1);
+    assert_eq!(
+        initialize_response["result"]["capabilities"]["workspaceSymbolProvider"],
+        true
+    );
+    assert_eq!(
+        initialize_response["result"]["capabilities"]["documentSymbolProvider"],
+        true
+    );
 
     let opened = machine.handle(
         &json!({
@@ -198,6 +207,41 @@ fn json_rpc_transcript_recovers_and_exposes_semantics() {
     assert_eq!(
         symbols.response.as_ref().expect("response")["result"][0]["canonical"],
         "add-one"
+    );
+
+    let workspace_symbols = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": "workspace-symbols",
+            "method": "workspace/symbol",
+            "params": {"query": "Increment an integer"}
+        })
+        .to_string(),
+    );
+    let workspace_result =
+        &workspace_symbols.response.as_ref().expect("response")["result"];
+    assert_eq!(workspace_result[0]["name"], "add-one");
+    assert_eq!(
+        workspace_result[0]["data"]["bindingId"],
+        "demo::function::add-one"
+    );
+
+    let document_symbols = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": "document-symbols",
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": URI}}
+        })
+        .to_string(),
+    );
+    let document_result =
+        &document_symbols.response.as_ref().expect("response")["result"];
+    assert!(
+        document_result
+            .as_array()
+            .is_some_and(|symbols| symbols.iter().any(|symbol| symbol["name"] == "add-one")),
+        "{document_result:?}"
     );
 
     let malformed = handle_json_rpc(&mut machine.state, "{broken");

@@ -216,53 +216,62 @@ fn compile_workspace_with_emission(
     let mut validation_elapsed = std::time::Duration::ZERO;
 
     while completed_components.len() < runtime_components.len() {
-        let ready = (0..runtime_components.len()).find(|component| {
-            !completed_components.contains(component)
-                && component_dependencies[*component].is_subset(&completed_components)
-        });
+        let ready = (0..runtime_components.len())
+            .filter(|component| {
+                !completed_components.contains(component)
+                    && component_dependencies[*component].is_subset(&completed_components)
+            })
+            .collect::<Vec<_>>();
         // A phase-1 graph is checked for cycles before this loop.  If no
         // condensed runtime component is ready, the only remaining shape is
         // therefore a cross-component cycle that mixes runtime and phase-1
         // edges.  Runtime provisional interfaces break that cycle as well;
         // compile the remaining components as one deterministic batch while
         // retaining the phase-1 dependency order below.
-        let batch_components = ready.map_or_else(
-            || {
-                (0..runtime_components.len())
-                    .filter(|component| !completed_components.contains(component))
-                    .collect::<Vec<_>>()
-            },
-            |component| vec![component],
-        );
+        let batch_components = if ready.is_empty() {
+            (0..runtime_components.len())
+                .filter(|component| !completed_components.contains(component))
+                .collect::<Vec<_>>()
+        } else {
+            ready
+        };
         let mut modules = batch_components
             .iter()
             .flat_map(|component| runtime_components[*component].iter().cloned())
             .collect::<Vec<_>>();
         modules.sort();
         let mut provisional = BTreeMap::<String, interface::Interface>::new();
-        for module_name in &modules {
-            let unit = &prepared[*by_name
-                .get(module_name)
-                .expect("workspace source module has an input")];
-            let started = std::time::Instant::now();
-            let model = match interface::build_provisional(&unit.header) {
+        let provisional_results = modules
+            .par_iter()
+            .map(|module_name| {
+                let unit = &prepared[*by_name
+                    .get(module_name)
+                    .expect("workspace source module has an input")];
+                let started = std::time::Instant::now();
+                (
+                    module_name.clone(),
+                    unit.input_index,
+                    unit.header.span,
+                    interface::build_provisional(&unit.header),
+                    started.elapsed(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (module_name, input_index, span, result, elapsed) in provisional_results {
+            provisional_elapsed += elapsed;
+            let model = match result {
                 Ok(model) => model,
                 Err(error) => {
                     return WorkspaceCompileResult {
                         units: Vec::new(),
                         diagnostics: vec![LocatedDiagnostic {
-                            input_index: unit.input_index,
-                            diagnostic: Diagnostic::error(
-                                error.code,
-                                error.message,
-                                unit.header.span,
-                            ),
+                            input_index,
+                            diagnostic: Diagnostic::error(error.code, error.message, span),
                         }],
                     };
                 }
             };
-            provisional_elapsed += started.elapsed();
-            provisional.insert(module_name.clone(), model);
+            provisional.insert(module_name, model);
         }
 
         // Keep all provisional members visible for the complete SCC.  Final
@@ -277,29 +286,39 @@ fn compile_workspace_with_emission(
                 .iter()
                 .map(|(name, model)| (name.clone(), model.clone())),
         );
+        let expanded_results = modules
+            .par_iter()
+            .map(|module_name| {
+                let unit = &prepared[*by_name
+                    .get(module_name)
+                    .expect("workspace source module has an input")];
+                let imported_phase = imported_phase_modules(&unit.header, &raw_interfaces);
+                let started = std::time::Instant::now();
+                let expanded = macro_expand::expand_with_imported_phase_modules_for_module(
+                    &unit.document,
+                    &imported_phase,
+                    &unit.module_name,
+                    ExpansionOptions::default(),
+                );
+                let mut lowered = ast::lower_document(&expanded.document);
+                install_module_identity(
+                    &mut lowered.module,
+                    inputs[unit.input_index].options,
+                    &mut lowered.diagnostics,
+                );
+                (
+                    module_name.clone(),
+                    interface::build_provisional(&lowered.module).ok(),
+                    started.elapsed(),
+                )
+            })
+            .collect::<Vec<_>>();
         let mut expanded_provisional = BTreeMap::new();
-        for module_name in &modules {
-            let unit = &prepared[*by_name
-                .get(module_name)
-                .expect("workspace source module has an input")];
-            let imported_phase = imported_phase_modules(&unit.header, &raw_interfaces);
-            let started = std::time::Instant::now();
-            let expanded = macro_expand::expand_with_imported_phase_modules_for_module(
-                &unit.document,
-                &imported_phase,
-                &unit.module_name,
-                ExpansionOptions::default(),
-            );
-            let mut lowered = ast::lower_document(&expanded.document);
-            install_module_identity(
-                &mut lowered.module,
-                inputs[unit.input_index].options,
-                &mut lowered.diagnostics,
-            );
-            if let Ok(model) = interface::build_provisional(&lowered.module) {
-                expanded_provisional.insert(module_name.clone(), model);
+        for (module_name, model, elapsed) in expanded_results {
+            expansion_elapsed += elapsed;
+            if let Some(model) = model {
+                expanded_provisional.insert(module_name, model);
             }
-            expansion_elapsed += started.elapsed();
         }
         if expanded_provisional.len() == modules.len() {
             provisional = expanded_provisional;
@@ -329,74 +348,112 @@ fn compile_workspace_with_emission(
             .collect::<Vec<_>>();
         member_order.extend(missing_members);
 
+        let analysis_results = member_order
+            .par_iter()
+            .map(|module_name| {
+                let unit = &prepared[*by_name
+                    .get(module_name)
+                    .expect("workspace source module has an input")];
+                let imported_phase = imported_phase_modules(&unit.header, &scc_interfaces);
+                let started = std::time::Instant::now();
+                let mut analysis = analyze_document(
+                    &unit.document,
+                    inputs[unit.input_index].options,
+                    &imported_phase,
+                    Some(&scc_interfaces),
+                );
+                let frontend_elapsed = started.elapsed();
+                let started = std::time::Instant::now();
+                let Some(interface_model) = build_interface_model(
+                    &mut analysis,
+                    inputs[unit.input_index].options.target_python,
+                ) else {
+                    let mut diagnostics = analysis
+                        .diagnostics
+                        .iter()
+                        .cloned()
+                        .map(|diagnostic| LocatedDiagnostic {
+                            input_index: unit.input_index,
+                            diagnostic,
+                        })
+                        .collect::<Vec<_>>();
+                    sort_located_diagnostics(&mut diagnostics);
+                    return (
+                        module_name.clone(),
+                        Err(diagnostics),
+                        frontend_elapsed,
+                        started.elapsed(),
+                        std::time::Duration::ZERO,
+                    );
+                };
+                let interface_elapsed = started.elapsed();
+                if analysis.has_errors() {
+                    let mut diagnostics = analysis
+                        .diagnostics
+                        .iter()
+                        .cloned()
+                        .map(|diagnostic| LocatedDiagnostic {
+                            input_index: unit.input_index,
+                            diagnostic,
+                        })
+                        .collect::<Vec<_>>();
+                    sort_located_diagnostics(&mut diagnostics);
+                    return (
+                        module_name.clone(),
+                        Err(diagnostics),
+                        frontend_elapsed,
+                        interface_elapsed,
+                        std::time::Duration::ZERO,
+                    );
+                }
+                let Some(provisional_model) = provisional.get(module_name) else {
+                    unreachable!("every SCC member has a provisional interface")
+                };
+                let started = std::time::Instant::now();
+                if let Err(error) =
+                    interface::validate_provisional_shape(provisional_model, &interface_model)
+                {
+                    return (
+                        module_name.clone(),
+                        Err(vec![LocatedDiagnostic {
+                            input_index: unit.input_index,
+                            diagnostic: Diagnostic::error(
+                                error.code,
+                                error.message,
+                                unit.header.span,
+                            ),
+                        }]),
+                        frontend_elapsed,
+                        interface_elapsed,
+                        started.elapsed(),
+                    );
+                }
+                (
+                    module_name.clone(),
+                    Ok((analysis, interface_model)),
+                    frontend_elapsed,
+                    interface_elapsed,
+                    started.elapsed(),
+                )
+            })
+            .collect::<Vec<_>>();
+
         let mut staged = Vec::<(String, Analysis, interface::Interface)>::new();
-        for module_name in member_order {
-            let unit = &prepared[*by_name
-                .get(&module_name)
-                .expect("workspace source module has an input")];
-            let imported_phase = imported_phase_modules(&unit.header, &scc_interfaces);
-            let started = std::time::Instant::now();
-            let mut analysis = analyze_document(
-                &unit.document,
-                inputs[unit.input_index].options,
-                &imported_phase,
-                Some(&scc_interfaces),
-            );
-            frontend_elapsed += started.elapsed();
-            let started = std::time::Instant::now();
-            let Some(interface_model) = build_interface_model(
-                &mut analysis,
-                inputs[unit.input_index].options.target_python,
-            ) else {
-                let mut diagnostics = analysis
-                    .diagnostics
-                    .iter()
-                    .cloned()
-                    .map(|diagnostic| LocatedDiagnostic {
-                        input_index: unit.input_index,
-                        diagnostic,
-                    })
-                    .collect::<Vec<_>>();
-                sort_located_diagnostics(&mut diagnostics);
-                return WorkspaceCompileResult {
-                    units: Vec::new(),
-                    diagnostics,
-                };
-            };
-            interface_elapsed += started.elapsed();
-            if analysis.has_errors() {
-                let mut diagnostics = analysis
-                    .diagnostics
-                    .iter()
-                    .cloned()
-                    .map(|diagnostic| LocatedDiagnostic {
-                        input_index: unit.input_index,
-                        diagnostic,
-                    })
-                    .collect::<Vec<_>>();
-                sort_located_diagnostics(&mut diagnostics);
-                return WorkspaceCompileResult {
-                    units: Vec::new(),
-                    diagnostics,
-                };
+        for (module_name, result, frontend, interface, validation) in analysis_results {
+            frontend_elapsed += frontend;
+            interface_elapsed += interface;
+            validation_elapsed += validation;
+            match result {
+                Ok((analysis, interface_model)) => {
+                    staged.push((module_name, analysis, interface_model));
+                }
+                Err(diagnostics) => {
+                    return WorkspaceCompileResult {
+                        units: Vec::new(),
+                        diagnostics,
+                    };
+                }
             }
-            let Some(provisional_model) = provisional.get(&module_name) else {
-                unreachable!("every SCC member has a provisional interface")
-            };
-            let started = std::time::Instant::now();
-            if let Err(error) =
-                interface::validate_provisional_shape(provisional_model, &interface_model)
-            {
-                return WorkspaceCompileResult {
-                    units: Vec::new(),
-                    diagnostics: vec![LocatedDiagnostic {
-                        input_index: unit.input_index,
-                        diagnostic: Diagnostic::error(error.code, error.message, unit.header.span),
-                    }],
-                };
-            }
-            validation_elapsed += started.elapsed();
-            staged.push((module_name, analysis, interface_model));
         }
 
         for (module_name, analysis, model) in staged {

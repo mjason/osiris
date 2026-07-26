@@ -4,6 +4,9 @@ This extension adds `.osr` and `.osri` language registration, syntax
 highlighting, bracket configuration, and an LSP client for the Osiris
 Lisp-to-Python compiler. Diagnostics, completion, hover, signature help,
 definition, references, and rename are provided by `osr lsp`.
+Project configuration completion, hover, defaults, and structural validation
+are provided by VS Code's JSON language service using the published
+`osiris.jsonc` schema.
 
 ## Install
 

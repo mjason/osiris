@@ -12,8 +12,8 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-25
-revision: 12
+updated: 2026-07-26
+revision: 16
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -500,6 +500,100 @@ compilation, MUST NOT enter `outDir` or a package, and MUST be ignored by
 project source discovery. Implementations MUST constrain session identifiers
 to one path component and atomically replace a validated versioned session.
 
+**OEP-0002-R050:** LSA MUST retrieve the release-pinned English project and
+package manual when a request concerns configuration, initialization, source
+scope, output, build, execution, dependencies, or publication. It MUST explain
+these workflows without requiring an Osiris source example. Current project
+configuration MUST be sent to a provider only when the user explicitly selects
+`osiris.jsonc` with `--file`; provider URLs and credentials MUST be redacted,
+and credential-bearing files such as `.env` MUST NOT be accepted as context.
+
+**OEP-0002-R051:** The published JSON Schema for `osiris.jsonc` MUST describe
+every accepted field, its default, effect, and representative values. Editor
+integrations MUST use the standard JSON language service and this schema for
+configuration completion, hover, and structural validation. The Osiris LSP
+MUST report project-loading failures that prevent source analysis, but MUST NOT
+implement a competing JSONC editor service.
+
+**OEP-0002-R052:** LSC MUST maintain a project semantic graph at
+`.osiris/cache/language-graph.sqlite3` using embedded libSQL. Nodes MUST cover
+the configured project's modules and symbols plus statically discovered,
+lock-reachable Osiris interface symbols actually present in analysis. Edges
+MUST cover at least `imports`, `exports`, `calls`, `references`, and `alias-of`
+when the compiler can establish them. Types, Rich Metadata documentation,
+examples, localized names, and source provenance MUST be searchable node data.
+The graph MUST NOT index ordinary Python packages or raw embedded-Python bodies;
+Python capability enters the graph only through its declared Osiris interface.
+
+The graph is a disposable tooling cache, never an artifact. Its identity MUST
+include the graph schema, compiler/language versions, and deterministic compiler
+facts. A changed identity MUST atomically replace graph contents. Project paths
+stored in nodes, edges, LSC results, or provider context MUST use stable
+`osiris-workspace:///` URIs rather than machine-specific absolute paths.
+
+Cache validation MUST happen before complete workspace analysis. Its input
+identity MUST cover configured, non-excluded Osiris sources, project
+configuration and lock data, the selected Python target and strictness, and the
+complete content of lock-reachable static interfaces. When that identity and
+the graph schema match, graph-only operations MUST open libSQL directly and
+MUST NOT initialize a language server. Changed inputs, a missing cache, or an
+invalid cache MUST trigger automatic analysis and atomic replacement; users do
+not manually refresh the normal cache lifecycle.
+
+Validation MUST scale with workspace file count without rereading every source
+on each query. The cache MUST persist a per-input manifest containing stable
+identity, byte size, high-resolution modification stamp, and content hash.
+Normal validation MUST reuse the content hash when the identity, size, and
+stamp match, and MUST read and hash only new or changed inputs. Source metadata
+inspection and hashing MAY run in bounded parallel workers. This manifest is
+only a validation accelerator: content hashes remain the authoritative graph
+identity, and automatic semantic analysis after a changed identity remains a
+complete dependency-correct workspace analysis unless a future OEP specifies
+incremental compiler interfaces and reverse-dependency invalidation.
+
+Complete semantic analysis MUST retain dependency and phase ordering, but
+implementations SHOULD schedule all ready strongly connected components in one
+deterministic topological layer and use bounded parallel workers for independent
+provisional-interface construction, macro expansion, and frontend analysis.
+
+`osr lsc cache status` MUST report whether the current input identity is
+`fresh`, `stale`, `missing`, or `invalid` without building the graph.
+It MUST also report the total manifest input count and how many content hashes
+were reused or recomputed during validation, so large-workspace behavior is
+observable.
+
+`osr lsc cache rebuild` MUST ignore any matching cache identity, perform a full
+workspace analysis, and atomically replace the complete graph. It is a recovery
+and diagnostic escape hatch, not a required step after source edits.
+
+**OEP-0002-R053:** LSC MUST be the protocol boundary between LSA and language
+servers. It MUST provide bounded composite `workspace-search`, `symbol-context`,
+and `source-context` operations backed by the semantic graph and applicable LSP
+requests. `symbol-context` MUST use advertised capabilities for hover,
+definition, signature help, references, document symbols, and workspace symbols,
+and MUST represent unavailable capabilities, missing services, ambiguity,
+multiple definitions, invalid URIs, and request errors explicitly rather than
+guessing. Source context MUST be limited to configured, non-excluded Osiris
+sources or validated packaged standard source and to a bounded enclosing form.
+
+**OEP-0002-R054:** LSA MAY run a bounded read-only tool loop over those LSC
+operations for a natural-language project request. LSA MUST require a configured
+Osiris/uv project; there is no reduced non-project evaluation mode. It MUST NOT upload the whole
+workspace or expose arbitrary file reads. Only graph-selected, bounded Osiris
+facts and source forms MAY be sent to the provider; `outDir`, `.osiris`, `.env`,
+excluded paths, credentials, and raw Python implementation bodies MUST remain
+outside provider context. `--at <path>:<line>:<column>` MUST provide an exact
+initial source anchor without changing ordinary natural-language requests.
+
+**OEP-0002-R055:** The final LSA JSON MUST retain compiler-owned
+`languageService` evidence with operation, status, URI/range-bearing result,
+and explanatory error where applicable. Provider-authored language-service
+evidence, compilation status, evaluation status, diagnostics, runtime result,
+and references MUST be discarded. Answers MUST distinguish LSP/graph facts from
+model interpretation and MUST expose ambiguous candidates instead of selecting
+one silently. Generated examples MUST still compile and evaluate as temporary
+entries in the real project workspace.
+
 ## Rationale
 
 The configuration is deliberately small. `source` already defines the watch
@@ -610,6 +704,11 @@ A conforming implementation provides evidence that:
 - module mapping and atomic artifact tests cover collisions and stale outputs;
 - cache fixtures prove unchanged reuse, output restoration, source/config/
   target/interface invalidation, corruption fallback, and failed-build safety;
+- semantic-graph fixtures prove libSQL persistence and invalidation, multilingual
+  Rich Metadata search, cross-file calls/references, ambiguity, dependency-interface
+  discovery, workspace-URI redaction, and exclusion of raw Python bodies;
+- mock-provider LSA fixtures require at least one graph/LSP tool round before a
+  final project-adapted answer and verify compiler ownership of all evidence;
 - generated Python and linked runtime fixtures are idempotent under the pinned
   Ruff profile, and source maps refer to the formatted line layout;
 - generated-source fixtures retain fallback docstrings, readable hygienic
@@ -636,6 +735,20 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 16, 2026-07-26: Added a persistent per-input manifest so normal
+  semantic graph validation stats all configured inputs but reads and hashes
+  only new or changed files; added observable validation counts and
+  dependency-layer parallel full analysis while clarifying that invalidated
+  semantic analysis is still full-workspace analysis.
+- Revision 15, 2026-07-26: Required pre-analysis semantic graph validation,
+  lazy language-server startup, automatic input-aware replacement, cache status,
+  and an explicit full `osr lsc cache rebuild` recovery path.
+- Revision 14, 2026-07-26: Added the disposable libSQL project semantic graph,
+  graph-backed LSC composite queries, bounded project-aware LSA tool use,
+  workspace URI privacy, and compiler-owned language-service evidence.
+- Revision 13, 2026-07-26: Required LSA retrieval for project configuration and
+  package workflows, explicit and redacted project-config context, and standard
+  JSON language-service coverage through the published schema.
 - Revision 12, 2026-07-25: Added explicit `responses` and `chatCompletions`
   provider selection and made Chat Completions the compatibility-first default.
 - Revision 11, 2026-07-25: Added the OpenAI-compatible LSA provider

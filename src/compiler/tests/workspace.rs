@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use super::{
     CompileInput, CompileOptions, analyze, analyze_workspace, analyze_workspace_recovering,
@@ -22,6 +22,30 @@ fn workspace_analysis_skips_every_emitted_artifact() {
     assert!(unit.interface.is_none());
     assert!(unit.source_map.is_none());
     assert!(unit.records.is_none());
+}
+
+#[test]
+fn workspace_analyzes_a_wide_independent_dependency_layer() {
+    const MODULE_COUNT: usize = 512;
+
+    let sources = (0..MODULE_COUNT)
+        .map(|index| format!("(module scale.m{index:04})\n(def value {index})\n"))
+        .collect::<Vec<_>>();
+    let options = (0..MODULE_COUNT)
+        .map(|index| CompileOptions::new(format!("scale.m{index:04}"), PythonVersion::MINIMUM))
+        .collect::<Vec<_>>();
+    let inputs = sources
+        .iter()
+        .zip(&options)
+        .map(|(source, options)| CompileInput::new(source, options))
+        .collect::<Vec<_>>();
+
+    let started = Instant::now();
+    let workspace = analyze_workspace(&inputs, &BTreeMap::new());
+    let elapsed = started.elapsed();
+    assert!(!workspace.has_errors(), "{:?}", workspace.diagnostics);
+    assert_eq!(workspace.units.len(), MODULE_COUNT);
+    eprintln!("analyzed {MODULE_COUNT} independent modules in {elapsed:?}");
 }
 
 #[test]

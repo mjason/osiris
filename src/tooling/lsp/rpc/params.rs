@@ -32,6 +32,11 @@ struct TextDocumentIdentifier {
 }
 
 #[derive(Debug, Deserialize)]
+struct WorkspaceSymbolParams {
+    query: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DidCloseParams {
     text_document: TextDocumentIdentifier,

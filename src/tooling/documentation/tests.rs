@@ -26,6 +26,16 @@ fn syntax_and_graphql_are_served_from_the_embedded_snapshot() {
 }
 
 #[test]
+fn authored_cli_manual_can_be_loaded_by_id() {
+    let manual = document_markdown("tooling/cli")
+        .expect("embedded document query")
+        .expect("tooling/cli manual");
+    assert_eq!(manual.id, "tooling/cli");
+    assert!(manual.markdown.contains("## Project Configuration"));
+    assert!(manual.markdown.contains("osr init --package"));
+}
+
+#[test]
 fn search_counts_the_full_result_and_completion_includes_headings() {
     let response = execute_graphql(
         r#"{

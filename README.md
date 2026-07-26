@@ -121,7 +121,20 @@ The default `chatCompletions` calls `/chat/completions`; set `wireApi` or
 `OSR_WIRE_API` to `responses` for `/responses`. Protocol fallback is never
 implicit.
 Use `--file <path>` to explicitly include one local source file as context.
-Session JSONC is kept under `.osiris/cache/agent/` and never enters `dist`.
+Use `--at <path>:<line>:<column>` when a question is anchored to one expression.
+For broader feature requests, LSA performs bounded, read-only searches over a
+libSQL semantic graph and follows with precise LSP queries before generating an
+example. Compiler-owned `languageService` evidence keeps definitions,
+signatures, references, ambiguity, and source locations separate from model
+interpretation. Only selected Osiris forms use provider context; the complete
+workspace and raw Python implementation are never uploaded. The disposable
+graph is stored at `.osiris/cache/language-graph.sqlite3`, while session JSONC
+is kept under `.osiris/cache/agent/`; neither enters `dist`.
+Graph-only searches open a matching cache before workspace analysis. Source,
+configuration, lock, or static-interface changes refresh it automatically;
+unchanged files reuse hashes from a persistent input manifest, so hot validation
+does not reread the workspace. `osr lsc cache rebuild` remains available as a
+full recovery rebuild.
 
 With that configuration and [`examples/hello.osr`](examples/hello.osr):
 
@@ -177,14 +190,14 @@ automatically reads `osiris.toml` and `.osri` resources only from distributions
 reachable in the runtime lock graph; it never imports extension Python code or
 scans unrelated installed packages during discovery.
 
-## Publishing an Extension
+## Publishing a Package
 
-An Osiris extension is an ordinary Python distribution whose wheel contains
+An Osiris package is an ordinary Python distribution whose wheel contains
 compiled `.osri` interfaces and an automatically generated
 `dist-info/osiris.toml` marker. Create one with:
 
 ```console
-osr init --extension acme-osiris
+osr init --package acme-osiris
 cd acme-osiris
 uv lock
 uv build --python 3.11
@@ -200,13 +213,13 @@ requires = ["osiris-lang==<osr-version>"]
 build-backend = "osiris_build"
 ```
 
-`osr init --extension acme-osiris` creates
+`osr init --package acme-osiris` creates
 `src/acme_osiris/core.osr` with module `acme_osiris.core`. Each public module
 is compiled into readable Python plus an `.osri` interface; the backend adds
 one `[[extension]]` marker entry for each interface, using the module name
 (`acme_osiris.core`) as its ID. Do not write `osiris.toml` by hand.
 
-To convert an existing uv package, run `osr init --existing --extension` from
+To convert an existing uv package, run `osr init --existing --package` from
 its root. The command preserves existing metadata and refuses to replace a
 different build backend. If that package needs Hatchling, maturin, or another
 backend for additional native build work, backend composition is not yet
@@ -238,6 +251,8 @@ cargo run --bin osr -- expand source.osr
 cargo run --bin osr -- fmt --check source.osr
 cargo run --bin osr -- lsc semantic source.osr --format json
 cargo run --bin osr -- lsc hover osiris.core/map --locale en
+cargo run --bin osr -- lsc workspace-search "format message" --format json
+cargo run --bin osr -- lsc symbol-context --at examples/hello.osr:10:3 --format json
 cargo run --bin osr -- syntax
 cargo run --bin osr -- doc '{ documentationCapabilities { snapshotId } }'
 cargo run --bin osr -- lsp

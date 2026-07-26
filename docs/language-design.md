@@ -1172,7 +1172,7 @@ requires = ["osiris-lang==<osr-version>"]
 build-backend = "osiris_build"
 ```
 
-`osiris_build` 随 PyPI distribution `osiris-lang` 一起发布，不存在独立的 `osiris_build` distribution。`osr init --extension` 必须把 `requires` 精确固定到当前编译器版本，并生成与 distribution 名对应的合法 Osiris/Python 模块目录；例如 `acme-osiris` 生成 `src/acme_osiris/core.osr` 和模块 `acme_osiris.core`。backend 必须实现 `get_requires_for_build_wheel`：读取标准 `[project].dependencies`，在已校验为最新的 `uv.lock` 中找到对应锁定项，并返回精确的 PEP 508 requirements。该 hook 只投影锁文件，不自行解析版本；依赖缺失、范围不匹配或 lock 过期必须失败。PEP 517 frontend 随后把这些接口/宏依赖安装进隔离 build environment；backend 不能假设根环境已经 `uv sync`。
+`osiris_build` 随 PyPI distribution `osiris-lang` 一起发布，不存在独立的 `osiris_build` distribution。`osr init --package` 必须把 `requires` 精确固定到当前编译器版本，并生成与 distribution 名对应的合法 Osiris/Python 模块目录；例如 `acme-osiris` 生成 `src/acme_osiris/core.osr` 和模块 `acme_osiris.core`。backend 必须实现 `get_requires_for_build_wheel`：读取标准 `[project].dependencies`，在已校验为最新的 `uv.lock` 中找到对应锁定项，并返回精确的 PEP 508 requirements。该 hook 只投影锁文件，不自行解析版本；依赖缺失、范围不匹配或 lock 过期必须失败。PEP 517 frontend 随后把这些接口/宏依赖安装进隔离 build environment；backend 不能假设根环境已经 `uv sync`。
 
 `[build-system].requires` 应精确固定包含 backend 和 ABI 匹配 `osr` 编译器的 `osiris-lang`。规范的 `uv` 工作流还必须把同一 `uv.lock` 导出的 requirements 文件传给 `uv build --build-constraints`，约束 backend 自身的隔离安装，并以 `uv build --python <target>` 选择与 `osiris.jsonc` 的 `targetPython` 相同 major/minor 的 build interpreter。backend 在开始编译时再次核对实际 `sys.version_info`、目标 Python、lock fork、已安装 compiler/extension 版本和 lock hash，任一不符都必须失败，不能从同一 lock 因构建解释器不同而选择出不同接口依赖。
 

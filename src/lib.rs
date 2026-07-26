@@ -34,6 +34,8 @@ pub mod interface_graph;
 mod jsonc;
 #[path = "language/lexer/mod.rs"]
 pub mod lexer;
+#[path = "tooling/lsc/mod.rs"]
+pub mod lsc;
 #[path = "tooling/lsp/mod.rs"]
 pub mod lsp;
 #[path = "tooling/lsp_stdio/mod.rs"]

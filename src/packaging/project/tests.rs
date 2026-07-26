@@ -296,6 +296,15 @@ fn output_directory_is_always_excluded_from_broad_source_scope() {
 }
 
 #[test]
+fn tooling_cache_is_always_excluded_from_broad_source_scope() {
+    let path = fixture(r#"{"source":["src"],"outDir":"dist","targetPython":"3.11"}"#);
+    let config = ProjectConfig::load(&path).expect("broad source configuration");
+    assert!(config.is_excluded(&config.root.join(".osiris/cache/generated.osr")));
+    assert!(!config.is_excluded(&config.root.join("src/module.osr")));
+    let _ = fs::remove_dir_all(&config.root);
+}
+
+#[test]
 fn discovers_project_virtual_environment_without_running_python() {
     let path = fixture("{}");
     let config = ProjectConfig::load(&path).expect("minimal configuration should load");
