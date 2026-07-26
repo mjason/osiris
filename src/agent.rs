@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     formatter,
-    lsc::{SourcePosition, ToolResult, WorkspaceService},
+    lsc::{SourcePosition, ToolResult},
     project::{AgentConfig, ConfigError, ProjectConfig},
 };
 
@@ -25,7 +25,7 @@ use session::{
 };
 #[cfg(test)]
 use tools::parse_tool_calls;
-use tools::{collect_source_references, evidence_from_result, run_tool_loop};
+use tools::{WorkspaceToolService, collect_source_references, evidence_from_result, run_tool_loop};
 
 mod client;
 mod context;
@@ -146,33 +146,18 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
         })
         .unwrap_or_else(|| detect_locale(&options.request));
     let mut language_service = Vec::new();
-    let mut service = match project.as_ref() {
-        Some(project) => match WorkspaceService::open(&project.root, Some(&locale)) {
-            Ok(service) => Some(service),
-            Err(error) => {
-                language_service.push(LanguageServiceEvidence {
-                    call_id: "initialize".to_owned(),
-                    operation: "workspace-service".to_owned(),
-                    status: "unavailable".to_owned(),
-                    result: serde_json::Value::Null,
-                    message: Some(error),
-                });
-                None
-            }
-        },
-        None => None,
-    };
+    let mut service = WorkspaceToolService::pending(&root, &locale);
     if let Some(at) = &options.at {
-        let result = service.as_mut().map_or_else(
-            || ToolResult {
+        let result = match service.get() {
+            Ok(service) => service.position_context(at),
+            Err(error) => ToolResult {
                 schema: "osiris.lsc-tool/v1".to_owned(),
                 operation: "symbol-context".to_owned(),
                 status: "unavailable".to_owned(),
                 result: serde_json::Value::Null,
-                message: Some("project language services are unavailable".to_owned()),
+                message: Some(error),
             },
-            |service| service.position_context(at),
-        );
+        };
         language_service.push(evidence_from_result("--at", result));
     }
     let prompt = build_prompt(

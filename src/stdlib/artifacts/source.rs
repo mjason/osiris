@@ -262,17 +262,6 @@ fn declaration_lines(namespace: &str, source: &str) -> BTreeMap<String, u32> {
     lines
 }
 
-fn declaration_metadata(binding: StandardBinding, source: &str) -> Option<Vec<MetadataEntry>> {
-    let lowered = ast::lower_document(&crate::reader::read(source));
-    let mut result = None;
-    for_each_declaration(&lowered.module, |name, kind, metadata, _| {
-        if result.is_none() && name == binding.canonical && kind == binding.kind {
-            result = Some(metadata.to_vec());
-        }
-    });
-    result
-}
-
 fn for_each_declaration(
     module: &ast::Module,
     mut visitor: impl FnMut(&str, BindingKind, &[MetadataEntry], Span),
@@ -352,12 +341,138 @@ fn declaration_line_number(source: &str, span: Span, name: &str) -> u32 {
 }
 
 pub(crate) fn binding_metadata(binding: StandardBinding) -> Result<Vec<MetadataEntry>, String> {
+    binding_source_details(binding).map(|details| details.metadata)
+}
+
+pub(crate) struct BindingSourceDetails {
+    pub(crate) metadata: Vec<MetadataEntry>,
+    pub(crate) signature: String,
+    pub(crate) call_shape: String,
+}
+
+pub(crate) fn binding_source_details(
+    binding: StandardBinding,
+) -> Result<BindingSourceDetails, String> {
     let source = sources()?
         .get(binding.namespace)
         .ok_or_else(|| format!("unknown standard namespace `{}`", binding.namespace))?;
-    declaration_metadata(binding, &source.text)
-        .ok_or_else(|| format!("standard source is missing `{}`", binding.id().as_str()))
-        .and_then(|metadata| {
-            interface::normalize_metadata(&metadata).map_err(|error| error.to_string())
-        })
+    let lowered = ast::lower_document(&crate::reader::read(&source.text));
+    let item = matching_declaration(&lowered.module, binding)
+        .ok_or_else(|| format!("standard source is missing `{}`", binding.id().as_str()))?;
+    let (metadata, signature, parameters) = match &item.kind {
+        ast::ItemKind::Def(definition) => definition.type_annotation.as_ref().map_or_else(
+            || (definition.metadata.clone(), "Any".to_owned(), None),
+            |ty| {
+                (
+                    definition.metadata.clone(),
+                    source_slice(&source.text, ty.span),
+                    None,
+                )
+            },
+        ),
+        ast::ItemKind::Defn(function) => {
+            let parameter_types = function
+                .params
+                .iter()
+                .map(|parameter| {
+                    parameter.type_annotation.as_ref().map_or_else(
+                        || "Any".to_owned(),
+                        |ty| source_slice(&source.text, ty.span),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let result = function.return_type.as_ref().map_or_else(
+                || "Any".to_owned(),
+                |ty| source_slice(&source.text, ty.span),
+            );
+            (
+                function.metadata.clone(),
+                format!("Fn[[{parameter_types}], {result}]"),
+                Some(function.params.as_slice()),
+            )
+        }
+        ast::ItemKind::Defstruct(structure) => (
+            structure.metadata.clone(),
+            structure.name.canonical.clone(),
+            None,
+        ),
+        ast::ItemKind::Defmacro(macro_) => (
+            macro_.metadata.clone(),
+            "Macro".to_owned(),
+            Some(macro_.params.as_slice()),
+        ),
+        _ => (Vec::new(), "Any".to_owned(), None),
+    };
+    let call_shape = parameters.map_or_else(
+        || binding.canonical.to_owned(),
+        |parameters| {
+            let parameters = parameters.iter().map(|parameter| {
+                let name = if parameter.variadic {
+                    format!("{}...", parameter.name.canonical)
+                } else {
+                    parameter.name.canonical.clone()
+                };
+                if parameter.default.is_some() {
+                    format!("[{name}]")
+                } else {
+                    name
+                }
+            });
+            let parts = std::iter::once(binding.canonical.to_owned())
+                .chain(parameters)
+                .collect::<Vec<_>>();
+            format!("({})", parts.join(" "))
+        },
+    );
+    Ok(BindingSourceDetails {
+        metadata: interface::normalize_metadata(&metadata).map_err(|error| error.to_string())?,
+        signature,
+        call_shape,
+    })
+}
+
+fn matching_declaration(module: &ast::Module, binding: StandardBinding) -> Option<&ast::Item> {
+    module.items.iter().find_map(|item| {
+        if declaration_matches(item, binding) {
+            return Some(item);
+        }
+        let ast::ItemKind::Extern(external) = &item.kind else {
+            return None;
+        };
+        external
+            .items
+            .iter()
+            .find(|item| declaration_matches(item, binding))
+    })
+}
+
+fn declaration_matches(item: &ast::Item, binding: StandardBinding) -> bool {
+    match &item.kind {
+        ast::ItemKind::Def(definition) => {
+            binding.kind == BindingKind::Value && definition.name.canonical == binding.canonical
+        }
+        ast::ItemKind::Defn(function) => {
+            binding.kind == BindingKind::Function
+                && function
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.canonical == binding.canonical)
+        }
+        ast::ItemKind::Defstruct(structure) => {
+            binding.kind == BindingKind::Type && structure.name.canonical == binding.canonical
+        }
+        ast::ItemKind::Defmacro(macro_) => {
+            binding.kind == BindingKind::Macro && macro_.name.canonical == binding.canonical
+        }
+        _ => false,
+    }
+}
+
+fn source_slice(source: &str, span: Span) -> String {
+    source
+        .get(span.start..span.end)
+        .unwrap_or("Any")
+        .trim()
+        .to_owned()
 }

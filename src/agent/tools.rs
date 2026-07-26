@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use serde::Deserialize;
 
 use crate::{
@@ -11,6 +13,40 @@ const MAX_TOOL_ROUNDS: usize = 4;
 const MAX_TOOL_CALLS_PER_ROUND: usize = 4;
 const MAX_TOTAL_TOOL_CALLS: usize = 8;
 const MAX_TOOL_EVIDENCE_BYTES: usize = 384 * 1024;
+
+pub(super) enum WorkspaceToolService {
+    Pending { root: PathBuf, locale: String },
+    Ready(Box<WorkspaceService>),
+    Unavailable(String),
+}
+
+impl WorkspaceToolService {
+    pub(super) fn pending(root: &Path, locale: &str) -> Self {
+        Self::Pending {
+            root: root.to_path_buf(),
+            locale: locale.to_owned(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn unavailable(message: impl Into<String>) -> Self {
+        Self::Unavailable(message.into())
+    }
+
+    pub(super) fn get(&mut self) -> Result<&mut WorkspaceService, String> {
+        if let Self::Pending { root, locale } = self {
+            match WorkspaceService::open(root, Some(locale)) {
+                Ok(service) => *self = Self::Ready(Box::new(service)),
+                Err(error) => *self = Self::Unavailable(error),
+            }
+        }
+        match self {
+            Self::Ready(service) => Ok(service.as_mut()),
+            Self::Unavailable(error) => Err(error.clone()),
+            Self::Pending { .. } => unreachable!("pending service was initialized"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +67,7 @@ pub(super) fn run_tool_loop(
     config: &AgentConfig,
     api_key: &str,
     base_prompt: &str,
-    service: &mut Option<WorkspaceService>,
+    service: &mut WorkspaceToolService,
     evidence: &mut Vec<LanguageServiceEvidence>,
 ) -> Result<String, String> {
     let mut prompt = base_prompt.to_owned();
@@ -72,7 +108,7 @@ pub(super) fn run_tool_loop(
                     call.id
                 ));
             }
-            let result = execute_tool(service.as_mut(), &call, evidence);
+            let result = execute_tool(service, &call, evidence);
             evidence.push(evidence_from_result(&call.id, result));
             if serde_json::to_vec(evidence)
                 .is_ok_and(|encoded| encoded.len() > MAX_TOOL_EVIDENCE_BYTES)
@@ -105,18 +141,21 @@ pub(super) fn parse_tool_calls(text: &str) -> Result<Option<Vec<LsaToolCall>>, S
 }
 
 fn execute_tool(
-    service: Option<&mut WorkspaceService>,
+    service: &mut WorkspaceToolService,
     call: &LsaToolCall,
     evidence: &[LanguageServiceEvidence],
 ) -> ToolResult {
-    let Some(service) = service else {
-        return ToolResult {
-            schema: "osiris.lsc-tool/v1".to_owned(),
-            operation: call.operation.clone(),
-            status: "unavailable".to_owned(),
-            result: serde_json::Value::Null,
-            message: Some("no configured Osiris project language service is available".to_owned()),
-        };
+    let service = match service.get() {
+        Ok(service) => service,
+        Err(error) => {
+            return ToolResult {
+                schema: "osiris.lsc-tool/v1".to_owned(),
+                operation: call.operation.clone(),
+                status: "unavailable".to_owned(),
+                result: serde_json::Value::Null,
+                message: Some(error),
+            };
+        }
     };
     match call.operation.as_str() {
         "workspace-search" => {

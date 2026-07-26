@@ -96,6 +96,12 @@ fn exact_standard_api_requests_outrank_namespace_matches() {
         .iter()
         .position(|reference| reference == "osiris.core::function::reduce")
         .expect("reduce should be retrieved");
+    assert!(material.text.contains("Type: Fn["));
+    assert!(
+        material
+            .text
+            .contains("(reduce function initial collection)")
+    );
     let map = material
         .references
         .iter()
@@ -394,6 +400,11 @@ fn evaluates_imports_from_the_current_project_workspace() {
         "(module app.value)\n\n(export [answer])\n\n^{:doc {:default \"The answer.\"}}\n(def ^Int answer 41)\n",
     )
     .unwrap();
+    fs::write(
+        source_root.join("broken.osr"),
+        "(module app.broken)\n\n^{:examples [\"obsolete inline example\"]}\n(def value 0)\n",
+    )
+    .unwrap();
     let project = ProjectConfig::load(&root.join("pyproject.toml")).unwrap();
     let example = validate_example_in_workspace(
         LsaExample {
@@ -412,6 +423,51 @@ fn evaluates_imports_from_the_current_project_workspace() {
     assert!(example.compiled, "{:?}", example.diagnostics);
     assert!(example.evaluated, "{:?}", example.diagnostics);
     assert_eq!(example.result, Some(serde_json::json!(42)));
+}
+
+#[test]
+fn evaluation_ignores_unrelated_project_diagnostics() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = env::temp_dir().join(format!(
+        "osiris-lsa-unrelated-{}-{nonce}",
+        std::process::id()
+    ));
+    let source_root = root.join("src/app");
+    fs::create_dir_all(&source_root).unwrap();
+    fs::write(
+        root.join("osiris.jsonc"),
+        r#"{"source":["src"],"targetPython":"3.11","strict":true}"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"lsa-unrelated\"\nversion = \"0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        source_root.join("broken.osr"),
+        "(module app.broken)\n\n^{:examples [\"obsolete inline example\"]}\n(def value 0)\n",
+    )
+    .unwrap();
+    let project = ProjectConfig::load(&root.join("pyproject.toml")).unwrap();
+    let example = validate_example_in_workspace(
+        LsaExample {
+            code: "(module example.hello)\n\n\"Hello, world!\"\n".to_owned(),
+            result: None,
+            compiled: false,
+            evaluated: false,
+            diagnostics: Vec::new(),
+        },
+        Some(&project),
+    );
+    let _ = fs::remove_dir_all(&root);
+
+    assert!(example.compiled, "{:?}", example.diagnostics);
+    assert!(example.evaluated, "{:?}", example.diagnostics);
+    assert_eq!(example.result, Some(serde_json::json!("Hello, world!")));
 }
 
 #[test]
@@ -512,7 +568,9 @@ fn provider_tool_loop_returns_compiler_owned_results_before_final_answer() {
         base_url: format!("http://{address}"),
         wire_api: "responses".to_owned(),
     };
-    let mut service = None;
+    let mut service = WorkspaceToolService::unavailable(
+        "no configured Osiris project language service is available",
+    );
     let mut evidence = Vec::new();
     let output = run_tool_loop(
         &config,

@@ -57,6 +57,45 @@ pub struct StandardApiSelection {
     pub provenance: &'static str,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct StandardRetrievalRecord {
+    pub(crate) binding_id: String,
+    pub(crate) canonical: &'static str,
+    pub(crate) call_shapes: Vec<String>,
+    pub(crate) signature: String,
+    pub(crate) documentation: SemanticDocumentation,
+    pub(crate) examples: Vec<Vec<String>>,
+}
+
+pub(crate) fn retrieval_record(binding: StandardBinding) -> StandardRetrievalRecord {
+    let details = super::artifacts::binding_source_details(binding).ok();
+    let metadata = details
+        .as_ref()
+        .map(|details| details.metadata.clone())
+        .unwrap_or_default();
+    let call_shapes = if binding.kind == BindingKind::Macro {
+        macro_shapes(binding.canonical)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    } else if let Some(shapes) = source_dispatched_call_shapes(binding.canonical) {
+        shapes.iter().map(ToString::to_string).collect()
+    } else {
+        vec![details.as_ref().map_or_else(
+            || format!("({} ...)", binding.canonical),
+            |details| details.call_shape.clone(),
+        )]
+    };
+    StandardRetrievalRecord {
+        binding_id: binding.id().as_str().to_owned(),
+        canonical: binding.canonical,
+        call_shapes,
+        signature: details.map_or_else(|| "Any".to_owned(), |details| details.signature),
+        documentation: crate::semantic::documentation(&metadata),
+        examples: metadata_string_vectors(&metadata, "examples"),
+    }
+}
+
 #[must_use]
 pub fn api_catalog() -> Vec<StandardApiRecord> {
     NAMESPACES

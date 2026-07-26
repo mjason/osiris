@@ -35,23 +35,29 @@ pub(super) fn collect_material(
         text.push('\n');
         references.push(manual.id);
     }
-    let mut records = stdlib::api_catalog()
-        .into_iter()
-        .filter_map(|record| {
-            let score = record_score(request, &record);
-            (score >= 10).then_some((score, record))
+    let mut records = stdlib::NAMESPACES
+        .iter()
+        .flat_map(|namespace| stdlib::exports(namespace))
+        .filter_map(|binding| {
+            let score = binding_score(request, binding);
+            (score >= 10).then_some((score, binding))
         })
         .collect::<Vec<_>>();
     records.sort_by(|(left_score, left), (right_score, right)| {
         right_score
             .cmp(left_score)
-            .then_with(|| left.binding_id.cmp(&right.binding_id))
+            .then_with(|| left.id().as_str().cmp(right.id().as_str()))
     });
-    for (_, record) in records.into_iter().take(8) {
+    for (_, binding) in records.into_iter().take(8) {
+        let record = stdlib::retrieval_record(binding);
         text.push_str("\n## Standard API\n");
         text.push_str(record.canonical);
         text.push('\n');
+        text.push_str("Type: ");
         text.push_str(&record.signature);
+        text.push('\n');
+        text.push_str("Call forms: ");
+        text.push_str(&record.call_shapes.join(" | "));
         text.push('\n');
         if let Some(documentation) = &record.documentation.default {
             text.push_str(documentation);
@@ -93,6 +99,27 @@ pub(super) fn collect_material(
         );
     }
     Ok(ContextMaterial { text, references })
+}
+
+fn binding_score(request: &str, binding: stdlib::StandardBinding) -> usize {
+    let request = request.to_lowercase();
+    let terms = request_terms(&request);
+    let canonical = binding.canonical.to_lowercase();
+    let namespace = binding.namespace.to_lowercase();
+    let id = binding.id().as_str().to_lowercase();
+    let slash_qualified = format!("{namespace}/{canonical}");
+    let dot_qualified = format!("{namespace}.{canonical}");
+    if request.contains(&id) {
+        200
+    } else if request.contains(&slash_qualified) || request.contains(&dot_qualified) {
+        150
+    } else if terms.iter().any(|term| term == &canonical) {
+        100
+    } else if terms.iter().any(|term| term == &namespace) {
+        10
+    } else {
+        0
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -402,7 +429,8 @@ fn retrieve_syntax_sections(markdown: &str, request: &str) -> String {
 fn request_terms(request: &str) -> Vec<String> {
     const STOP_WORDS: &[&str] = &[
         "about", "also", "and", "complete", "example", "explain", "for", "from", "minimal",
-        "module", "one", "provide", "show", "that", "the", "this", "typed", "using", "with",
+        "hello", "module", "one", "provide", "show", "that", "the", "this", "typed", "using",
+        "with", "word", "world", "write",
     ];
     let mut terms = request
         .split(|character: char| character.is_whitespace() || character.is_ascii_punctuation())
@@ -417,41 +445,6 @@ fn request_terms(request: &str) -> Vec<String> {
     terms.sort();
     terms.dedup();
     terms
-}
-
-fn record_score(request: &str, record: &stdlib::StandardApiRecord) -> usize {
-    let request = request.to_lowercase();
-    let terms = request_terms(&request);
-    let canonical = record.canonical.to_lowercase();
-    let namespace = record.namespace.to_lowercase();
-    let qualified = format!("{namespace}/{canonical}");
-    let mut score = 0;
-    if request.contains(&record.binding_id.to_lowercase()) {
-        score += 200;
-    }
-    if request.contains(&qualified) {
-        score += 150;
-    }
-    if terms.iter().any(|term| term == &canonical) {
-        score += 100;
-    }
-    if request == record.signature.to_lowercase() {
-        score += 40;
-    }
-    if terms.iter().any(|term| term == &namespace) {
-        score += 10;
-    }
-    if let Some(documentation) = &record.documentation.default {
-        score += documentation
-            .split_whitespace()
-            .map(|word| {
-                word.trim_matches(|character: char| !character.is_alphanumeric())
-                    .to_lowercase()
-            })
-            .filter(|word| word.len() > 4 && terms.contains(word))
-            .count();
-    }
-    score
 }
 
 fn safe_project_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
@@ -472,4 +465,22 @@ fn safe_project_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
         return Err("requested source path must stay inside the project".to_owned());
     }
     Ok(canonical)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generic_hello_world_terms_do_not_retrieve_keyword_sections() {
+        let markdown = format!(
+            "# Syntax\n\n{}\n\n## Keywords\n\nA keyword section that is intentionally large.\n\n## Functions\n\nFunction syntax.",
+            "Preamble. ".repeat(120)
+        );
+        let retrieved = retrieve_syntax_sections(&markdown, "Write a hello world example");
+
+        assert!(retrieved.contains("## Manual preamble"));
+        assert!(!retrieved.contains("## Keywords"));
+        assert!(!retrieved.contains("## Functions"));
+    }
 }

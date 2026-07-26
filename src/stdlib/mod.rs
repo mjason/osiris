@@ -16,6 +16,7 @@ use crate::{
 mod api;
 mod artifacts;
 
+pub(crate) use api::retrieval_record;
 pub use api::{
     StandardApiRecord, StandardApiSelection, StandardSourceLocation, api_catalog, api_record,
     query_api,

@@ -28,7 +28,7 @@ pub(crate) fn compile_evaluation_workspace(
     }
 
     let mut sources = match project {
-        Some(project) => load_project_sources(project)?,
+        Some(project) => load_reachable_project_sources(project, source)?,
         None => WorkspaceSources {
             units: Vec::new(),
             entry_index: 0,
@@ -57,9 +57,13 @@ pub(crate) fn compile_evaluation_workspace(
             .diagnostics
             .iter()
             .map(|located| {
+                let source = sources
+                    .units
+                    .get(located.input_index)
+                    .map_or("<unknown source>", |unit| unit.options.source_name.as_str());
                 format!(
-                    "{}: {}",
-                    located.diagnostic.code, located.diagnostic.message
+                    "{source}: {}: {}",
+                    located.diagnostic.code, located.diagnostic.message,
                 )
             })
             .collect());
@@ -107,7 +111,10 @@ pub(crate) fn stage_evaluation_records(
     })
 }
 
-fn load_project_sources(project: &ProjectConfig) -> Result<WorkspaceSources, Vec<String>> {
+fn load_reachable_project_sources(
+    project: &ProjectConfig,
+    entry_source: &str,
+) -> Result<WorkspaceSources, Vec<String>> {
     let mut paths = Vec::new();
     for root in &project.source_roots {
         collect_osiris_sources(root, project, &mut paths).map_err(|error| vec![error])?;
@@ -115,28 +122,74 @@ fn load_project_sources(project: &ProjectConfig) -> Result<WorkspaceSources, Vec
     paths.sort();
     paths.dedup();
 
-    let mut units = Vec::with_capacity(paths.len());
+    let mut source_paths = BTreeMap::<String, Vec<PathBuf>>::new();
     for path in paths {
         let module_name = project
             .module_name_for_source(&path)
             .map_err(|error| vec![error.to_string()])?;
-        let source = fs::read_to_string(&path)
+        source_paths.entry(module_name).or_default().push(path);
+    }
+
+    let mut pending = imported_modules(entry_source)
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut units = BTreeMap::<String, WorkspaceSource>::new();
+    while let Some(module_name) = pending.pop() {
+        if units.contains_key(&module_name) {
+            continue;
+        }
+        let Some(paths) = source_paths.get(&module_name) else {
+            continue;
+        };
+        if paths.len() > 1 {
+            return Err(vec![format!(
+                "project module `{module_name}` has duplicate sources '{}' and '{}'",
+                paths[0].display(),
+                paths[1].display()
+            )]);
+        }
+        let path = &paths[0];
+        let source = fs::read_to_string(path)
             .map_err(|error| vec![format!("could not read '{}': {error}", path.display())])?;
-        units.push(WorkspaceSource {
-            options: CompileOptions::new(&module_name, project.target_python)
-                .with_strict(project.strict)
-                .with_source_name(path.display().to_string())
-                .with_expected_module_name(module_name)
-                .with_provider(
-                    project.distribution.clone(),
-                    project.distribution_version.clone(),
-                ),
-            path,
-            source,
-        });
+        pending.extend(
+            imported_modules(&source)
+                .into_iter()
+                .filter(|imported| !units.contains_key(imported)),
+        );
+        units.insert(
+            module_name.clone(),
+            WorkspaceSource {
+                options: CompileOptions::new(&module_name, project.target_python)
+                    .with_strict(project.strict)
+                    .with_source_name(path.display().to_string())
+                    .with_expected_module_name(module_name)
+                    .with_provider(
+                        project.distribution.clone(),
+                        project.distribution_version.clone(),
+                    ),
+                path: path.clone(),
+                source,
+            },
+        );
     }
     Ok(WorkspaceSources {
-        units,
+        units: units.into_values().collect(),
         entry_index: 0,
     })
+}
+
+fn imported_modules(source: &str) -> BTreeSet<String> {
+    let lowered = crate::ast::lower_document(&crate::reader::read(source));
+    lowered
+        .module
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            crate::ast::ItemKind::Import(import)
+            | crate::ast::ItemKind::ImportForSyntax(import) => {
+                Some(import.module.canonical.clone())
+            }
+            _ => None,
+        })
+        .collect()
 }

@@ -20,7 +20,7 @@ mod source;
 
 #[cfg(test)]
 pub(super) use source::compilation_source_artifact;
-pub(crate) use source::{binding_metadata, facade_macro_names};
+pub(crate) use source::{binding_metadata, binding_source_details, facade_macro_names};
 use source::{compilation_sources, sources, standard_resource_hash, validate_standard_resources};
 pub use source::{source_artifact, source_artifact_by_uri};
 
