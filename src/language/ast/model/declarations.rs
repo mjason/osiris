@@ -153,6 +153,49 @@ impl Item {
     pub fn is_declaration(&self) -> bool {
         !matches!(self.kind, ItemKind::Expr(_) | ItemKind::Error(_))
     }
+
+    /// The name this declaration publishes through the per-item `^:export`
+    /// marker, if it carries one.
+    ///
+    /// `^:export` reads as `^{:export true}`, and the lowerer merges metadata
+    /// written before the form with metadata written on the declared name, so
+    /// `^:export (def x 1)` and `(def ^:export x 1)` are the same declaration.
+    /// Any other value stays ordinary authored metadata and publishes nothing.
+    ///
+    /// This is the second explicit way to publish a name; the module-level
+    /// `(export [...])` manifest is the first, and the public surface is their
+    /// union. Unlike the manifest, a marker rides on the declaration itself, so
+    /// a declaration macro can generate one.
+    #[must_use]
+    pub fn export_marker(&self) -> Option<&Name> {
+        let (metadata, name) = match &self.kind {
+            ItemKind::Def(definition) => (&definition.metadata, Some(&definition.name)),
+            ItemKind::Defn(function) | ItemKind::DefnForSyntax(function) => {
+                (&function.metadata, function.name.as_ref())
+            }
+            ItemKind::Defstruct(structure) => (&structure.metadata, Some(&structure.name)),
+            ItemKind::DefstaticSchema(schema) => (&schema.metadata, Some(&schema.name)),
+            ItemKind::Defmacro(declaration) => (&declaration.metadata, Some(&declaration.name)),
+            _ => return None,
+        };
+        (declares_export(metadata) || declares_export(&self.metadata))
+            .then_some(name)
+            .flatten()
+    }
+}
+
+/// The metadata key that publishes one declaration, standardized by the
+/// language as a peer of the module-level `(export [...])` manifest.
+pub const EXPORT_METADATA_KEY: &str = "export";
+
+fn declares_export(metadata: &[MetadataEntry]) -> bool {
+    metadata.iter().any(|entry| {
+        matches!(
+            &entry.key.kind,
+            FormKind::Keyword(key) | FormKind::Symbol(key)
+                if key.canonical.trim_start_matches(':') == EXPORT_METADATA_KEY
+        ) && matches!(entry.value.kind, FormKind::Bool(true))
+    })
 }
 
 /// Import phase is kept explicit even though the public item enum also has

@@ -2,6 +2,9 @@ use super::super::super::*;
 
 impl<'a> Lowerer<'a> {
     pub(in crate::hir) fn resolve_exports(&mut self, module: &ast::Module) {
+        // Both explicit ways to publish a name feed this set: the module-level
+        // manifest and the per-item `^:export` marker. A public alias requires
+        // its canonical target to be published, and either way satisfies that.
         let explicit_canonical = module
             .items
             .iter()
@@ -10,6 +13,7 @@ impl<'a> Lowerer<'a> {
                 _ => None,
             })
             .flatten()
+            .chain(module.items.iter().filter_map(ast::Item::export_marker))
             .filter(|name| {
                 !self
                     .aliases
@@ -64,6 +68,18 @@ impl<'a> Lowerer<'a> {
                 }
                 self.exports.insert(id);
             }
+        }
+        // A marker names the declaration it rides on, so it cannot name
+        // something unknown and never reaches the OSR-N0011 path above. A name
+        // that is both listed and marked lands in `exports` once.
+        for name in module.items.iter().filter_map(ast::Item::export_marker) {
+            let Some(id) = self.resolve_global_name(&name.canonical) else {
+                continue;
+            };
+            if let Some(binding) = self.bindings.get_mut(&id) {
+                binding.public = true;
+            }
+            self.exports.insert(id);
         }
         for alias in &mut self.aliases {
             if self.exports.contains(&alias.target)

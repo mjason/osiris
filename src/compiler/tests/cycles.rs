@@ -240,3 +240,104 @@ fn runtime_sccs_are_scheduled_before_their_cross_scc_importers() {
     assert_eq!(result.units.len(), 3);
     assert!(result.units.iter().all(|unit| unit.python.is_some()));
 }
+
+/// The per-item `^:export` marker is the one way a declaration macro can
+/// publish a name, so the public surface a macro produces is invisible to the
+/// first provisional interface, which is built from the unexpanded header, and
+/// appears only in the second, built from the expanded surface. This is the
+/// convergence OSR-M0008 warns about, so it is checked on the hardest shape:
+/// the consumer sits in the same runtime SCC as the producer and therefore
+/// resolves against a provisional interface rather than a published one.
+#[test]
+fn a_macro_generated_export_marker_converges_across_a_runtime_cycle() {
+    let factory = r#"
+            (module cycle.factory)
+            (export [define-factor])
+            ^{:doc "Declare one factor."}
+            (defmacro define-factor [label]
+              `(do ^{:doc "Factor name." :export true} (def ^Str factor-name ~label)
+                   ^{:doc "Compute." :export true} (defn ^Int calculate [^Int value] value)))
+        "#;
+    let producer = r#"
+            (module cycle.producer)
+            (import-for-syntax cycle.factory :refer [define-factor])
+            (import cycle.consumer :refer [pong])
+            (export [ping])
+            (define-factor "cycle")
+            ^{:doc "Ping."}
+            (defn ^Int ping [^Int value] (pong value))
+        "#;
+    let consumer = r#"
+            (module cycle.consumer)
+            (export [pong])
+            (import cycle.producer :refer [calculate])
+            ^{:doc "Pong."}
+            (defn ^Int pong [^Int value] (calculate value))
+        "#;
+    let factory_options = CompileOptions::new("cycle.factory", PythonVersion::MINIMUM);
+    let producer_options = CompileOptions::new("cycle.producer", PythonVersion::MINIMUM);
+    let consumer_options = CompileOptions::new("cycle.consumer", PythonVersion::MINIMUM);
+    let result = compile_workspace(
+        &[
+            CompileInput::new(factory, &factory_options),
+            CompileInput::new(producer, &producer_options),
+            CompileInput::new(consumer, &consumer_options),
+        ],
+        &BTreeMap::new(),
+    );
+    // Nothing here would compile if the marker did not reach the provisional
+    // interface: `cycle.consumer` refers `calculate`, and an unpublished name
+    // fails that import with OSR-H0011.
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let producer = result.units[1]
+        .interface
+        .as_ref()
+        .expect("the producer publishes an interface");
+    assert!(producer.contains(r#":canonical "calculate""#), "{producer}");
+    assert!(producer.contains(r#":canonical "factor-name""#), "{producer}");
+}
+
+/// The negative control for the test above: the same macro without markers
+/// generates the same declarations, and they stay module-private.
+#[test]
+fn a_macro_generated_declaration_stays_private_without_the_marker() {
+    let factory = r#"
+            (module quiet.factory)
+            (export [define-factor])
+            ^{:doc "Declare one factor."}
+            (defmacro define-factor [label]
+              `(do ^{:doc "Factor name."} (def ^Str factor-name ~label)
+                   ^{:doc "Compute."} (defn ^Int calculate [^Int value] value)))
+        "#;
+    let producer = r#"
+            (module quiet.producer)
+            (import-for-syntax quiet.factory :refer [define-factor])
+            (define-factor "quiet")
+        "#;
+    let consumer = r#"
+            (module quiet.consumer)
+            (export [pong])
+            (import quiet.producer :refer [calculate])
+            ^{:doc "Pong."}
+            (defn ^Int pong [^Int value] (calculate value))
+        "#;
+    let factory_options = CompileOptions::new("quiet.factory", PythonVersion::MINIMUM);
+    let producer_options = CompileOptions::new("quiet.producer", PythonVersion::MINIMUM);
+    let consumer_options = CompileOptions::new("quiet.consumer", PythonVersion::MINIMUM);
+    let result = compile_workspace(
+        &[
+            CompileInput::new(factory, &factory_options),
+            CompileInput::new(producer, &producer_options),
+            CompileInput::new(consumer, &consumer_options),
+        ],
+        &BTreeMap::new(),
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.diagnostic.code == "OSR-H0011"),
+        "{:?}",
+        result.diagnostics
+    );
+}

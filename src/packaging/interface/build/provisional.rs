@@ -12,6 +12,10 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
             InterfaceError::new("OSR-I0080", "provisional interface has no module name")
         })?;
 
+    // The public surface is the union of the module-level manifest and the
+    // per-item `^:export` markers. Markers are read from the surface handed to
+    // this builder, so a marker a macro generated counts once the expanded
+    // surface is available.
     let exports = surface
         .items
         .iter()
@@ -20,6 +24,7 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
             _ => None,
         })
         .flatten()
+        .chain(surface.items.iter().filter_map(ast::Item::export_marker))
         .map(|name| name.canonical.clone())
         .collect::<BTreeSet<_>>();
 

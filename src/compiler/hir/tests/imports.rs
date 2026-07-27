@@ -465,3 +465,51 @@ fn top_level_declarations_shadow_only_implicit_core_names() {
     assert!(callees.contains(&local_id.as_str()));
     assert!(callees.contains(&"osiris.core::function::mapv"));
 }
+
+#[test]
+fn a_per_item_export_marker_publishes_exactly_the_declaration_it_rides_on() {
+    let result = lower(
+        r#"(module example)
+               ^:export (def ^Int limit 20)
+               ^{:doc "Advance." :export true} (defn ^Int step [^Int x] (+ x 1))
+               (def ^Int hidden 1)
+               (defn ^Int also-hidden [] 2)"#,
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let public = result
+        .module
+        .bindings
+        .iter()
+        .filter(|binding| binding.public)
+        .map(|binding| binding.source_spelling.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        public,
+        ["limit", "step"]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+}
+
+#[test]
+fn a_marker_and_the_manifest_publish_one_name_once() {
+    let result = lower(
+        r#"(module example)
+               (export [step])
+               ^:export (defn ^Int step [^Int x] x)"#,
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.module.exports.len(), 1);
+}
+
+#[test]
+fn only_a_true_export_marker_publishes() {
+    let result = lower(
+        r#"(module example)
+               ^{:export false} (def ^Int denied 1)
+               ^{:export "yes"} (def ^Int nor-this 2)"#,
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert!(result.module.bindings.iter().all(|binding| !binding.public));
+    assert!(result.module.exports.is_empty());
+}
