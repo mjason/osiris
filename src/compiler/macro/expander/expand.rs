@@ -95,6 +95,12 @@ impl Expander {
         }
 
         let short_name = head.rsplit('/').next().unwrap_or(head);
+        // Only the defining module may reach a local macro through a qualified
+        // spelling. Matching any qualifier would let a local macro intercept
+        // `other/name` calls that belong to an imported module.
+        let self_qualified = head
+            .rsplit_once('/')
+            .is_some_and(|(namespace, _)| namespace == self.local_module_name);
         let user_macro = self
             .macros
             .get(head)
@@ -102,7 +108,7 @@ impl Expander {
             .or_else(|| {
                 self.macros
                     .get(short_name)
-                    .filter(|definition| !definition.imported)
+                    .filter(|definition| self_qualified && !definition.imported)
             })
             .or_else(|| {
                 self.macro_exports

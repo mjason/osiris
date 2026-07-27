@@ -83,9 +83,8 @@ impl<'hir> Backend<'hir> {
             .collect::<BTreeMap<_, _>>();
         let mut reserved_names = BTreeSet::new();
         let mut names = BTreeMap::new();
-        // HIR has already checked global Python collisions.  Local bindings
-        // can repeat across lexical scopes, which is legal in separate Python
-        // functions, so retain their canonical spelling here for readability.
+        // HIR has already checked global Python collisions. Module-level names
+        // are assigned first so that `LocalNames` below can treat them as fixed.
         let local_binding_prefix = format!("{}::local-", hir.name);
         let mut global_bindings = hir
             .bindings
@@ -124,35 +123,34 @@ impl<'hir> Backend<'hir> {
             reserved_names.insert(python.clone());
             names.insert(binding.name.id.clone(), python);
         }
-        // Preserve authored local spellings first. Compiler-only identities
-        // then take a readable suffix when their projection would collide.
-        for binding in hir
-            .bindings
-            .iter()
-            .filter(|binding| !binding.name.canonical.starts_with('\0'))
-        {
-            reserved_names.insert(binding.name.python.clone());
-            names
-                .entry(binding.name.id.clone())
-                .or_insert_with(|| binding.name.python.clone());
+        // Local bindings keep their authored spelling, but only while it is
+        // free along the enclosing Python scope chain. Python has one namespace
+        // per function, so a local that reuses the spelling of an outer local
+        // or of a module-level name would otherwise overwrite it and silently
+        // change what later references mean.
+        let globals = reserved_names.clone();
+        let mut locals = LocalNames {
+            bindings: &bindings,
+            names: &mut names,
+            reserved: &mut reserved_names,
+            globals: globals.clone(),
+            active: BTreeSet::new(),
+            frame: Vec::new(),
+            // A module-level `let` lowers to a module-level assignment, so it
+            // must never reuse the name of any module-level binding.
+            referenced: globals,
+        };
+        for item in &hir.items {
+            locals.item(item);
         }
-        for binding in hir
-            .bindings
-            .iter()
-            .filter(|binding| binding.name.canonical.starts_with('\0'))
-        {
+        // Anything the item walk cannot reach — struct fields, extern
+        // parameters — keeps the plain projection of its canonical name.
+        for binding in &hir.bindings {
             if names.contains_key(&binding.name.id) {
                 continue;
             }
-            let base = binding.name.python.clone();
-            let mut python = base.clone();
-            let mut suffix = 2_usize;
-            while reserved_names.contains(&python) {
-                python = format!("{base}_{suffix}");
-                suffix += 1;
-            }
-            reserved_names.insert(python.clone());
-            names.insert(binding.name.id.clone(), python);
+            reserved_names.insert(binding.name.python.clone());
+            names.insert(binding.name.id.clone(), binding.name.python.clone());
         }
         // A facade binding and a compiler-generated intrinsic binding may
         // intentionally target the same linked helper. They must share one
@@ -476,6 +474,249 @@ impl<'hir> Backend<'hir> {
                 binding_ids: self.reachable_standard_bindings.clone(),
             },
         )
+    }
+}
+
+/// Assigns Python names to local bindings so that no local can hide a
+/// module-level name or another local that is still readable where it appears.
+///
+/// Python scopes are per function, and lowering lifts `let` bindings into
+/// statements ahead of the enclosing expression, so two sibling `let` bindings
+/// in one function do share a scope. Names are therefore reserved for the whole
+/// function and only released when a nested `fn` scope ends.
+struct LocalNames<'a, 'hir> {
+    bindings: &'a BTreeMap<crate::name::BindingId, &'hir hir::Binding>,
+    names: &'a mut BTreeMap<crate::name::BindingId, String>,
+    reserved: &'a mut BTreeSet<String>,
+    globals: BTreeSet<String>,
+    active: BTreeSet<String>,
+    /// Names declared by the innermost function scope.
+    frame: Vec<String>,
+    /// Module-level names the innermost function scope reads. Shadowing any
+    /// other module-level name is harmless, so only these force a rename and
+    /// ordinary shadowing keeps the authored spelling.
+    referenced: BTreeSet<String>,
+}
+
+impl LocalNames<'_, '_> {
+    fn item(&mut self, item: &hir::Item) {
+        match &item.kind {
+            ItemKind::Function(function) => {
+                for decorator in &function.decorators {
+                    self.expr(decorator);
+                }
+                let enclosing = std::mem::take(&mut self.frame);
+                let referenced = self.referenced_globals(&function.body);
+                let outer = std::mem::replace(&mut self.referenced, referenced);
+                self.parameters(&function.parameters);
+                self.expr(&function.body);
+                self.referenced = outer;
+                self.close_frame(enclosing);
+            }
+            ItemKind::Value(value) => {
+                if let Some(expression) = &value.value {
+                    self.expr(expression);
+                }
+            }
+            ItemKind::Expr(expression) => self.expr(expression),
+            ItemKind::Struct(structure) => {
+                for decorator in &structure.decorators {
+                    self.expr(decorator);
+                }
+                for field in &structure.fields {
+                    if let Some(default) = &field.default {
+                        self.expr(default);
+                    }
+                }
+                for check in &structure.checks {
+                    self.expr(&check.condition);
+                    if let Some(message) = &check.message {
+                        self.expr(message);
+                    }
+                }
+            }
+            ItemKind::Import(_) | ItemKind::StaticSchema(_) | ItemKind::StaticRecord(_) => {}
+        }
+    }
+
+    fn parameters(&mut self, parameters: &[hir::Parameter]) {
+        for parameter in parameters {
+            if let Some(default) = &parameter.default {
+                self.expr(default);
+            }
+            self.declare(&parameter.binding);
+        }
+    }
+
+    fn expr(&mut self, expression: &hir::Expr) {
+        match &expression.kind {
+            ExprKind::Let { bindings, body } => {
+                for binding in bindings {
+                    self.expr(&binding.value);
+                    self.declare(&binding.binding);
+                }
+                self.expr(body);
+            }
+            ExprKind::Lambda { parameters, body } => {
+                let enclosing = std::mem::take(&mut self.frame);
+                let referenced = self.referenced_globals(body);
+                let outer = std::mem::replace(&mut self.referenced, referenced);
+                self.parameters(parameters);
+                self.expr(body);
+                self.referenced = outer;
+                self.close_frame(enclosing);
+            }
+            ExprKind::Try {
+                body,
+                catches,
+                finally_body,
+            } => {
+                self.expr(body);
+                for catch in catches {
+                    if let Some(binding) = &catch.binding {
+                        self.declare(binding);
+                    }
+                    self.expr(&catch.body);
+                }
+                if let Some(finally_body) = finally_body {
+                    self.expr(finally_body);
+                }
+            }
+            _ => {
+                let mut children = Vec::new();
+                visit_children(expression, &mut |child| children.push(child));
+                for child in children {
+                    self.expr(child);
+                }
+            }
+        }
+    }
+
+    fn declare(&mut self, id: &crate::name::BindingId) {
+        if self.names.contains_key(id) {
+            return;
+        }
+        let Some(binding) = self.bindings.get(id) else {
+            return;
+        };
+        let base = binding.name.python.clone();
+        let mut python = base.clone();
+        let mut suffix = 2_usize;
+        while self.active.contains(&python) || self.referenced.contains(&python) {
+            python = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        self.active.insert(python.clone());
+        self.reserved.insert(python.clone());
+        self.frame.push(python.clone());
+        self.names.insert(id.clone(), python);
+    }
+
+    /// Module-level Python names read anywhere inside one function scope,
+    /// including its nested `fn` scopes: a local here would shadow the
+    /// module-level name for those too.
+    fn referenced_globals(&self, body: &hir::Expr) -> BTreeSet<String> {
+        let mut referenced = BTreeSet::new();
+        self.collect_referenced(body, &mut referenced);
+        referenced
+    }
+
+    fn collect_referenced(&self, expression: &hir::Expr, referenced: &mut BTreeSet<String>) {
+        if let ExprKind::Binding(id) = &expression.kind
+            && let Some(python) = self.names.get(id)
+            && self.globals.contains(python)
+        {
+            referenced.insert(python.clone());
+        }
+        visit_children(expression, &mut |child| {
+            self.collect_referenced(child, referenced)
+        });
+    }
+
+    fn close_frame(&mut self, enclosing: Vec<String>) {
+        for python in std::mem::replace(&mut self.frame, enclosing) {
+            self.active.remove(&python);
+        }
+    }
+}
+
+/// Applies `visit` to every direct sub-expression, including the bodies of
+/// nested binding forms.
+fn visit_children<'hir>(expression: &'hir hir::Expr, visit: &mut impl FnMut(&'hir hir::Expr)) {
+    match &expression.kind {
+        ExprKind::List(items)
+        | ExprKind::Vector(items)
+        | ExprKind::Set(items)
+        | ExprKind::Do(items) => items.iter().for_each(visit),
+        ExprKind::Map(entries) => {
+            for (key, value) in entries {
+                visit(key);
+                visit(value);
+            }
+        }
+        ExprKind::Call { callee, arguments } => {
+            visit(callee);
+            for argument in arguments {
+                match argument {
+                    hir::CallArgument::Positional(value)
+                    | hir::CallArgument::Keyword { value, .. } => visit(value),
+                }
+            }
+        }
+        ExprKind::Operator { operands, .. } => operands.iter().for_each(visit),
+        ExprKind::Attribute { value, .. } => visit(value),
+        ExprKind::Index { value, index } => {
+            visit(value);
+            visit(index);
+        }
+        ExprKind::Let { bindings, body } => {
+            for binding in bindings {
+                visit(&binding.value);
+            }
+            visit(body);
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            visit(condition);
+            visit(then_branch);
+            visit(else_branch);
+        }
+        ExprKind::Lambda { parameters, body } => {
+            for parameter in parameters {
+                if let Some(default) = &parameter.default {
+                    visit(default);
+                }
+            }
+            visit(body);
+        }
+        ExprKind::Try {
+            body,
+            catches,
+            finally_body,
+        } => {
+            visit(body);
+            for catch in catches {
+                visit(&catch.body);
+            }
+            if let Some(finally_body) = finally_body {
+                visit(finally_body);
+            }
+        }
+        ExprKind::Raise(value) => {
+            if let Some(value) = value {
+                visit(value);
+            }
+        }
+        ExprKind::None
+        | ExprKind::Bool(_)
+        | ExprKind::Integer(_)
+        | ExprKind::Float(_)
+        | ExprKind::String(_)
+        | ExprKind::Binding(_)
+        | ExprKind::Error => {}
     }
 }
 

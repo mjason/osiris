@@ -112,6 +112,112 @@ fn auto_gensym_has_stable_spelling_and_unforgeable_identity() {
 }
 
 #[test]
+fn template_let_bindings_are_hygienic_without_an_explicit_gensym() {
+    // The caller's `value` reaches the expansion through unquote, so the name
+    // the template binds must not be the same name.
+    let source = "(defmacro with-doubled [expression body]\n  `(let [value (* 2 ~expression)] ~body))\n(with-doubled 10 (+ value 1))";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.is_empty(),
+        "{:?}",
+        result.document.diagnostics
+    );
+    let expansion = render_document_text(&result.document);
+    assert!(
+        expansion.ends_with("(let [value__osr_g0 (* 2 10)] (+ value 1))\n"),
+        "{expansion}"
+    );
+    let generated = gensym_occurrences(&result.document.forms[1]);
+    assert_eq!(generated.len(), 1);
+}
+
+#[test]
+fn template_fn_parameters_and_destructuring_are_hygienic() {
+    let source = "(defmacro apply-pair [body]\n  `((fn [[left right]] ~body) [1 2]))\n(apply-pair (+ left right))";
+    let expansion = expanded(source);
+    assert!(
+        expansion.ends_with(
+            "((fn [[left__osr_g0 right__osr_g1]] (+ left right)) [1 2])\n"
+        ),
+        "{expansion}"
+    );
+}
+
+#[test]
+fn unquoted_quote_is_the_explicit_call_site_capture_operation() {
+    // `~'it` is the deliberate escape from hygiene; a plain `it` is not.
+    let anaphoric = expanded(
+        "(defmacro with-it [expression body]\n  `(let [~'it ~expression] ~body))\n(with-it 1 (* it 2))",
+    );
+    assert!(anaphoric.ends_with("(let [it 1] (* it 2))\n"), "{anaphoric}");
+
+    let hygienic = expanded(
+        "(defmacro with-it [expression body]\n  `(let [it ~expression] ~body))\n(with-it 1 (* it 2))",
+    );
+    assert!(
+        hygienic.ends_with("(let [it__osr_g0 1] (* it 2))\n"),
+        "{hygienic}"
+    );
+}
+
+#[test]
+fn spliced_binding_vectors_keep_their_authored_names() {
+    // The expander cannot see which spliced forms are binding positions, so it
+    // must leave the whole vector alone rather than rename on a guess.
+    let source = "(defmacro bind-all [pairs body]\n  `(let [~@pairs] ~body))\n(bind-all [value 1] (+ value 2))";
+    let expansion = expanded(source);
+    assert!(
+        expansion.ends_with("(let [value 1] (+ value 2))\n"),
+        "{expansion}"
+    );
+}
+
+#[test]
+fn a_local_macro_does_not_intercept_another_modules_qualified_call() {
+    let source = "(module caller)\n(defmacro count [value] `(:hijacked ~value))\n(other/count items)";
+    let expansion = expanded(source);
+    assert!(expansion.ends_with("(other/count items)\n"), "{expansion}");
+
+    let self_qualified = expanded(
+        "(module caller)\n(defmacro count [value] `(:tagged ~value))\n(caller/count items)",
+    );
+    assert!(
+        self_qualified.ends_with("(:tagged items)\n"),
+        "{self_qualified}"
+    );
+}
+
+#[test]
+fn phase_one_names_do_not_resolve_to_builtins_through_a_qualifier() {
+    let source = "(defmacro broken [values] (any.module/count values))\n(broken [1 2])";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "OSR-M0004"
+                && diagnostic
+                    .message
+                    .contains("unbound phase-1 name `any.module/count`")
+        }),
+        "{:?}",
+        result.document.diagnostics
+    );
+}
+
+#[test]
+fn constructed_names_cannot_forge_a_hygienic_identity() {
+    // `\0osr-gensym:0:value` is the identity `value#` receives first.
+    let source = "(defmacro capture [body]\n  `(let [value# 100] ~body))\n(defmacro forged [] (symbol \"\\u0000osr-gensym:0:value\"))\n(capture (forged))";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "OSR-M0004" && diagnostic.message.contains("control character")
+        }),
+        "{:?}",
+        result.document.diagnostics
+    );
+}
+
+#[test]
 fn explicit_gensym_is_shared_through_unquotes() {
     let source = "(defmacro hold [expr]\n  (let [binding (gensym \"held\")]\n    `(let [~binding ~expr] ~binding)))\n(hold value)";
     let result = expand(&read(source), ExpansionOptions::default());

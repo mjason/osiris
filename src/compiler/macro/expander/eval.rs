@@ -41,7 +41,18 @@ impl Expander {
             )
         })();
         self.active_phase_namespace = previous_namespace;
-        result?.into_data(call.span)
+        let expanded = result?.into_data(call.span)?;
+        // A `Span` is a byte range without a file identity. Template forms from
+        // an imported macro carry offsets into the defining module, which would
+        // be rendered against the calling module's text. Point them at the call
+        // instead; caller syntax spliced through unquote keeps its own spans.
+        Ok(if definition.imported {
+            let mut caller_spans = BTreeSet::new();
+            collect_spans(call, &mut caller_spans);
+            retarget_spans(expanded, &caller_spans, call.span)
+        } else {
+            expanded
+        })
     }
 
     pub(in crate::macro_expand) fn eval(
@@ -95,8 +106,8 @@ impl Expander {
                 macro_kind: ReaderMacroKind::SyntaxQuote,
                 form: template,
             } => {
-                let mut generated = BTreeMap::new();
-                self.syntax_quote(template, environment, budget, depth + 1, &mut generated)
+                let mut context = QuoteContext::default();
+                self.syntax_quote(template, environment, budget, depth + 1, &mut context)
                     .map(Value::Data)
             }
             FormKind::ReaderMacro {

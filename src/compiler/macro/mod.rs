@@ -178,6 +178,33 @@ impl Value {
 
 type Environment = BTreeMap<String, Value>;
 
+/// Mutable state shared by one syntax quote.
+///
+/// `generated` keeps `value#` stable across every occurrence in the same
+/// template. `scopes` holds the identities created for template-authored
+/// `let`/`fn` binding names so that a macro cannot capture a caller name it
+/// never saw; the innermost scope is last.
+#[derive(Debug, Default)]
+struct QuoteContext {
+    generated: BTreeMap<String, Form>,
+    scopes: Vec<BTreeMap<String, Form>>,
+}
+
+impl QuoteContext {
+    fn resolve(&self, canonical: &str) -> Option<&Form> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(canonical))
+    }
+
+    fn declare(&mut self, canonical: String, generated: Form) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(canonical, generated);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct EvalBudget {
     steps: usize,

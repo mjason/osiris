@@ -362,9 +362,25 @@ syntax：
      (+ value# value#)))
 ```
 
-`value#` 这样的自动 gensym 在每次展开时创建全新 binding。模板名称在宏定义处解析，
-unquote 插入的 syntax 保留调用方 context。宏运行在确定、受限的 phase 1，不能 import
-Python、访问网络、读取运行时值或绕过普通类型和语义检查。
+模板在 `let` 或 `fn` 中绑定的名称是卫生的：每次展开都获得全新身份，因此通过 unquote
+插入的调用方 syntax 不会被它捕获。写成 `value#` 让该身份显式化；当同一个名称要跨两个
+独立模板共享时仍然必须这样写，因为 `value#` 只在单个 syntax quote 内保持一致。
+
+使用调用方名称是刻意行为，需要显式的 `~'name` 操作：
+
+```clojure
+(defmacro with-it [expression body]
+  `(let [~'it ~expression] ~body))    ; `it` 对调用方 body 可见
+```
+
+有两种形态无法静态识别，因此不在该处理范围内：由 unquote-splicing 拼出的 binding
+vector（`` `(let [~@pairs] ...) ``），以及模板 binding 位置上的 map 解构。其中的名称
+保持原样，请自行使用 `value#` 或 `(gensym)`。
+
+unquote 插入的 syntax 保留调用方 context。模板中由定义模块导出的名称在该模块解析；
+与宏定义在同一模块的名称目前仍在调用处解析，调用方可能遮蔽时请使用限定名或通过
+unquote 传入。宏运行在确定、受限的 phase 1，不能 import Python、访问网络、读取运行时
+值或绕过普通类型和语义检查。
 
 使用 `defn-for-syntax` 定义编译期 helper，使用 `import-for-syntax` 导入编译期依赖。
 使用 `osr expand <path>` 检查展开结果。

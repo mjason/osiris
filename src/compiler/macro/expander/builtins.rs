@@ -286,6 +286,16 @@ impl Expander {
                 } else {
                     spelling
                 };
+                // Hygienic identities are control-character prefixed and the
+                // reader cannot spell one. Allowing a constructed name to hold
+                // a control character would let phase-1 code forge the identity
+                // of another macro's generated binding.
+                if spelling.chars().any(char::is_control) {
+                    return Err(EvalError::evaluation(
+                        format!("`{name}` cannot build a name containing a control character"),
+                        span,
+                    ));
+                }
                 Ok(Value::Data(named_form(name == "keyword", &spelling, span)))
             }
             "name" | "namespace" => {
