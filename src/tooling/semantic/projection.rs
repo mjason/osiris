@@ -97,6 +97,7 @@ impl SemanticDocument {
                 }
             })
             .collect::<Vec<_>>();
+        symbols.extend(macro_symbols(analysis));
         symbols.sort_by(|left, right| {
             (left.span.start, left.span.end, &left.binding_id).cmp(&(
                 right.span.start,
@@ -257,4 +258,219 @@ fn metadata_contains_span(metadata: &[MetadataEntry], span: Span) -> bool {
     metadata
         .iter()
         .any(|entry| contains(&entry.key, span) || contains(&entry.value, span))
+}
+
+/// The span of the head symbol of the call form covering `call`.
+fn macro_name_span(forms: &[Form], call: Span) -> Option<Span> {
+    fn search(form: &Form, call: Span) -> Option<Span> {
+        if form.span.start > call.start || form.span.end < call.end {
+            return None;
+        }
+        let children = match &form.kind {
+            FormKind::List(items) | FormKind::Vector(items) | FormKind::Set(items) => {
+                items.as_slice()
+            }
+            FormKind::Map(items) => items.as_slice(),
+            _ => &[],
+        };
+        let nested = children.iter().filter_map(|child| search(child, call)).min_by_key(
+            |span| span.end.saturating_sub(span.start),
+        );
+        if nested.is_some() {
+            return nested;
+        }
+        if form.span != call {
+            return None;
+        }
+        let FormKind::List(items) = &form.kind else {
+            return None;
+        };
+        let head = items.first()?;
+        matches!(head.kind, FormKind::Symbol(_)).then_some(head.span)
+    }
+    forms.iter().filter_map(|form| search(form, call)).min_by_key(
+        |span| span.end.saturating_sub(span.start),
+    )
+}
+
+/// The span of the declared name inside a `defmacro` form covering `item`.
+fn macro_declaration_name_span(forms: &[Form], item: Span, canonical: &str) -> Option<Span> {
+    fn search(form: &Form, item: Span, canonical: &str) -> Option<Span> {
+        if form.span.start > item.start || form.span.end < item.end {
+            return None;
+        }
+        let children = match &form.kind {
+            FormKind::List(items) | FormKind::Vector(items) | FormKind::Set(items) => {
+                items.as_slice()
+            }
+            FormKind::Map(items) => items.as_slice(),
+            _ => &[],
+        };
+        if let Some(nested) = children
+            .iter()
+            .filter_map(|child| search(child, item, canonical))
+            .min_by_key(|span| span.end.saturating_sub(span.start))
+        {
+            return Some(nested);
+        }
+        let FormKind::List(items) = &form.kind else {
+            return None;
+        };
+        let head = items.first()?;
+        let FormKind::Symbol(name) = &head.kind else {
+            return None;
+        };
+        if !matches!(name.canonical.as_str(), "defmacro" | "defn-for-syntax") {
+            return None;
+        }
+        let declared = items.get(1)?;
+        let FormKind::Symbol(name) = &declared.kind else {
+            return None;
+        };
+        (name.canonical == canonical).then_some(declared.span)
+    }
+    forms
+        .iter()
+        .filter_map(|form| search(form, item, canonical))
+        .min_by_key(|span| span.end.saturating_sub(span.start))
+}
+
+/// Projects macros as semantic symbols.
+///
+/// Macros are erased before typed HIR, so they are absent from the binding
+/// list every other symbol comes from. Their declarations survive in the
+/// lowered surface, and expansion records the span of each call it rewrote, so
+/// both halves of a symbol are recoverable. Without this, every surface built
+/// on the semantic model — hover, navigation, the workspace symbol index and
+/// the graph derived from it — is blind to macros.
+///
+/// A module that only *calls* a macro still gets a symbol for it, carrying the
+/// call sites, so a reference resolves in the file the reader is looking at.
+/// Documentation lives on the declaring module's symbol.
+fn macro_symbols(analysis: &Analysis) -> Vec<SemanticSymbol> {
+    let module = analysis.hir.name.as_str();
+    let mut call_sites = BTreeMap::<String, Vec<Span>>::new();
+    for trace in &analysis.expansion_traces {
+        // Only the outermost rewrite corresponds to source the author wrote;
+        // nested expansions describe generated syntax.
+        if trace.depth != 0 {
+            continue;
+        }
+        // The trace spans the whole call form. Narrow it to the name the
+        // author typed so an occurrence means the same thing it does for every
+        // other symbol, and so a wide call does not answer for every position
+        // inside it.
+        let span = macro_name_span(&analysis.document.forms, trace.call_span)
+            .unwrap_or(trace.call_span);
+        call_sites
+            .entry(trace.macro_binding_id.clone())
+            .or_default()
+            .push(span);
+    }
+
+    let mut symbols = Vec::new();
+    let mut declared = BTreeSet::new();
+    for item in &analysis.surface.items {
+        let crate::ast::ItemKind::Defmacro(declaration) = &item.kind else {
+            continue;
+        };
+        let binding_id =
+            crate::name::BindingId::new(module, &declaration.name.canonical, BindingKind::Macro);
+        let id = binding_id.as_str().to_owned();
+        declared.insert(id.clone());
+        let references = call_sites.remove(&id).unwrap_or_default();
+        let public = analysis
+            .hir
+            .exports
+            .iter()
+            .any(|export| export.as_str() == binding_id.as_str());
+        // The surface keeps one span for the whole declaration form; narrow it
+        // to the declared name so a definition lands where the reader expects.
+        let definition = macro_declaration_name_span(
+            &analysis.document.forms,
+            item.span,
+            &declaration.name.canonical,
+        )
+        .unwrap_or(item.span);
+        symbols.push(macro_symbol(
+            id,
+            &declaration.name.canonical,
+            &declaration.name.spelling,
+            &declaration.metadata,
+            definition,
+            references,
+            public,
+        ));
+    }
+
+    // Macros defined elsewhere: the call sites are here, the declaration is not.
+    for (id, references) in call_sites {
+        if declared.contains(&id) {
+            continue;
+        }
+        let Some(canonical) = id.rsplit("::").next() else {
+            continue;
+        };
+        let Some(first) = references.first().copied() else {
+            continue;
+        };
+        symbols.push(macro_symbol(
+            id.clone(),
+            canonical,
+            canonical,
+            &[],
+            first,
+            references,
+            false,
+        ));
+    }
+    symbols
+}
+
+fn macro_symbol(
+    binding_id: String,
+    canonical: &str,
+    spelling: &str,
+    metadata: &[crate::syntax::MetadataEntry],
+    definition: Span,
+    references: Vec<Span>,
+    public: bool,
+) -> SemanticSymbol {
+    let summary = SemanticSummary::unknown();
+    let layers = layers_for_metadata(metadata, definition, &summary);
+    let localized = localized_names(metadata);
+    let labels = labels_for_name(canonical, &localized);
+    let mut occurrences = references.clone();
+    if !occurrences.contains(&definition) {
+        occurrences.push(definition);
+    }
+    occurrences.sort_by_key(|span| (span.start, span.end));
+    occurrences.dedup();
+    SemanticSymbol {
+        binding_id,
+        canonical: canonical.to_owned(),
+        source: spelling.to_owned(),
+        source_spelling: spelling.to_owned(),
+        // A macro has no runtime name; it never reaches generated Python.
+        python: String::new(),
+        kind: BindingKind::Macro,
+        aliases: Vec::new(),
+        public,
+        // Macros run in phase 1 and have no runtime type.
+        ty: Type::Unknown,
+        metadata: layers,
+        summary,
+        labels,
+        names: SemanticNames {
+            canonical: canonical.to_owned(),
+            localized,
+        },
+        documentation: documentation(metadata),
+        examples: examples(metadata),
+        content_references: Vec::new(),
+        span: definition,
+        definition,
+        references,
+        occurrences,
+    }
 }

@@ -23,7 +23,17 @@ fn render_symbol_hover(
     range: Option<Range>,
 ) -> Hover {
     let label = symbol.labels.for_locale(locale);
-    let (documentation, _) = symbol.documentation.for_locale(Some(locale));
+    // A module that only references a symbol carries its occurrences but not
+    // its authored documentation; that lives on the declaring module's symbol.
+    let describing = if symbol.documentation.default.is_none()
+        && symbol.documentation.translations.is_empty()
+    {
+        workspace_symbol_for_binding(document, &symbol.binding_id)
+            .map_or(symbol, |entry| &entry.symbol)
+    } else {
+        symbol
+    };
+    let (documentation, _) = describing.documentation.for_locale(Some(locale));
     let legacy_aliases = symbol
         .aliases
         .iter()
@@ -53,23 +63,27 @@ fn render_symbol_hover(
             escape_markdown(&parameters),
         ));
     }
-    if !symbol.examples.is_empty() {
+    if !describing.examples.is_empty() {
         value.push_str(&format!(
             "\n\n**{}**",
             localized_heading(locale, "Examples", "示例")
         ));
-        for example in &symbol.examples {
+        for example in &describing.examples {
             value.push_str(&format!(
                 "\n\n```osiris\n{}\n```",
                 example.join("\n")
             ));
         }
     }
-    value.push_str(&format!(
-        "\n\n**{}**  `{}`",
-        localized_heading(locale, "Type", "类型"),
-        escape_markdown(&symbol.ty.to_string())
-    ));
+    // A macro runs in phase 1 and never has a runtime type; printing one would
+    // assert something the compiler never determined.
+    if symbol.kind != BindingKind::Macro {
+        value.push_str(&format!(
+            "\n\n**{}**  `{}`",
+            localized_heading(locale, "Type", "类型"),
+            escape_markdown(&symbol.ty.to_string())
+        ));
+    }
     if let Some(authored) = authored
         && authored.role == AuthoredSpellingRole::Migration
     {

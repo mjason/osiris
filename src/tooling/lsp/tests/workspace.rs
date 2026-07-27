@@ -668,3 +668,65 @@ fn merging_partial_symbol_indexes_resolves_conflicts() {
     assert!(!merged.definitions.contains_key("shared::value"));
     assert!(merged.ambiguous_definitions.contains("shared::value"));
 }
+
+/// The semantic projection is the single kernel both LSP and LSC read, so a
+/// macro reference must resolve through the ordinary hover path rather than a
+/// surface-specific special case.
+#[test]
+fn hovering_a_macro_call_reports_the_macro_and_its_documentation() {
+    let sequence = NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "osiris-lsp-macro-hover-{}-{sequence}",
+        std::process::id()
+    ));
+    let source_root = root.join("src/demo");
+    fs::create_dir_all(&source_root).expect("source root");
+    fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"lsp-macro-hover\"\nversion = \"1.0\"\n",
+    )
+    .expect("project configuration");
+    fs::write(root.join("osiris.jsonc"), r#"{"source":["src"]}"#)
+        .expect("Osiris configuration");
+    fs::write(
+        source_root.join("lib.osr"),
+        "(module demo.lib)\n(export [twice])\n\
+         ^{:doc \"Double the expression.\"} (defmacro twice [x] `(+ ~x ~x))\n",
+    )
+    .expect("provider source");
+    let app_source = "(module demo.app)\n(import demo.lib :refer [twice])\n(def a (twice 3))\n";
+    let app = source_root.join("app.osr");
+    fs::write(&app, app_source).expect("application source");
+    let uri = format!("file://{}", app.display());
+    let mut state = LspState::new();
+    state.did_open(&uri, 1, app_source);
+
+    let call = offset_to_position(app_source, app_source.rfind("twice").expect("call site"));
+    let hover = state.hover(&uri, call, Some("en")).expect("macro hover");
+
+    assert!(
+        hover.contents.value.contains("Macro"),
+        "{}",
+        hover.contents.value
+    );
+    // Documentation lives on the declaring module's symbol; a call site in
+    // another module must still show it.
+    assert!(
+        hover.contents.value.contains("Double the expression."),
+        "{}",
+        hover.contents.value
+    );
+    // A macro never reaches typed HIR, so claiming a runtime type would assert
+    // something the compiler never determined.
+    assert!(
+        !hover.contents.value.contains("Unknown"),
+        "{}",
+        hover.contents.value
+    );
+
+    let definition = state.definition(&uri, call).expect("macro definition");
+    assert!(definition.uri.ends_with("lib.osr"), "{definition:?}");
+
+    drop(state);
+    fs::remove_dir_all(root).expect("workspace cleanup");
+}
