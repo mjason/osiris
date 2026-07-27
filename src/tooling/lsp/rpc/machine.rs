@@ -136,12 +136,21 @@ pub fn handle_json_rpc(state: &mut LspState, input: &str) -> JsonRpcOutcome {
             notifications: dispatch.notifications,
         },
         Err(error) => {
-            lsp_error!(
-                "{method} failed after {:.1}ms: [{}] {}",
-                started.elapsed().as_secs_f64() * 1000.0,
-                error.code,
-                error.message
-            );
+            // A notification carries no id and gets no reply, and the protocol
+            // lets a server ignore one it does not implement. Reporting that as
+            // an error buries real failures in noise the client cannot act on.
+            let unimplemented_notification =
+                id.is_none() && error.code == METHOD_NOT_FOUND;
+            let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+            if unimplemented_notification {
+                lsp_debug!("ignored unimplemented notification {method}");
+            } else {
+                lsp_error!(
+                    "{method} failed after {elapsed:.1}ms: [{}] {}",
+                    error.code,
+                    error.message
+                );
+            }
             return JsonRpcOutcome {
                 response: id.map(|id| {
                     rpc_error(

@@ -67,7 +67,14 @@ fn dispatch_settled(
                 notifications: Vec::new(),
             })
         }
-        "initialized" | "$/cancelRequest" | "exit" => Ok(DispatchOutcome::default()),
+        // Accepted and ignored: these carry no state this server keeps.
+        // Configuration arrives through `initialize`, and tracing is driven by
+        // `OSIRIS_LSP_LOG` rather than the client's trace level.
+        "initialized"
+        | "$/cancelRequest"
+        | "$/setTrace"
+        | "workspace/didChangeConfiguration"
+        | "exit" => Ok(DispatchOutcome::default()),
         "shutdown" => {
             state.request_shutdown();
             Ok(DispatchOutcome {
