@@ -54,6 +54,9 @@ class StandardSourceProvider implements vscode.TextDocumentContentProvider {
 /// whatever `osr` happens to be on PATH keeps the language server in step with
 /// `osr check` and with a local or pinned compiler build.
 function workspaceServerPath(): string | undefined {
+  // Environment layout differs by platform, and this extension is
+  // `workspace`-kind, so these always describe the machine holding the
+  // environment rather than the machine showing the window.
   const executable = process.platform === "win32" ? "osr.exe" : "osr";
   const binary = process.platform === "win32" ? "Scripts" : "bin";
   const roots: string[] = [];
@@ -61,14 +64,22 @@ function workspaceServerPath(): string | undefined {
   if (active !== undefined && active.length > 0) {
     roots.push(active);
   }
+  // `.venv` is the conventional project environment directory; an environment
+  // anywhere else announces itself through VIRTUAL_ENV above.
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     if (folder.uri.scheme === "file") {
-      roots.push(vscode.Uri.joinPath(folder.uri, ".venv").fsPath);
+      roots.push(path.join(folder.uri.fsPath, ".venv"));
     }
   }
+  // Windows has no execute permission bit, so only POSIX asks for one; a stale
+  // directory entry or unreadable path falls through to PATH either way rather
+  // than failing the server launch.
+  const access =
+    process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK;
   for (const root of roots) {
     const candidate = path.join(root, binary, executable);
     try {
+      fs.accessSync(candidate, access);
       if (fs.statSync(candidate).isFile()) {
         return candidate;
       }
