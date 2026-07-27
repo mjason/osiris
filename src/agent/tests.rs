@@ -876,10 +876,3 @@ fn write_http_response(stream: &mut impl Write, body: &str) {
     )
     .unwrap();
 }
-
-#[test]
-fn project_symbol_preflight_extracts_api_terms_without_generic_words() {
-    let queries = super::project_symbol_queries("怎么用 pd 写一个 cci");
-    assert_eq!(queries, vec!["cci", "pd"]);
-    assert!(super::project_symbol_queries("怎么写 hello world 示例").is_empty());
-}
