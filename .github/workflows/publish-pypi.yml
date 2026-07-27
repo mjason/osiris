@@ -23,7 +23,7 @@ jobs:
     name: Verify release version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Match tag to Cargo version
         shell: bash
         run: |
@@ -35,7 +35,7 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-targets --all-features
 
@@ -57,8 +57,8 @@ jobs:
           - os: macos-14
             target: aarch64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - uses: PyO3/maturin-action@v1
@@ -70,7 +70,7 @@ jobs:
       - name: Validate compiler wheel contents
         shell: bash
         run: python scripts/validate-compiler-wheel.py dist/*.whl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: python-wheel-${{ matrix.os }}-${{ matrix.target }}
           path: dist/*
@@ -81,12 +81,12 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: python-sdist
           path: dist/*
