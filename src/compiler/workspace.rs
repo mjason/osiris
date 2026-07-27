@@ -8,7 +8,7 @@ pub use recover::analyze_workspace_recovering;
 pub(super) struct PreparedInput {
     pub(super) input_index: usize,
     pub(super) document: Document,
-    pub(super) header: ast::Module,
+    pub(super) header: std::sync::Arc<ast::Module>,
     pub(super) module_name: String,
 }
 
@@ -25,76 +25,55 @@ pub(super) struct PreparedInput {
 /// session does not accumulate every revision it has seen.
 #[derive(Debug, Default)]
 pub struct WorkspaceMemo {
-    entries: std::sync::Mutex<BTreeMap<String, MemoEntry>>,
+    /// Macro-expanded provisional interfaces, keyed per module.
+    expansions: MemoMap<Option<interface::Interface>>,
+    /// Typed analyses and their interface models, keyed per module.
+    analyses: MemoMap<(Analysis, interface::Interface)>,
     generation: std::sync::atomic::AtomicU64,
-    hits: std::sync::atomic::AtomicUsize,
-    misses: std::sync::atomic::AtomicUsize,
 }
 
-/// Module analyses reused and recomputed by the most recent run.
+/// What the most recent run reused rather than recomputed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorkspaceMemoStats {
+    /// Modules whose typed analysis was reused.
     pub reused: usize,
+    /// Modules whose typed analysis was recomputed.
     pub analyzed: usize,
-}
-
-#[derive(Clone, Debug)]
-struct MemoEntry {
-    used: u64,
-    value: std::sync::Arc<(Analysis, interface::Interface)>,
+    /// Modules whose macro expansion was reused.
+    pub expansions_reused: usize,
+    /// Modules that were macro-expanded.
+    pub expanded: usize,
 }
 
 /// Runs kept before an unused entry is dropped.
 const MEMO_RETAINED_GENERATIONS: u64 = 2;
 
-impl WorkspaceMemo {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
+/// Content-keyed store for one stage's per-module results.
+#[derive(Debug)]
+struct MemoMap<T> {
+    entries: std::sync::Mutex<BTreeMap<String, (u64, std::sync::Arc<T>)>>,
+    hits: std::sync::atomic::AtomicUsize,
+    misses: std::sync::atomic::AtomicUsize,
+}
 
-    /// Number of retained module analyses. Intended for tests and diagnostics.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.entries.lock().map_or(0, |entries| entries.len())
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Modules reused and recomputed by the most recent run.
-    #[must_use]
-    pub fn stats(&self) -> WorkspaceMemoStats {
-        WorkspaceMemoStats {
-            reused: self.hits.load(std::sync::atomic::Ordering::Relaxed),
-            analyzed: self.misses.load(std::sync::atomic::Ordering::Relaxed),
+impl<T> Default for MemoMap<T> {
+    fn default() -> Self {
+        Self {
+            entries: std::sync::Mutex::new(BTreeMap::new()),
+            hits: std::sync::atomic::AtomicUsize::new(0),
+            misses: std::sync::atomic::AtomicUsize::new(0),
         }
     }
+}
 
-    fn begin(&self) -> u64 {
-        self.hits.store(0, std::sync::atomic::Ordering::Relaxed);
-        self.misses.store(0, std::sync::atomic::Ordering::Relaxed);
-        self.generation
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            + 1
-    }
-
-    fn get(
-        &self,
-        key: &str,
-        generation: u64,
-    ) -> Option<std::sync::Arc<(Analysis, interface::Interface)>> {
-        let reused = {
-            let Ok(mut entries) = self.entries.lock() else {
-                return None;
-            };
-            entries.get_mut(key).map(|entry| {
-                entry.used = generation;
-                std::sync::Arc::clone(&entry.value)
+impl<T> MemoMap<T> {
+    fn get(&self, key: &str, generation: u64) -> Option<std::sync::Arc<T>> {
+        let reused = self.entries.lock().ok().and_then(|mut entries| {
+            entries.get_mut(key).map(|(used, value)| {
+                *used = generation;
+                std::sync::Arc::clone(value)
             })
-        };
+        });
         let counter = if reused.is_some() {
             &self.hits
         } else {
@@ -104,24 +83,76 @@ impl WorkspaceMemo {
         reused
     }
 
-    fn insert(&self, key: String, generation: u64, value: (Analysis, interface::Interface)) {
+    fn insert(&self, key: String, generation: u64, value: T) {
         if let Ok(mut entries) = self.entries.lock() {
-            entries.insert(
-                key,
-                MemoEntry {
-                    used: generation,
-                    value: std::sync::Arc::new(value),
-                },
-            );
+            entries.insert(key, (generation, std::sync::Arc::new(value)));
         }
+    }
+
+    fn begin(&self) {
+        self.hits.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.misses.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn counts(&self) -> (usize, usize) {
+        (
+            self.hits.load(std::sync::atomic::Ordering::Relaxed),
+            self.misses.load(std::sync::atomic::Ordering::Relaxed),
+        )
     }
 
     fn evict(&self, generation: u64) {
         if let Ok(mut entries) = self.entries.lock() {
-            entries.retain(|_, entry| {
-                entry.used + MEMO_RETAINED_GENERATIONS > generation
-            });
+            entries.retain(|_, (used, _)| *used + MEMO_RETAINED_GENERATIONS > generation);
         }
+    }
+
+    fn len(&self) -> usize {
+        self.entries.lock().map_or(0, |entries| entries.len())
+    }
+}
+
+impl WorkspaceMemo {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Number of retained per-module results. Intended for tests and diagnostics.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.analyses.len() + self.expansions.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// What the most recent run reused rather than recomputed.
+    #[must_use]
+    pub fn stats(&self) -> WorkspaceMemoStats {
+        let (reused, analyzed) = self.analyses.counts();
+        let (expansions_reused, expanded) = self.expansions.counts();
+        WorkspaceMemoStats {
+            reused,
+            analyzed,
+            expansions_reused,
+            expanded,
+        }
+    }
+
+    fn begin(&self) -> u64 {
+        self.analyses.begin();
+        self.expansions.begin();
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1
+    }
+
+    fn evict(&self, generation: u64) {
+        self.analyses.evict(generation);
+        self.expansions.evict(generation);
     }
 }
 
@@ -363,7 +394,7 @@ fn compile_workspace_scheduled(
                 PreparedInput {
                     input_index,
                     document,
-                    header: lowered.module,
+                    header: std::sync::Arc::new(lowered.module),
                     module_name,
                 },
                 diagnostics,
@@ -391,7 +422,7 @@ fn compile_workspace_scheduled(
     }
 
     let graph = match ModuleGraph::build_with_interfaces(
-        prepared.iter().map(|unit| unit.header.clone()),
+        prepared.iter().map(|unit| std::sync::Arc::clone(&unit.header)),
         external_interfaces.clone(),
     ) {
         Ok(graph) => graph,
@@ -562,6 +593,35 @@ fn compile_workspace_scheduled(
                 let unit = &prepared[*by_name
                     .get(module_name)
                     .expect("workspace source module has an input")];
+                // Expansion reads the same inputs the typed analysis does, so
+                // it is keyed the same way and only re-runs when one of them
+                // changes.
+                let memo_key = memo.and_then(|_| {
+                    let environment = environment_digest(
+                        module_name,
+                        import_closures.get(module_name)?,
+                        &provisional,
+                        &raw_interfaces,
+                        &module_digests,
+                        external_interfaces,
+                    );
+                    Some(hash_fields([
+                        "osiris-workspace-expansion-v1",
+                        environment.as_str(),
+                        module_name.as_str(),
+                        module_digests.get(module_name)?.as_str(),
+                    ]))
+                });
+                if let (Some(memo), Some(key), Some(generation)) =
+                    (memo, memo_key.as_ref(), memo_generation)
+                    && let Some(reused) = memo.expansions.get(key, generation)
+                {
+                    return (
+                        module_name.clone(),
+                        (*reused).clone(),
+                        std::time::Duration::ZERO,
+                    );
+                }
                 let imported_phase = imported_phase_modules(&unit.header, &raw_interfaces);
                 let started = std::time::Instant::now();
                 let expanded = macro_expand::expand_with_imported_phase_modules_for_module(
@@ -576,11 +636,13 @@ fn compile_workspace_scheduled(
                     inputs[unit.input_index].options,
                     &mut lowered.diagnostics,
                 );
-                (
-                    module_name.clone(),
-                    interface::build_provisional(&lowered.module).ok(),
-                    started.elapsed(),
-                )
+                let model = interface::build_provisional(&lowered.module).ok();
+                if let (Some(memo), Some(key), Some(generation)) =
+                    (memo, memo_key, memo_generation)
+                {
+                    memo.expansions.insert(key, generation, model.clone());
+                }
+                (module_name.clone(), model, started.elapsed())
             })
             .collect::<Vec<_>>();
         let mut expanded_provisional = BTreeMap::new();
@@ -642,7 +704,7 @@ fn compile_workspace_scheduled(
                 });
                 if let (Some(memo), Some(key), Some(generation)) =
                     (memo, memo_key.as_ref(), memo_generation)
-                    && let Some(reused) = memo.get(key, generation)
+                    && let Some(reused) = memo.analyses.get(key, generation)
                 {
                     let (analysis, interface_model) = (*reused).clone();
                     return (
@@ -733,7 +795,8 @@ fn compile_workspace_scheduled(
                 if let (Some(memo), Some(key), Some(generation)) =
                     (memo, memo_key, memo_generation)
                 {
-                    memo.insert(key, generation, (analysis.clone(), interface_model.clone()));
+                    memo.analyses
+                        .insert(key, generation, (analysis.clone(), interface_model.clone()));
                 }
                 (
                     module_name.clone(),

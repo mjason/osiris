@@ -11,6 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt, fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use serde::Serialize;

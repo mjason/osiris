@@ -14,21 +14,116 @@ pub(super) fn build_project_symbol_index(
     analyses: &[Analysis],
     buffers: &[WorkspaceBuffer],
 ) -> WorkspaceSymbolIndex {
-    // Semantic projection is by far the most expensive part and depends only
-    // on its own module, so project every module up front in parallel and keep
-    // the merge below serial: the shared index resolves ambiguous definitions
-    // and provider names in buffer order.
-    let semantics = analyses
+    // Indexing one module reads only that module, so every module is indexed
+    // in parallel into its own partial index. Only the merge below is serial,
+    // and it replays the shared index's conflict rules in buffer order, so the
+    // result is identical to indexing the modules one at a time.
+    //
+    // The partials are deliberately not retained across edits: merging moves
+    // them into the shared index, and reusing them would mean deep-copying
+    // every module's symbols on each merge instead, which costs more than
+    // rebuilding the unchanged ones in parallel.
+    let partials = analyses
         .par_iter()
         .zip(buffers)
-        .map(|(analysis, buffer)| SemanticDocument::from_analysis(analysis, &buffer.uri))
+        .map(|(analysis, buffer)| {
+            let mut partial = WorkspaceSymbolIndex::default();
+            let semantic = SemanticDocument::from_analysis(analysis, &buffer.uri);
+            index_analysis_symbols(
+                &mut partial,
+                analysis,
+                semantic,
+                &buffer.uri,
+                &buffer.source,
+            );
+            partial
+        })
         .collect::<Vec<_>>();
     let mut index = WorkspaceSymbolIndex::default();
-    for ((analysis, buffer), semantic) in analyses.iter().zip(buffers).zip(semantics) {
-        index_analysis_symbols(&mut index, analysis, semantic, &buffer.uri, &buffer.source);
+    for partial in partials {
+        merge_symbol_index(&mut index, partial);
     }
     finish_symbol_index(&mut index);
     index
+}
+
+/// Folds one module's partial index into the shared index.
+///
+/// Ambiguity is resolved exactly as it is when a module is indexed directly
+/// into the shared index: a binding defined in two places loses its definition
+/// and is recorded as ambiguous, and the first module to claim a provider name
+/// or binding kind keeps it.
+pub(super) fn merge_symbol_index(
+    index: &mut WorkspaceSymbolIndex,
+    partial: WorkspaceSymbolIndex,
+) {
+    index.source_uris.extend(partial.source_uris);
+    index.sources.extend(partial.sources);
+
+    // A binding the module itself found ambiguous stays ambiguous globally.
+    for binding_id in partial.ambiguous_definitions {
+        index.definitions.remove(&binding_id);
+        index.ambiguous_definitions.insert(binding_id);
+    }
+    for (binding_id, definition) in partial.definitions {
+        if index.ambiguous_definitions.contains(&binding_id) {
+            continue;
+        }
+        match index.definitions.get(&binding_id) {
+            Some(existing) if existing != &definition => {
+                index.definitions.remove(&binding_id);
+                index.ambiguous_definitions.insert(binding_id);
+            }
+            Some(_) => {}
+            None => {
+                index.definitions.insert(binding_id, definition);
+            }
+        }
+    }
+
+    for (binding_id, kind) in partial.binding_kinds {
+        index.binding_kinds.entry(binding_id).or_insert(kind);
+    }
+    for (binding_id, locations) in partial.references {
+        index
+            .references
+            .entry(binding_id)
+            .or_default()
+            .extend(locations);
+    }
+    for (binding_id, occurrences) in partial.rename_occurrences {
+        index
+            .rename_occurrences
+            .entry(binding_id)
+            .or_default()
+            .extend(occurrences);
+    }
+
+    for key in partial.ambiguous_provider_names {
+        index.provider_names.remove(&key);
+        index.ambiguous_provider_names.insert(key);
+    }
+    for (key, binding_id) in partial.provider_names {
+        if index.ambiguous_provider_names.contains(&key) {
+            continue;
+        }
+        match index.provider_names.get(&key) {
+            Some(existing) if existing != &binding_id => {
+                index.provider_names.remove(&key);
+                index.ambiguous_provider_names.insert(key);
+            }
+            Some(_) => {}
+            None => {
+                index.provider_names.insert(key, binding_id);
+            }
+        }
+    }
+
+    index
+        .pending_import_members
+        .extend(partial.pending_import_members);
+    index.semantic_symbols.extend(partial.semantic_symbols);
+    index.relations.extend(partial.relations);
 }
 
 pub(super) fn index_analysis_symbols(

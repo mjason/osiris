@@ -8,6 +8,7 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::{
     compiler::{self, CompileInput, CompileOptions},
+    semantic::SemanticDocument,
     interface,
     name::{BindingKind, CONFUSABLE_IDENTIFIER, MIXED_SCRIPT_IDENTIFIER},
     project::PythonVersion,
@@ -17,8 +18,11 @@ use crate::{
 
 use super::{
     JsonRpcMachine, LspState, OpenDocument, PARSE_ERROR, Position, ProjectDocumentAnalysis, Range,
-    TextDocumentContentChangeEvent, build_single_symbol_index, collect_function_interfaces,
-    collect_macro_interfaces, handle_json_rpc, offset_to_position, position_to_offset,
+    TextDocumentContentChangeEvent, WorkspaceBuffer, WorkspaceSymbolIndex,
+    Location, build_project_symbol_index, build_single_symbol_index, collect_function_interfaces,
+    collect_macro_interfaces, finish_symbol_index, handle_json_rpc, index_analysis_symbols,
+    merge_symbol_index,
+    offset_to_position, position_to_offset,
 };
 
 const URI: &str = "file:///workspace/demo.osr";

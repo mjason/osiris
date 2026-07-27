@@ -24,7 +24,7 @@ pub fn analyze_workspace_recovering(
                     .expect("implicit workspace module name was installed")
                     .canonical
                     .clone(),
-                header: lowered.module,
+                header: std::sync::Arc::new(lowered.module),
             }
         })
         .collect::<Vec<_>>();

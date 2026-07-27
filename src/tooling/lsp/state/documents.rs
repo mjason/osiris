@@ -331,9 +331,11 @@ impl LspState {
             lap("strict analysis");
             let reuse = self.memo.stats();
             lsp_debug!(
-                "    modules reused {} / analyzed {}",
+                "    modules analyzed {}/{} reused, expanded {}/{} reused",
                 reuse.reused,
-                reuse.analyzed
+                reuse.reused + reuse.analyzed,
+                reuse.expansions_reused,
+                reuse.expansions_reused + reuse.expanded
             );
             let recovering = workspace.has_errors();
             let (analyses, workspace_diagnostics) = if recovering {

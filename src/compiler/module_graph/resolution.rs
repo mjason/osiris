@@ -25,7 +25,7 @@ pub struct ResolvedImport {
 /// A source module graph plus explicitly loaded `.osri` interfaces.
 #[derive(Clone, Debug, Default)]
 pub struct ModuleGraph {
-    modules: BTreeMap<String, ast::Module>,
+    modules: BTreeMap<String, Arc<ast::Module>>,
     interfaces: BTreeMap<String, Interface>,
     runtime: DependencyGraph,
     phase1: DependencyGraph,
@@ -68,16 +68,20 @@ impl ModuleGraph {
         I: IntoIterator<Item = ast::Module>,
     {
         let interfaces = read_interface_paths(paths)?;
-        Self::build_with_interfaces(modules, interfaces)
+        Self::build_with_interfaces(modules.into_iter().map(Arc::new), interfaces)
     }
 
     /// Build a graph from already parsed, data-only interfaces.
+    ///
+    /// Modules are shared rather than owned so a caller that keeps its own
+    /// copy — the workspace compiler holds every module header for the whole
+    /// run — does not hand over a deep clone of each one.
     pub fn build_with_interfaces<I>(
         modules: I,
         interfaces: BTreeMap<String, Interface>,
     ) -> Result<Self, ModuleGraphError>
     where
-        I: IntoIterator<Item = ast::Module>,
+        I: IntoIterator<Item = Arc<ast::Module>>,
     {
         let mut source_records = modules
             .into_iter()
@@ -101,7 +105,7 @@ impl ModuleGraph {
             ))
         });
 
-        let mut source_modules: BTreeMap<String, ast::Module> = BTreeMap::new();
+        let mut source_modules: BTreeMap<String, Arc<ast::Module>> = BTreeMap::new();
         for (name, module) in source_records {
             if let Some(previous) = source_modules.get(&name) {
                 return Err(ModuleGraphError::DuplicateModule {
@@ -248,7 +252,7 @@ impl ModuleGraph {
     }
 
     #[must_use]
-    pub fn source_modules(&self) -> &BTreeMap<String, ast::Module> {
+    pub fn source_modules(&self) -> &BTreeMap<String, Arc<ast::Module>> {
         &self.modules
     }
 

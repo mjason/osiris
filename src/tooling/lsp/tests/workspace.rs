@@ -513,3 +513,158 @@ fn project_errors_preserve_workspace_identity_imports_and_completion() {
     drop(state);
     fs::remove_dir_all(root).expect("workspace cleanup");
 }
+
+/// The project symbol index is built per module in parallel and merged. The
+/// merge has to resolve ambiguity exactly as indexing the modules one at a
+/// time into a shared index does, so this compares it against that reference.
+#[test]
+fn the_merged_project_symbol_index_matches_indexing_modules_in_order() {
+    // `demo.alpha` defines `score` twice, so one module's own index is already
+    // ambiguous and the merge has to carry that into the shared index.
+    let sources = [
+        (
+            "demo.alpha",
+            "(module demo.alpha)\n(export [score])\n^{:doc \"Alpha.\"} (defn ^Int score [^Int x] x)\n             ^{:doc \"Alpha again.\"} (defn ^Int score [^Int x] (+ x 1))\n",
+        ),
+        (
+            "demo.beta",
+            "(module demo.beta)\n(export [score])\n^{:doc \"Beta.\"} (defn ^Int score [^Int x] x)\n",
+        ),
+        (
+            "demo.app",
+            "(module demo.app)\n(import demo.alpha :as alpha)\n(import demo.beta :as beta)\n\
+             (def first-result (alpha/score 1))\n(def second-result (beta/score 2))\n",
+        ),
+    ];
+    let all_options = sources
+        .iter()
+        .map(|(name, _)| {
+            CompileOptions::new(*name, PythonVersion::MINIMUM).with_expected_module_name(*name)
+        })
+        .collect::<Vec<_>>();
+    let inputs = sources
+        .iter()
+        .zip(&all_options)
+        .map(|((_, source), options)| CompileInput::new(source, options))
+        .collect::<Vec<_>>();
+    let analyses = compiler::analyze_workspace_recovering(&inputs, &BTreeMap::new());
+    let buffers = sources
+        .iter()
+        .zip(&all_options)
+        .map(|((name, source), options)| WorkspaceBuffer {
+            uri: format!("file:///workspace/{name}.osr"),
+            source: (*source).to_owned(),
+            options: options.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let merged = build_project_symbol_index(&analyses, &buffers);
+
+    let mut reference = WorkspaceSymbolIndex::default();
+    for (analysis, buffer) in analyses.iter().zip(&buffers) {
+        let semantic = SemanticDocument::from_analysis(analysis, &buffer.uri);
+        index_analysis_symbols(
+            &mut reference,
+            analysis,
+            semantic,
+            &buffer.uri,
+            &buffer.source,
+        );
+    }
+    finish_symbol_index(&mut reference);
+
+    assert_eq!(merged.source_uris, reference.source_uris);
+    assert_eq!(merged.sources, reference.sources);
+    assert_eq!(merged.definitions, reference.definitions);
+    assert_eq!(merged.ambiguous_definitions, reference.ambiguous_definitions);
+    assert_eq!(merged.references, reference.references);
+    assert_eq!(merged.binding_kinds, reference.binding_kinds);
+    assert_eq!(merged.provider_names, reference.provider_names);
+    assert_eq!(
+        merged.ambiguous_provider_names,
+        reference.ambiguous_provider_names
+    );
+    assert_eq!(merged.relations, reference.relations);
+    assert_eq!(
+        merged.rename_occurrences.keys().collect::<Vec<_>>(),
+        reference.rename_occurrences.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        merged.pending_import_members.len(),
+        reference.pending_import_members.len()
+    );
+    assert_eq!(
+        merged.semantic_symbols.len(),
+        reference.semantic_symbols.len()
+    );
+    assert!(
+        !merged.provider_names.is_empty(),
+        "the fixture must actually populate provider names"
+    );
+    assert!(
+        merged.relations.len() > 3 && merged.references.len() > 1,
+        "the fixture must actually merge several modules' contributions"
+    );
+}
+
+/// Conflict resolution in the merge, exercised directly.
+///
+/// A binding defined at two different locations must lose its definition and
+/// be recorded as ambiguous, and the first module to claim a provider name or
+/// binding kind must keep it. Valid source cannot produce these collisions —
+/// binding identifiers are module-qualified — so the partials are built here.
+#[test]
+fn merging_partial_symbol_indexes_resolves_conflicts() {
+    let location = |uri: &str, line: u32| Location {
+        uri: uri.to_owned(),
+        range: Range {
+            start: Position { line, character: 0 },
+            end: Position { line, character: 4 },
+        },
+    };
+    let partial = |uri: &str, line: u32, kind: BindingKind| {
+        let mut index = WorkspaceSymbolIndex::default();
+        index
+            .definitions
+            .insert("shared::value".to_owned(), location(uri, line));
+        index.binding_kinds.insert("shared::value".to_owned(), kind);
+        index.provider_names.insert(
+            ("demo".to_owned(), "name".to_owned()),
+            format!("{uri}::binding"),
+        );
+        index
+            .references
+            .insert("shared::value".to_owned(), vec![location(uri, line)]);
+        index
+    };
+
+    let mut merged = WorkspaceSymbolIndex::default();
+    merge_symbol_index(&mut merged, partial("first", 1, BindingKind::Function));
+    // A second, different definition of the same binding makes it ambiguous.
+    merge_symbol_index(&mut merged, partial("second", 2, BindingKind::Value));
+
+    assert!(!merged.definitions.contains_key("shared::value"));
+    assert!(merged.ambiguous_definitions.contains("shared::value"));
+    assert_eq!(
+        merged.binding_kinds.get("shared::value"),
+        Some(&BindingKind::Function),
+        "the first module's kind wins"
+    );
+    assert!(
+        merged
+            .ambiguous_provider_names
+            .contains(&("demo".to_owned(), "name".to_owned())),
+        "two providers claiming one name is ambiguous"
+    );
+    assert!(!merged.provider_names.contains_key(&("demo".to_owned(), "name".to_owned())));
+    assert_eq!(
+        merged.references["shared::value"].len(),
+        2,
+        "references accumulate across modules"
+    );
+
+    // A third partial repeating the first definition must not resurrect it.
+    merge_symbol_index(&mut merged, partial("first", 1, BindingKind::Function));
+    assert!(!merged.definitions.contains_key("shared::value"));
+    assert!(merged.ambiguous_definitions.contains("shared::value"));
+}
