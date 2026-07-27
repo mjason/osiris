@@ -260,8 +260,15 @@ impl LspState {
                 .collect::<Vec<_>>();
             let external_interfaces = load_project_interfaces(&project, &self.site_roots)?;
             lap("load interfaces");
-            let workspace = compiler::analyze_workspace(&inputs, &external_interfaces);
+            let workspace =
+                compiler::analyze_workspace_with_memo(&inputs, &external_interfaces, &self.memo);
             lap("strict analysis");
+            let reuse = self.memo.stats();
+            lsp_debug!(
+                "    modules reused {} / analyzed {}",
+                reuse.reused,
+                reuse.analyzed
+            );
             let recovering = workspace.has_errors();
             let (analyses, workspace_diagnostics) = if recovering {
                 (

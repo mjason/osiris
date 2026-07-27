@@ -445,3 +445,103 @@ fn workspace_graph_hashes_are_stable_when_input_order_changes() {
         reverse_app.graph.external_dependencies
     );
 }
+
+/// A memo must be an optimization only: reusing module analyses has to produce
+/// exactly what a cold run produces, including after an edit that changes one
+/// module's interface and after an edit that only changes a body.
+#[test]
+fn memoized_workspace_analysis_matches_a_cold_run_across_edits() {
+    fn provider_options() -> CompileOptions {
+        CompileOptions::new("demo.provider", PythonVersion::MINIMUM)
+            .with_expected_module_name("demo.provider")
+    }
+    fn consumer_options() -> CompileOptions {
+        CompileOptions::new("demo.consumer", PythonVersion::MINIMUM)
+            .with_expected_module_name("demo.consumer")
+    }
+
+    let provider_options = provider_options();
+    let consumer_options = consumer_options();
+    let consumer = "(module demo.consumer)\n\
+         (import demo.provider :as provider)\n\
+         (def answer (provider/step 1))\n";
+
+    // Each revision changes the provider: a body-only edit, then a signature
+    // change, then back. The consumer is untouched throughout.
+    let revisions = [
+        "(module demo.provider)\n(export [step])\n^{:doc \"Step.\"} (defn ^Int step [^Int x] (+ x 1))\n",
+        "(module demo.provider)\n(export [step])\n^{:doc \"Step.\"} (defn ^Int step [^Int x] (+ x 2))\n",
+        "(module demo.provider)\n(export [step])\n^{:doc \"Step.\"} (defn ^Int step [^Int x ^Int y] (+ x y))\n",
+        "(module demo.provider)\n(export [step])\n^{:doc \"Step.\"} (defn ^Int step [^Int x] (+ x 1))\n",
+    ];
+
+    let memo = super::WorkspaceMemo::new();
+    for (revision, provider) in revisions.iter().enumerate() {
+        let inputs = [
+            CompileInput::new(provider, &provider_options),
+            CompileInput::new(consumer, &consumer_options),
+        ];
+        let cold = analyze_workspace(&inputs, &BTreeMap::new());
+        let warm = super::analyze_workspace_with_memo(&inputs, &BTreeMap::new(), &memo);
+
+        assert_eq!(
+            cold.has_errors(),
+            warm.has_errors(),
+            "revision {revision} error state"
+        );
+        assert_eq!(
+            cold.diagnostics
+                .iter()
+                .map(|located| (located.input_index, located.diagnostic.code))
+                .collect::<Vec<_>>(),
+            warm.diagnostics
+                .iter()
+                .map(|located| (located.input_index, located.diagnostic.code))
+                .collect::<Vec<_>>(),
+            "revision {revision} diagnostics"
+        );
+        assert_eq!(
+            cold.units
+                .iter()
+                .map(|unit| (unit.analysis.hir.name.clone(), unit.build_hash.clone()))
+                .collect::<Vec<_>>(),
+            warm.units
+                .iter()
+                .map(|unit| (unit.analysis.hir.name.clone(), unit.build_hash.clone()))
+                .collect::<Vec<_>>(),
+            "revision {revision} units"
+        );
+    }
+}
+
+#[test]
+fn memoized_workspace_analysis_reuses_untouched_modules() {
+    let provider_options = CompileOptions::new("demo.provider", PythonVersion::MINIMUM)
+        .with_expected_module_name("demo.provider");
+    let consumer_options = CompileOptions::new("demo.consumer", PythonVersion::MINIMUM)
+        .with_expected_module_name("demo.consumer");
+    let provider =
+        "(module demo.provider)\n(export [step])\n^{:doc \"Step.\"} (defn ^Int step [^Int x] (+ x 1))\n";
+    let memo = super::WorkspaceMemo::new();
+
+    let first = "(module demo.consumer)\n(import demo.provider :as provider)\n(def answer (provider/step 1))\n";
+    let inputs = [
+        CompileInput::new(provider, &provider_options),
+        CompileInput::new(first, &consumer_options),
+    ];
+    let cold = super::analyze_workspace_with_memo(&inputs, &BTreeMap::new(), &memo);
+    assert!(!cold.has_errors(), "{:?}", cold.diagnostics);
+    assert_eq!(memo.stats().analyzed, 2, "a cold run analyzes every module");
+    assert_eq!(memo.stats().reused, 0);
+
+    // Editing only the consumer must leave the provider reusable.
+    let second = "(module demo.consumer)\n(import demo.provider :as provider)\n(def answer (provider/step 2))\n";
+    let inputs = [
+        CompileInput::new(provider, &provider_options),
+        CompileInput::new(second, &consumer_options),
+    ];
+    let warm = super::analyze_workspace_with_memo(&inputs, &BTreeMap::new(), &memo);
+    assert!(!warm.has_errors(), "{:?}", warm.diagnostics);
+    assert_eq!(memo.stats().reused, 1, "the untouched provider is reused");
+    assert_eq!(memo.stats().analyzed, 1, "only the edited module is analyzed");
+}

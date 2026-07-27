@@ -12,6 +12,225 @@ pub(super) struct PreparedInput {
     pub(super) module_name: String,
 }
 
+/// Per-module analyses reused across workspace runs.
+///
+/// An interactive caller re-analyzes one workspace on every keystroke while
+/// almost every module is byte-identical to the previous run. A module's
+/// analysis is a pure function of its own source, its compile options, and the
+/// interfaces visible to it, so an entry stays valid until one of those
+/// changes. Batch callers pass no memo and always analyze from scratch.
+///
+/// Entries are keyed by content, never invalidated: a changed input produces a
+/// different key. Unused entries are dropped after two runs so an editing
+/// session does not accumulate every revision it has seen.
+#[derive(Debug, Default)]
+pub struct WorkspaceMemo {
+    entries: std::sync::Mutex<BTreeMap<String, MemoEntry>>,
+    generation: std::sync::atomic::AtomicU64,
+    hits: std::sync::atomic::AtomicUsize,
+    misses: std::sync::atomic::AtomicUsize,
+}
+
+/// Module analyses reused and recomputed by the most recent run.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorkspaceMemoStats {
+    pub reused: usize,
+    pub analyzed: usize,
+}
+
+#[derive(Clone, Debug)]
+struct MemoEntry {
+    used: u64,
+    value: std::sync::Arc<(Analysis, interface::Interface)>,
+}
+
+/// Runs kept before an unused entry is dropped.
+const MEMO_RETAINED_GENERATIONS: u64 = 2;
+
+impl WorkspaceMemo {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Number of retained module analyses. Intended for tests and diagnostics.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.lock().map_or(0, |entries| entries.len())
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Modules reused and recomputed by the most recent run.
+    #[must_use]
+    pub fn stats(&self) -> WorkspaceMemoStats {
+        WorkspaceMemoStats {
+            reused: self.hits.load(std::sync::atomic::Ordering::Relaxed),
+            analyzed: self.misses.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
+    fn begin(&self) -> u64 {
+        self.hits.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.misses.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1
+    }
+
+    fn get(
+        &self,
+        key: &str,
+        generation: u64,
+    ) -> Option<std::sync::Arc<(Analysis, interface::Interface)>> {
+        let reused = {
+            let Ok(mut entries) = self.entries.lock() else {
+                return None;
+            };
+            entries.get_mut(key).map(|entry| {
+                entry.used = generation;
+                std::sync::Arc::clone(&entry.value)
+            })
+        };
+        let counter = if reused.is_some() {
+            &self.hits
+        } else {
+            &self.misses
+        };
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        reused
+    }
+
+    fn insert(&self, key: String, generation: u64, value: (Analysis, interface::Interface)) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.insert(
+                key,
+                MemoEntry {
+                    used: generation,
+                    value: std::sync::Arc::new(value),
+                },
+            );
+        }
+    }
+
+    fn evict(&self, generation: u64) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|_, entry| {
+                entry.used + MEMO_RETAINED_GENERATIONS > generation
+            });
+        }
+    }
+}
+
+/// Identity of one compilation input: everything about a module that is not
+/// carried by the interfaces it sees.
+fn module_digest(input: &CompileInput<'_>) -> String {
+    let options = input.options;
+    hash_fields([
+        "osiris-workspace-module-v1",
+        interface::COMPILER_ABI,
+        interface::LANGUAGE_ABI,
+        input.source,
+        &options.source_name,
+        &options.fallback_module_name,
+        options.expected_module_name.as_deref().unwrap_or(""),
+        &options.distribution,
+        &options.distribution_version,
+        &options.target_python.to_string(),
+        if options.strict { "strict" } else { "permissive" },
+        &options.trust_policy.hash,
+    ])
+}
+
+/// Modules whose interfaces each local module can resolve, following imports
+/// transitively.
+///
+/// A module can only name what it imports, and a re-export is itself an import
+/// edge, so this closure bounds the interfaces its analysis can depend on. All
+/// members of one scheduling batch share a provisional-interface map, but
+/// keying on that whole map would invalidate every member whenever any one of
+/// them changed.
+fn import_closures(
+    prepared: &[PreparedInput],
+    graph: &ModuleGraph,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut imports = BTreeMap::<&str, Vec<&str>>::new();
+    for edge in graph.runtime_edges().iter().chain(graph.phase1_edges()) {
+        imports
+            .entry(edge.from.as_str())
+            .or_default()
+            .push(edge.to.as_str());
+    }
+    prepared
+        .par_iter()
+        .map(|unit| {
+            let mut reached = BTreeSet::new();
+            let mut frontier = vec![unit.module_name.as_str()];
+            while let Some(module) = frontier.pop() {
+                for target in imports.get(module).into_iter().flatten() {
+                    if reached.insert((*target).to_owned()) {
+                        frontier.push(target);
+                    }
+                }
+            }
+            (unit.module_name.clone(), reached)
+        })
+        .collect()
+}
+
+/// Identity of the interfaces one module is analyzed against.
+///
+/// Local interfaces are identified by the source that produces them rather
+/// than by the interface model, because a model built during analysis does not
+/// yet carry its published hashes. That is coarser than comparing interfaces —
+/// editing a function body invalidates the modules that import it even though
+/// its interface is unchanged — but it cannot go stale.
+///
+/// Each entry also records whether it is provisional. A module that joins the
+/// analyzed module's cycle switches from a final to a provisional interface
+/// without its own source changing, and that must not be reused across.
+fn environment_digest(
+    module_name: &str,
+    closure: &BTreeSet<String>,
+    provisional: &BTreeMap<String, interface::Interface>,
+    scc_interfaces: &BTreeMap<String, interface::Interface>,
+    module_digests: &BTreeMap<String, String>,
+    external_interfaces: &BTreeMap<String, interface::Interface>,
+) -> String {
+    let mut material = String::from("osiris-workspace-environment-v2");
+    for name in std::iter::once(module_name)
+        .chain(closure.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>()
+    {
+        if !scc_interfaces.contains_key(name) {
+            continue;
+        }
+        material.push('\u{1f}');
+        material.push_str(name);
+        material.push('=');
+        material.push(if provisional.contains_key(name) {
+            'P'
+        } else {
+            'F'
+        });
+        if let Some(digest) = module_digests.get(name) {
+            material.push_str(digest);
+        } else if let Some(external) = external_interfaces.get(name) {
+            material.push_str(external.semantic_interface_hash());
+            material.push('/');
+            material.push_str(external.tooling_metadata_hash());
+        } else {
+            // An interface with neither a local source nor an external model
+            // has no stable identity; refuse to reuse anything against it.
+            material.push_str("unknown");
+        }
+    }
+    crate::hash::sha256(material.as_bytes())
+}
+
 /// Compile a set of source modules as one distribution-wide dependency graph.
 ///
 /// External interfaces must already have passed `.osri` integrity validation.
@@ -22,7 +241,7 @@ pub fn compile_workspace(
     inputs: &[CompileInput<'_>],
     external_interfaces: &BTreeMap<String, interface::Interface>,
 ) -> WorkspaceCompileResult {
-    compile_workspace_with_emission(inputs, external_interfaces, true)
+    compile_workspace_with_emission(inputs, external_interfaces, true, None)
 }
 
 /// Analyze a workspace without generating Python or serialized artifacts.
@@ -31,13 +250,45 @@ pub fn analyze_workspace(
     inputs: &[CompileInput<'_>],
     external_interfaces: &BTreeMap<String, interface::Interface>,
 ) -> WorkspaceCompileResult {
-    compile_workspace_with_emission(inputs, external_interfaces, false)
+    compile_workspace_with_emission(inputs, external_interfaces, false, None)
+}
+
+/// Analyze a workspace, reusing per-module analyses from `memo`.
+///
+/// Equivalent to [`analyze_workspace`] except that unchanged modules are not
+/// re-analyzed. Intended for callers that analyze the same workspace
+/// repeatedly, such as a language server responding to edits.
+#[must_use]
+pub fn analyze_workspace_with_memo(
+    inputs: &[CompileInput<'_>],
+    external_interfaces: &BTreeMap<String, interface::Interface>,
+    memo: &WorkspaceMemo,
+) -> WorkspaceCompileResult {
+    compile_workspace_with_emission(inputs, external_interfaces, false, Some(memo))
 }
 
 fn compile_workspace_with_emission(
     inputs: &[CompileInput<'_>],
     external_interfaces: &BTreeMap<String, interface::Interface>,
     emit: bool,
+    memo: Option<&WorkspaceMemo>,
+) -> WorkspaceCompileResult {
+    // The run's generation is established here so that every early return
+    // below still leaves the memo bounded.
+    let generation = memo.map(WorkspaceMemo::begin);
+    let result = compile_workspace_scheduled(inputs, external_interfaces, emit, memo, generation);
+    if let (Some(memo), Some(generation)) = (memo, generation) {
+        memo.evict(generation);
+    }
+    result
+}
+
+fn compile_workspace_scheduled(
+    inputs: &[CompileInput<'_>],
+    external_interfaces: &BTreeMap<String, interface::Interface>,
+    emit: bool,
+    memo: Option<&WorkspaceMemo>,
+    memo_generation: Option<u64>,
 ) -> WorkspaceCompileResult {
     let timing_started = std::time::Instant::now();
     let timings = std::env::var_os("OSIRIS_TIMINGS").is_some();
@@ -152,6 +403,25 @@ fn compile_workspace_with_emission(
         }
     };
     let analysis_started = std::time::Instant::now();
+
+    // Reuse identity is only computed when a caller supplied a memo; batch
+    // compilation pays nothing for it.
+    let module_digests = memo
+        .map(|_| {
+            prepared
+                .par_iter()
+                .map(|unit| {
+                    (
+                        unit.module_name.clone(),
+                        module_digest(&inputs[unit.input_index]),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let import_closures = memo
+        .map(|_| import_closures(&prepared, &graph))
+        .unwrap_or_default();
 
     let source_names = prepared
         .iter()
@@ -354,6 +624,35 @@ fn compile_workspace_with_emission(
                 let unit = &prepared[*by_name
                     .get(module_name)
                     .expect("workspace source module has an input")];
+                let memo_key = memo.and_then(|_| {
+                    let environment = environment_digest(
+                        module_name,
+                        import_closures.get(module_name)?,
+                        &provisional,
+                        &scc_interfaces,
+                        &module_digests,
+                        external_interfaces,
+                    );
+                    Some(hash_fields([
+                        "osiris-workspace-analysis-v1",
+                        environment.as_str(),
+                        module_name.as_str(),
+                        module_digests.get(module_name)?.as_str(),
+                    ]))
+                });
+                if let (Some(memo), Some(key), Some(generation)) =
+                    (memo, memo_key.as_ref(), memo_generation)
+                    && let Some(reused) = memo.get(key, generation)
+                {
+                    let (analysis, interface_model) = (*reused).clone();
+                    return (
+                        module_name.clone(),
+                        Ok((analysis, interface_model)),
+                        std::time::Duration::ZERO,
+                        std::time::Duration::ZERO,
+                        std::time::Duration::ZERO,
+                    );
+                }
                 let imported_phase = imported_phase_modules(&unit.header, &scc_interfaces);
                 let started = std::time::Instant::now();
                 let mut analysis = analyze_document(
@@ -427,6 +726,14 @@ fn compile_workspace_with_emission(
                         interface_elapsed,
                         started.elapsed(),
                     );
+                }
+                // Retain only fully validated modules. A batch that fails later
+                // still leaves its successful members reusable, which is the
+                // common case while an edit in progress breaks one module.
+                if let (Some(memo), Some(key), Some(generation)) =
+                    (memo, memo_key, memo_generation)
+                {
+                    memo.insert(key, generation, (analysis.clone(), interface_model.clone()));
                 }
                 (
                     module_name.clone(),

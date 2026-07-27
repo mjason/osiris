@@ -82,6 +82,8 @@ pub struct LspState {
     analysis_runs: u64,
     shutdown_requested: bool,
     pub(super) workspace_cache: Option<WorkspaceAnalysisCache>,
+    /// Per-module analyses reused across edits within one workspace.
+    pub(super) memo: Arc<compiler::WorkspaceMemo>,
 }
 
 impl Default for LspState {
@@ -95,6 +97,7 @@ impl Default for LspState {
             analysis_runs: 0,
             shutdown_requested: false,
             workspace_cache: None,
+            memo: Arc::default(),
         }
     }
 }

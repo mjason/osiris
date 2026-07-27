@@ -418,7 +418,10 @@ mod workspace;
 pub use support::python_module_path;
 use support::*;
 use workspace::PreparedInput;
-pub use workspace::{analyze_workspace, analyze_workspace_recovering, compile_workspace};
+pub use workspace::{
+    WorkspaceMemo, WorkspaceMemoStats, analyze_workspace, analyze_workspace_recovering, analyze_workspace_with_memo,
+    compile_workspace,
+};
 
 #[cfg(test)]
 #[path = "tests.rs"]
