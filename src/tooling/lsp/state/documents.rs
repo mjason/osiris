@@ -158,7 +158,7 @@ impl LspState {
         }
     }
 
-    fn analyze_document(&self, uri: String, version: i64, text: String) -> OpenDocument {
+    fn analyze_document(&mut self, uri: String, version: i64, text: String) -> OpenDocument {
         let snapshot = self.documents.get(&uri).map_or_else(
             || reader::read(&text),
             |previous| reader::read_incremental(&text, &previous.analysis.document),
@@ -184,7 +184,7 @@ impl LspState {
         OpenDocument::from_analysis(uri, version, text, identifier_lints, frontend)
     }
 
-    fn analyze_project_document(&self, uri: &str, text: &str) -> Option<ProjectDocumentAnalysis> {
+    fn analyze_project_document(&mut self, uri: &str, text: &str) -> Option<ProjectDocumentAnalysis> {
         let source_path = file_uri_to_path(uri)?;
         let project = ProjectConfig::discover(&source_path).ok()?;
         let target_path = fs::canonicalize(&source_path).ok()?;
@@ -231,6 +231,43 @@ impl LspState {
             });
         }
         let target_index = target_index?;
+        let fingerprint = workspace_fingerprint(&project, &buffers, &self.site_roots);
+        if let Some(cache) = self.workspace_cache.as_ref()
+            && cache.project_root == project.root
+            && cache.fingerprint == fingerprint
+        {
+            let mut analysis = cache.analyses.get(target_index)?.clone();
+            analysis.diagnostics.extend(
+                cache
+                    .workspace_diagnostics
+                    .iter()
+                    .filter(|located| located.input_index == target_index)
+                    .map(|located| located.diagnostic.clone()),
+            );
+            analysis.diagnostics.sort_by(|left, right| {
+                (left.span.start, left.span.end, left.code, &left.message).cmp(&(
+                    right.span.start,
+                    right.span.end,
+                    right.code,
+                    &right.message,
+                ))
+            });
+            analysis.diagnostics.dedup_by(|left, right| {
+                left.span == right.span && left.code == right.code && left.message == right.message
+            });
+            let workspace_symbols = remap_workspace_uri(
+                cache.workspace_symbols.clone(),
+                cache.buffers.get(target_index)?.uri.as_str(),
+                uri,
+            );
+            return Some(ProjectDocumentAnalysis {
+                analysis,
+                function_interfaces: cache.function_interfaces.clone(),
+                macro_interfaces: cache.macro_interfaces.clone(),
+                display_locale: cache.display_locale.clone(),
+                workspace_symbols,
+            });
+        }
         let inputs = buffers
             .iter()
             .map(|buffer| CompileInput::new(&buffer.source, &buffer.options))
@@ -256,6 +293,17 @@ impl LspState {
         let function_interfaces = collect_function_interfaces(&analyses, &external_interfaces);
         let macro_interfaces = collect_macro_interfaces(&analyses, &external_interfaces);
         let workspace_symbols = build_project_symbol_index(&analyses, &buffers);
+        self.workspace_cache = Some(WorkspaceAnalysisCache {
+            project_root: project.root.clone(),
+            fingerprint,
+            buffers: buffers.clone(),
+            analyses: analyses.clone(),
+            workspace_diagnostics: workspace_diagnostics.clone(),
+            function_interfaces: function_interfaces.clone(),
+            macro_interfaces: macro_interfaces.clone(),
+            workspace_symbols: workspace_symbols.clone(),
+            display_locale: project.display_locale.clone(),
+        });
         let mut analysis = analyses.into_iter().nth(target_index)?;
         analysis.diagnostics.extend(
             workspace_diagnostics
@@ -285,4 +333,90 @@ impl LspState {
             workspace_symbols,
         })
     }
+}
+
+fn remap_workspace_uri(
+    mut index: WorkspaceSymbolIndex,
+    from: &str,
+    to: &str,
+) -> WorkspaceSymbolIndex {
+    if from == to {
+        return index;
+    }
+    if index.source_uris.remove(from) {
+        index.source_uris.insert(to.to_owned());
+    }
+    if let Some(source) = index.sources.remove(from) {
+        index.sources.insert(to.to_owned(), source);
+    }
+    for location in index.definitions.values_mut() {
+        if location.uri == from {
+            location.uri = to.to_owned();
+        }
+    }
+    for locations in index.references.values_mut() {
+        for location in locations {
+            if location.uri == from {
+                location.uri = to.to_owned();
+            }
+        }
+    }
+    for occurrences in index.rename_occurrences.values_mut() {
+        for occurrence in occurrences {
+            if occurrence.uri == from {
+                occurrence.uri = to.to_owned();
+            }
+        }
+    }
+    for symbol in &mut index.semantic_symbols {
+        if symbol.uri == from {
+            symbol.uri = to.to_owned();
+        }
+    }
+    for member in &mut index.pending_import_members {
+        if member.uri == from {
+            member.uri = to.to_owned();
+        }
+    }
+    for relation in &mut index.relations {
+        if relation.uri == from {
+            relation.uri = to.to_owned();
+        }
+    }
+    index
+}
+
+fn workspace_fingerprint(
+    project: &ProjectConfig,
+    buffers: &[WorkspaceBuffer],
+    site_roots: &[PathBuf],
+) -> String {
+    let mut material = String::new();
+    material.push_str(&project.root.display().to_string());
+    material.push('|');
+    material.push_str(&project.distribution);
+    material.push('|');
+    material.push_str(&project.distribution_version);
+    material.push('|');
+    material.push_str(&project.output_dir.display().to_string());
+    material.push('|');
+    material.push_str(project.display_locale.as_deref().unwrap_or(""));
+    for root in &project.source_roots {
+        material.push('|');
+        material.push_str(&root.display().to_string());
+    }
+    material.push_str(&project.target_python.to_string());
+    material.push('|');
+    material.push_str(if project.strict { "strict" } else { "permissive" });
+    for root in site_roots {
+        material.push('|');
+        material.push_str(&root.display().to_string());
+    }
+    for buffer in buffers {
+        material.push('|');
+        material.push_str(&buffer.options.source_name);
+        material.push('|');
+        material.push_str(&buffer.source);
+    }
+    crate::hash::sha256(material.as_bytes())
 }

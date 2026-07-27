@@ -160,6 +160,30 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
             },
         };
         language_service.push(evidence_from_result("--at", result));
+    } else {
+        // Project-oriented requests must have project facts available before
+        // the provider decides whether to use a tool. This prevents a model
+        // from answering an API question from generic language knowledge.
+        for (index, query) in project_symbol_queries(&options.request)
+            .into_iter()
+            .take(3)
+            .enumerate()
+        {
+            let result = match service.get() {
+                Ok(service) => service.workspace_search(&query, Some(6)),
+                Err(error) => ToolResult {
+                    schema: "osiris.lsc-tool/v1".to_owned(),
+                    operation: "workspace-search".to_owned(),
+                    status: "unavailable".to_owned(),
+                    result: serde_json::Value::Array(Vec::new()),
+                    message: Some(error),
+                },
+            };
+            language_service.push(evidence_from_result(
+                &format!("preflight-search-{index}"),
+                result,
+            ));
+        }
     }
     let prompt = build_prompt(
         &options.request,
@@ -232,6 +256,77 @@ pub fn run(options: &LsaOptions) -> Result<LsaResponse, String> {
     });
     save_session(&session_path, &session)?;
     Ok(response)
+}
+
+fn project_symbol_queries(request: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "api",
+        "example",
+        "function",
+        "hello",
+        "how",
+        "implement",
+        "lisp",
+        "module",
+        "osiris",
+        "python",
+        "show",
+        "use",
+        "value",
+        "what",
+        "write",
+        "world",
+        "示例",
+        "函数",
+        "模块",
+        "项目",
+        "怎么用",
+        "如何用",
+        "写一个",
+        "实现",
+        "调用",
+    ];
+    let project_intent = [
+        "api",
+        "接口",
+        "函数",
+        "模块",
+        "怎么用",
+        "如何用",
+        "写一个",
+        "实现",
+        "调用",
+        "项目",
+        "how to use",
+        "implement",
+        "write",
+    ]
+    .iter()
+    .any(|marker| request.to_lowercase().contains(marker));
+    if !project_intent {
+        return Vec::new();
+    }
+    let mut queries = request
+        .split(|character: char| {
+            character.is_whitespace()
+                || character.is_ascii_punctuation()
+                || matches!(
+                    character,
+                    '，' | '。' | '？' | '！' | '：' | '“' | '”' | '（' | '）'
+                )
+        })
+        .map(str::trim)
+        .filter(|term| term.chars().count() >= 2)
+        .filter(|term| !STOP_WORDS.contains(&term.to_lowercase().as_str()))
+        .filter(|term| {
+            term.chars()
+                .any(|character| character.is_ascii_alphanumeric() || character >= '\u{4e00}')
+        })
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    queries.sort();
+    queries.dedup();
+    queries
 }
 
 fn language_service_fallback_answer(
@@ -362,11 +457,20 @@ fn build_prompt(
     } else {
         "OUTPUT GATE: Re-read the user request and compiler-owned evidence. If the user requests current-project APIs, project DSL, project symbols, or their source and no relevant language-service evidence is shown, the only permitted response is a toolCalls JSON object. Do not return an answer or examples yet."
     };
-    format!(
+    let mut prompt = format!(
         "You are Osiris Language Server Agent. Answer in locale {locale}. You explain Osiris and the current project and provide project-adapted examples. You are a read-only example and explanation assistant, not a coding agent. Retrieved syntax, manuals, standard API records, and compiler-owned language-service results are authoritative. Never invent symbols, modules, signatures, locations, or references; label model interpretation as inference.\n\nFACT BOUNDARY: Retrieved syntax and standard API records define the Osiris language. Workspace tools describe only the current project's symbols. Never use workspace search to decide whether Osiris supports syntax or a standard API. A workspace notFound result says nothing about language capabilities.\n\nReturn either read-only language-service tool calls or the final response. Answer language, syntax, standard-library, configuration, and generic example questions directly from retrieved material. Use workspace tools only when the answer genuinely depends on current-project symbols or source. If the request asks you to use, explain, locate, or adapt a current-project API and no relevant compiler-owned language-service evidence is present, you MUST request workspace tools before answering. Never substitute generic Osiris APIs for an uninspected project API. Never search generic concepts such as recursion, hello, print function, Python APIs, or facts already present in retrieved material.\n\n{tool_protocol} Use at most four calls per round. For project-specific feature requests, first search concise domain concepts, then inspect the best symbols with symbol-context before writing source. Expose ambiguity; never guess or request arbitrary paths.\n\nFinal format is one JSON object with answer (string), examples (array of objects with code), and references (array of strings). The exact shape is JSON like {{\"answer\":\"Concise factual answer.\",\"examples\":[{{\"code\":\"(module example.main)\\n\\n42\\n\"}}],\"references\":[]}}. Return JSON directly without reasoning, commentary, or Markdown fences. Always include all three keys; use an empty examples array when no example is requested or useful. The compiler owns languageService, compiled, evaluated, diagnostics, result, and final references; omit them. Put Osiris source only in examples. Return exactly one minimal example unless the user explicitly requests multiple distinct examples.\n\nConversation:\n{history}\n\nUser request:\n{request}\n\nRetrieved material:\n{}\n\nCompiler-owned language-service evidence:\n{}\n\nExample constraints: Each example is valid Osiris and a complete compilable module. Its first form is exactly a standalone module declaration such as `(module example.point)`; close that form and never put a body inside it. Include only required forms, and finish with the requested value expression. If the example defines a function, invoke it in the final top-level form so evaluation captures a real result, unless the user explicitly requests declaration-only source. Function return metadata precedes the function name: `(defn ^Int factorial [^Int n] ...)`. For Hello World, use the string `\"Hello, World!\"` as the final expression; Osiris has no implicit `io`, `print`, or `println` module. Do not add defn, export, output, IO, or empty cases unless required and documented in retrieved material. Never return generated Python; use documented `~python` interop only when explicitly required. A defn needs return and parameter types. Public osiris.core bindings and kernel operators are automatically referred. Operators such as + are not first-class values: `(reduce + ...)` and `(map + ...)` are invalid. Wrap them in a typed callback, for example `(fn [^Int total ^Int value] (+ total value))`. Adapt incomplete documentation snippets to these constraints.\n\n{output_gate}",
         material.text,
         serde_json::to_string_pretty(language_service).unwrap_or_else(|_| "[]".to_owned()),
-    )
+    );
+    if language_service
+        .iter()
+        .any(|evidence| evidence.operation == "workspace-search" && evidence.status == "ok")
+    {
+        prompt.push_str(
+            "\n\nPRE-FLIGHT RULE: A workspace search matched a project symbol. Inspect the relevant candidate with symbol-context before producing the final answer; do not answer from generic knowledge.\n",
+        );
+    }
+    prompt
 }
 
 fn build_repair_prompt(

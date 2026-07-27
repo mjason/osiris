@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Clone, Debug)]
 pub(super) struct WorkspaceBuffer {
     pub(super) uri: String,
     pub(super) source: String,

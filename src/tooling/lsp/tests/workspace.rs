@@ -41,6 +41,25 @@ fn project_document_uses_path_identity_and_dependency_interfaces() {
             .name,
         "demo.app"
     );
+    let first_fingerprint = state
+        .workspace_cache
+        .as_ref()
+        .expect("workspace analysis cache")
+        .fingerprint
+        .clone();
+    let provider_path = source_root.join("math.osr");
+    let provider_uri = format!("file://{}", provider_path.display());
+    let provider_source = fs::read_to_string(provider_path).expect("provider source");
+    state.did_open(&provider_uri, 1, provider_source);
+    assert_eq!(
+        state
+            .workspace_cache
+            .as_ref()
+            .expect("workspace analysis cache")
+            .fingerprint,
+        first_fingerprint,
+        "opening another file in an unchanged workspace should reuse analysis"
+    );
     drop(state);
     fs::remove_dir_all(root).expect("workspace cleanup");
 }
