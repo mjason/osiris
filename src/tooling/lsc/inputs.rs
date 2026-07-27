@@ -128,6 +128,11 @@ pub(super) fn fingerprint(
     let encoded = serde_json::to_vec(&json!({
         "schema": INPUT_SCHEMA,
         "compiler": crate::version(),
+        // The graph is a projection of compiler output, so two builds that
+        // report one version but analyze differently must not share an entry.
+        // A released version never changes within a build, and a local build
+        // changes on every source edit.
+        "compilerBuild": env!("OSIRIS_COMPILER_BUILD_HASH"),
         "language": crate::LANGUAGE_VERSION,
         "targetPython": project.target_python.to_string(),
         "strict": project.strict,

@@ -186,6 +186,9 @@ mod core_interface_cache {
                 "osiris-core-interface-v1",
                 standard_resource_hash(),
                 crate::version(),
+                // The entry is compiler output, so a build that reports one
+                // version but compiles differently must not reuse it.
+                env!("OSIRIS_COMPILER_BUILD_HASH"),
                 interface::COMPILER_ABI,
                 interface::LANGUAGE_ABI,
             ]
