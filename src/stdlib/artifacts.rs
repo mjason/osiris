@@ -20,7 +20,7 @@ mod source;
 
 #[cfg(test)]
 pub(super) use source::compilation_source_artifact;
-pub(crate) use source::{binding_metadata, binding_source_details, facade_macro_names};
+pub(crate) use source::{binding_metadata, facade_macro_names};
 use source::{compilation_sources, sources, standard_resource_hash, validate_standard_resources};
 pub use source::{source_artifact, source_artifact_by_uri};
 
@@ -117,8 +117,20 @@ pub fn validate_standard_artifacts() -> Result<(), String> {
 }
 
 pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
+    interface_artifact_ref(namespace).cloned()
+}
+
+/// Borrows a standard interface from the process-wide cache.
+///
+/// Callers that only read an interface — such as building the standard API
+/// catalog, which touches every namespace once per binding — should prefer
+/// this over [`interface_artifact`] to avoid cloning the whole model.
+pub fn interface_artifact_ref(namespace: &str) -> Result<&'static Interface, String> {
     if namespace == CORE_NAMESPACE {
-        return CORE_INTERFACE.get_or_init(compile_core_interface).clone();
+        return CORE_INTERFACE
+            .get_or_init(compile_core_interface)
+            .as_ref()
+            .map_err(Clone::clone);
     }
     let interfaces = INTERFACES.get_or_init(|| {
         validate_standard_artifacts()?;
@@ -140,7 +152,6 @@ pub fn interface_artifact(namespace: &str) -> Result<Interface, String> {
         .as_ref()
         .map_err(Clone::clone)?
         .get(namespace)
-        .cloned()
         .ok_or_else(|| format!("standard interface `{namespace}` is missing"))
 }
 

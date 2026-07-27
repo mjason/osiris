@@ -16,14 +16,14 @@ use crate::{
 mod api;
 mod artifacts;
 
-pub(crate) use api::retrieval_record;
 pub use api::{
     StandardApiRecord, StandardApiSelection, StandardSourceLocation, api_catalog, api_record,
-    query_api,
+    query_api, warm_api_catalog,
 };
 pub(crate) use artifacts::linked_standard_support;
 pub use artifacts::{
-    StandardArtifactResource, StandardArtifacts, interface_artifact, source_artifact,
+    StandardArtifactResource, StandardArtifacts, interface_artifact, interface_artifact_ref,
+    source_artifact,
     source_artifact_by_uri, standard_artifacts, validate_resources, validate_standard_artifacts,
 };
 

@@ -11,6 +11,10 @@ fn dispatch(
 ) -> Result<DispatchOutcome, LspStateError> {
     match method {
         "initialize" => {
+            // Building the standard API catalog takes about a second and every
+            // hover needs it. Warm it off the request thread so the first hover
+            // of a session does not pay for it.
+            crate::stdlib::warm_api_catalog();
             if let Some(locale) = find_string(params, &["locale"]) {
                 state.set_display_locale(locale);
             }

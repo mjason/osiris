@@ -8,10 +8,10 @@ pub struct OpenDocument {
     pub analysis: Analysis,
     pub semantic: SemanticDocument,
     pub identifier_lints: Vec<IdentifierLint>,
-    pub(super) function_interfaces: BTreeMap<String, interface::FunctionInterface>,
-    pub(super) macro_interfaces: BTreeMap<String, interface::MacroInterface>,
+    pub(super) function_interfaces: Arc<BTreeMap<String, interface::FunctionInterface>>,
+    pub(super) macro_interfaces: Arc<BTreeMap<String, interface::MacroInterface>>,
     pub(super) display_locale: Option<String>,
-    workspace_symbols: WorkspaceSymbolIndex,
+    workspace_symbols: Arc<WorkspaceSymbolIndex>,
 }
 
 impl OpenDocument {
@@ -47,10 +47,10 @@ impl OpenDocument {
 
 pub(super) struct ProjectDocumentAnalysis {
     pub(super) analysis: Analysis,
-    pub(super) function_interfaces: BTreeMap<String, interface::FunctionInterface>,
-    pub(super) macro_interfaces: BTreeMap<String, interface::MacroInterface>,
+    pub(super) function_interfaces: Arc<BTreeMap<String, interface::FunctionInterface>>,
+    pub(super) macro_interfaces: Arc<BTreeMap<String, interface::MacroInterface>>,
     pub(super) display_locale: Option<String>,
-    pub(super) workspace_symbols: WorkspaceSymbolIndex,
+    pub(super) workspace_symbols: Arc<WorkspaceSymbolIndex>,
 }
 
 /// Reusable result of analyzing one complete project snapshot. The source
@@ -63,10 +63,9 @@ pub(super) struct WorkspaceAnalysisCache {
     pub(super) buffers: Vec<super::WorkspaceBuffer>,
     pub(super) analyses: Vec<Analysis>,
     pub(super) workspace_diagnostics: Vec<crate::compiler::LocatedDiagnostic>,
-    pub(super) function_interfaces:
-        BTreeMap<String, interface::FunctionInterface>,
-    pub(super) macro_interfaces: BTreeMap<String, interface::MacroInterface>,
-    pub(super) workspace_symbols: super::WorkspaceSymbolIndex,
+    pub(super) function_interfaces: Arc<BTreeMap<String, interface::FunctionInterface>>,
+    pub(super) macro_interfaces: Arc<BTreeMap<String, interface::MacroInterface>>,
+    pub(super) workspace_symbols: Arc<super::WorkspaceSymbolIndex>,
     pub(super) display_locale: Option<String>,
 }
 

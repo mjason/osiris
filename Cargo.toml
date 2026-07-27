@@ -33,8 +33,6 @@ unicode-normalization = "0.1"
 unicode-width = "0.2"
 json5 = "0.4"
 globset = "0.4"
-dotenvy = "0.15"
-ureq = { version = "2.12", features = ["json"] }
 # Ruff 0.0.4 expects the 0.9 compact_str integration retained by 0.10.1.
 get-size2 = "=0.10.1"
 async-graphql = { version = "=7.0.16", default-features = false }

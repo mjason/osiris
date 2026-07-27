@@ -1,7 +1,7 @@
 //! Reusable Language Server Console boundary.
 //!
 //! LSC speaks JSON-RPC to the in-process language server and exposes bounded,
-//! read-only composite operations for command-line clients and LSA. It is the
+//! read-only composite operations for command-line clients. It is the
 //! only layer outside the editor transport that understands LSP capabilities.
 
 use std::{

@@ -119,3 +119,61 @@ pub fn span_to_range(source: &str, span: Span) -> Range {
         end: offset_to_position(source, span.end),
     }
 }
+
+/// Byte offsets of every line start, so repeated span conversions over one
+/// source are logarithmic instead of rescanning the prefix each time.
+///
+/// Converting a whole module's symbol occurrences one call at a time is
+/// quadratic in the file size; indexing builds a project symbol table in one
+/// linear pass.
+#[derive(Clone, Debug)]
+pub struct LineIndex {
+    line_starts: Vec<usize>,
+}
+
+impl LineIndex {
+    #[must_use]
+    pub fn new(source: &str) -> Self {
+        let mut line_starts = vec![0];
+        line_starts.extend(
+            source
+                .bytes()
+                .enumerate()
+                .filter(|(_, byte)| *byte == b'\n')
+                .map(|(offset, _)| offset + 1),
+        );
+        Self { line_starts }
+    }
+
+    /// Converts a UTF-8 byte offset to an LSP UTF-16 position. Equivalent to
+    /// [`offset_to_position`] for the source this index was built from.
+    #[must_use]
+    pub fn position(&self, source: &str, offset: usize) -> Position {
+        let offset = offset.min(source.len());
+        let offset = if source.is_char_boundary(offset) {
+            offset
+        } else {
+            (0..offset)
+                .rev()
+                .find(|candidate| source.is_char_boundary(*candidate))
+                .unwrap_or(0)
+        };
+        let line = self
+            .line_starts
+            .partition_point(|start| *start <= offset)
+            .saturating_sub(1);
+        let line_start = self.line_starts.get(line).copied().unwrap_or(0);
+        Position {
+            line: line as u32,
+            character: source[line_start..offset].encode_utf16().count() as u32,
+        }
+    }
+
+    #[must_use]
+    pub fn range(&self, source: &str, span: Span) -> Range {
+        Range {
+            start: self.position(source, span.start),
+            end: self.position(source, span.end),
+        }
+    }
+}

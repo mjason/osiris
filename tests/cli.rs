@@ -132,8 +132,6 @@ mod formatting;
 mod initialization;
 #[path = "cli/inspection.rs"]
 mod inspection;
-#[path = "cli/lsa.rs"]
-mod lsa;
 #[path = "cli/protocol.rs"]
 mod protocol;
 #[path = "cli/watching.rs"]

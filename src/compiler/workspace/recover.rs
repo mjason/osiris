@@ -8,7 +8,7 @@ pub fn analyze_workspace_recovering(
     external_interfaces: &BTreeMap<String, interface::Interface>,
 ) -> Vec<Analysis> {
     let prepared = inputs
-        .iter()
+        .par_iter()
         .enumerate()
         .map(|(input_index, input)| {
             let document = reader::read(input.source);
@@ -37,7 +37,7 @@ pub fn analyze_workspace_recovering(
     }
 
     prepared
-        .iter()
+        .par_iter()
         .map(|unit| {
             let imported_phase = imported_phase_modules(&unit.header, &interfaces);
             analyze_document(

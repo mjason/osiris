@@ -598,7 +598,5 @@ Generated Python still has no runtime dependency on `osiris-lang`.
 Run `osr fmt` and `osr check` after writing or changing source. Use `osr lsc`
 for CLI access to the same diagnostics, hover, completion, signatures,
 navigation, symbols, and semantic facts that IDEs receive through LSP.
-Use `osr lsa "<request>"` when you need an explanation or a complete generated
-example. LSA marks each example with its compiler-validation result and never
-edits project source. Pass `--file <path>` when an explanation should include a
-specific local source file.
+Use `osr check` to validate complete examples; diagnostics remain local and
+deterministic.

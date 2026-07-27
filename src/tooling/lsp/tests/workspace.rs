@@ -393,10 +393,10 @@ fn external_interface_without_source_has_no_definition_location() {
         Vec::new(),
         ProjectDocumentAnalysis {
             analysis,
-            function_interfaces,
-            macro_interfaces,
+            function_interfaces: std::sync::Arc::new(function_interfaces),
+            macro_interfaces: std::sync::Arc::new(macro_interfaces),
             display_locale: None,
-            workspace_symbols,
+            workspace_symbols: std::sync::Arc::new(workspace_symbols),
         },
     );
     let mut state = LspState::new();

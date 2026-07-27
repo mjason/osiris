@@ -45,6 +45,28 @@ pub(super) struct StandardSource {
 }
 
 static SOURCES: OnceLock<Result<BTreeMap<&'static str, StandardSource>, String>> = OnceLock::new();
+static CORE_FACADE_SOURCES: OnceLock<Vec<StandardSource>> = OnceLock::new();
+
+/// The core facade sources, read and line-indexed once.
+///
+/// `binding_source_location` consults every facade for each core binding, so
+/// reading and re-indexing them per lookup made building the standard API
+/// catalog quadratic in the number of core exports.
+fn core_facade_sources() -> &'static [StandardSource] {
+    CORE_FACADE_SOURCES.get_or_init(|| {
+        CORE_FACADE_NAMESPACES
+            .iter()
+            .map(|namespace| {
+                let text = packaged_source(namespace).expect("validated standard facade source");
+                StandardSource {
+                    uri: format!("osiris-stdlib:///{}.osr", namespace.replace('.', "/")),
+                    lines: declaration_lines(CORE_NAMESPACE, &text),
+                    text,
+                }
+            })
+            .collect()
+    })
+}
 
 pub(crate) fn validate_standard_resources() -> Result<(), String> {
     provider::validate()?;
@@ -84,16 +106,10 @@ pub(super) fn binding_source_location(
     binding: StandardBinding,
 ) -> super::super::StandardSourceLocation {
     if binding.namespace == CORE_NAMESPACE {
-        for namespace in CORE_FACADE_NAMESPACES {
-            let text = packaged_source(namespace).expect("validated standard facade source");
-            let source = StandardSource {
-                uri: format!("osiris-stdlib:///{}.osr", namespace.replace('.', "/")),
-                lines: declaration_lines(CORE_NAMESPACE, &text),
-                text,
-            };
+        for source in core_facade_sources() {
             if let Some(line) = source.lines.get(binding.id().as_str()) {
                 return super::super::StandardSourceLocation {
-                    uri: source.uri,
+                    uri: source.uri.clone(),
                     line: *line,
                     column: 1,
                 };
@@ -340,96 +356,43 @@ fn declaration_line_number(source: &str, span: Span, name: &str) -> u32 {
         .map_or(base, |offset| base + offset as u32)
 }
 
-pub(crate) fn binding_metadata(binding: StandardBinding) -> Result<Vec<MetadataEntry>, String> {
-    binding_source_details(binding).map(|details| details.metadata)
-}
-
-pub(crate) struct BindingSourceDetails {
-    pub(crate) metadata: Vec<MetadataEntry>,
-    pub(crate) signature: String,
-    pub(crate) call_shape: String,
-}
-
-pub(crate) fn binding_source_details(
-    binding: StandardBinding,
-) -> Result<BindingSourceDetails, String> {
-    let source = sources()?
-        .get(binding.namespace)
-        .ok_or_else(|| format!("unknown standard namespace `{}`", binding.namespace))?;
-    let lowered = ast::lower_document(&crate::reader::read(&source.text));
-    let item = matching_declaration(&lowered.module, binding)
-        .ok_or_else(|| format!("standard source is missing `{}`", binding.id().as_str()))?;
-    let (metadata, signature, parameters) = match &item.kind {
-        ast::ItemKind::Def(definition) => definition.type_annotation.as_ref().map_or_else(
-            || (definition.metadata.clone(), "Any".to_owned(), None),
-            |ty| {
-                (
-                    definition.metadata.clone(),
-                    source_slice(&source.text, ty.span),
-                    None,
-                )
-            },
-        ),
-        ast::ItemKind::Defn(function) => {
-            let parameter_types = function
-                .params
+/// The lowered surface module of every standard namespace, built once.
+///
+/// Metadata lookups are per binding, so reading and lowering the namespace on
+/// each call re-parsed the same source hundreds of times while assembling the
+/// standard API catalog.
+fn lowered_sources() -> Result<&'static BTreeMap<&'static str, ast::Module>, String> {
+    static LOWERED: OnceLock<Result<BTreeMap<&'static str, ast::Module>, String>> = OnceLock::new();
+    LOWERED
+        .get_or_init(|| {
+            Ok(sources()?
                 .iter()
-                .map(|parameter| {
-                    parameter.type_annotation.as_ref().map_or_else(
-                        || "Any".to_owned(),
-                        |ty| source_slice(&source.text, ty.span),
+                .map(|(namespace, source)| {
+                    (
+                        *namespace,
+                        ast::lower_document(&crate::reader::read(&source.text)).module,
                     )
                 })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let result = function.return_type.as_ref().map_or_else(
-                || "Any".to_owned(),
-                |ty| source_slice(&source.text, ty.span),
-            );
-            (
-                function.metadata.clone(),
-                format!("Fn[[{parameter_types}], {result}]"),
-                Some(function.params.as_slice()),
-            )
-        }
-        ast::ItemKind::Defstruct(structure) => (
-            structure.metadata.clone(),
-            structure.name.canonical.clone(),
-            None,
-        ),
-        ast::ItemKind::Defmacro(macro_) => (
-            macro_.metadata.clone(),
-            "Macro".to_owned(),
-            Some(macro_.params.as_slice()),
-        ),
-        _ => (Vec::new(), "Any".to_owned(), None),
+                .collect())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+pub(crate) fn binding_metadata(binding: StandardBinding) -> Result<Vec<MetadataEntry>, String> {
+    let module = lowered_sources()?
+        .get(binding.namespace)
+        .ok_or_else(|| format!("unknown standard namespace `{}`", binding.namespace))?;
+    let item = matching_declaration(module, binding)
+        .ok_or_else(|| format!("standard source is missing `{}`", binding.id().as_str()))?;
+    let metadata = match &item.kind {
+        ast::ItemKind::Def(definition) => &definition.metadata,
+        ast::ItemKind::Defn(function) => &function.metadata,
+        ast::ItemKind::Defstruct(structure) => &structure.metadata,
+        ast::ItemKind::Defmacro(macro_) => &macro_.metadata,
+        _ => return Ok(Vec::new()),
     };
-    let call_shape = parameters.map_or_else(
-        || binding.canonical.to_owned(),
-        |parameters| {
-            let parameters = parameters.iter().map(|parameter| {
-                let name = if parameter.variadic {
-                    format!("{}...", parameter.name.canonical)
-                } else {
-                    parameter.name.canonical.clone()
-                };
-                if parameter.default.is_some() {
-                    format!("[{name}]")
-                } else {
-                    name
-                }
-            });
-            let parts = std::iter::once(binding.canonical.to_owned())
-                .chain(parameters)
-                .collect::<Vec<_>>();
-            format!("({})", parts.join(" "))
-        },
-    );
-    Ok(BindingSourceDetails {
-        metadata: interface::normalize_metadata(&metadata).map_err(|error| error.to_string())?,
-        signature,
-        call_shape,
-    })
+    interface::normalize_metadata(metadata).map_err(|error| error.to_string())
 }
 
 fn matching_declaration(module: &ast::Module, binding: StandardBinding) -> Option<&ast::Item> {
@@ -467,12 +430,4 @@ fn declaration_matches(item: &ast::Item, binding: StandardBinding) -> bool {
         }
         _ => false,
     }
-}
-
-fn source_slice(source: &str, span: Span) -> String {
-    source
-        .get(span.start..span.end)
-        .unwrap_or("Any")
-        .trim()
-        .to_owned()
 }

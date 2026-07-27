@@ -45,10 +45,8 @@ comments and trailing commas. The supported fields are:
 - `targetPython`: the single Python language target; defaults to `"3.11"`.
 - `strict`: whether unresolved dynamic boundaries and incomplete public
   contracts are errors; defaults to `true`.
-- `displayLocale`: a BCP 47 locale used by editor presentation and as an LSA
-  fallback, for example `"zh-CN"`, `"en"`, or `"ja"`.
-- `agent`: optional `model`, `baseUrl`, and `wireApi` settings for LSA. The API
-  key belongs in `OSR_API_KEY` or `.env`, never in `osiris.jsonc`.
+- `displayLocale`: a BCP 47 locale used by editor presentation, for example
+  `"zh-CN"`, `"en"`, or `"ja"`.
 
 For example, this changes the complete build destination while excluding test
 fixtures inside the source tree:
@@ -153,8 +151,8 @@ Osiris modules, symbols, types, Rich Metadata, examples, imports, calls,
 references, exports, and aliases. It includes statically discovered Osiris
 extension interfaces used by the project, but not ordinary Python packages or
 raw embedded-Python bodies. Results use stable `osiris-workspace:///` source
-URIs, so neither the cache nor an LSA request exposes the machine's project
-path. Deleting the database only causes it to be rebuilt.
+URIs, so the cache does not retain the machine's project path. Deleting the
+database only causes it to be rebuilt.
 
 Graph-only searches validate a content fingerprint before full workspace
 analysis. A per-input manifest means the normal check only inspects file
@@ -171,58 +169,6 @@ hashed inputs, while a manual rebuild reports zero reused hashes.
 
 `osr lsp` runs the editor protocol over standard Content-Length framed stdin
 and stdout. It uses the same compiler queries and formatter as LSC and `fmt`.
-
-## Language Server Agent
-
-`osr lsa "<request>"` explains Osiris APIs and returns complete examples that
-have been formatted and checked by the compiler. It is deliberately not a
-coding agent: it does not edit source or run shell commands. LSA requires a
-configured Osiris/uv project; there is no reduced standalone evaluation mode.
-Each example is
-compiled as a temporary entry in the current Osiris workspace and executed
-with the current project Python. Normal Osiris imports, extension interfaces,
-`py/import`, and `~python` use the same staging semantics as `osr run`; the
-provider still returns only Osiris source, never generated Python.
-JSON is the default output so another agent can consume the result directly;
-use `--format text` for terminal reading.
-Successful execution sets `evaluated: true` and replaces any model-authored
-result with the captured runtime value. Execution uses a credential-cleared
-temporary runtime with finite time and output limits. Compilation or execution
-failure may cause one diagnostic-driven repair request; LSA never enters an
-unbounded generation loop.
-
-For a project-aware request, LSA may perform up to four rounds of read-only LSC
-queries. It searches the semantic graph, follows relevant relationships, and
-then asks LSP for applicable hover, definition, signature-help, reference,
-document-symbol, and workspace-symbol facts. Missing capabilities, ambiguous
-symbols, unavailable source, and request failures remain explicit evidence;
-LSA does not silently choose a candidate. Use an exact source anchor when the
-question concerns a particular expression:
-
-```console
-osr lsa --at src/app.osr:18:7 "What does this API do, and show a valid example"
-```
-
-The JSON response contains compiler-owned `languageService` entries. Each
-entry records the operation, status, bounded result, and source URI/range.
-Model-authored evidence is discarded.
-
-Every response includes a `sessionId`. Continue a conversation with
-`osr lsa --session <id> "<follow-up>"`. Editable JSONC history is stored under
-`.osiris/cache/agent/<session-id>/session.jsonc`. `--file <path>` explicitly
-adds one `.osr`/`.osri` file or the project's `osiris.jsonc` as initial context.
-Project configuration is never uploaded implicitly. For project-aware source
-questions, only LSC-selected, bounded Osiris facts and enclosing forms are sent;
-the whole workspace is never sent. Provider URLs and credential-shaped values
-are redacted, and `.env`, excluded paths, output, cache, and raw Python
-implementation bodies are rejected.
-
-LSA uses the OpenAI-compatible protocol selected by the `agent` object in
-`osiris.jsonc`: `responses` calls `/responses`, while `chatCompletions` calls
-`/chat/completions` and is the compatibility-first default. `OSR_API_KEY` is
-required. `OSR_MODEL`, `OSR_BASE_URL`, and `OSR_WIRE_API` override project
-values, and a project-root `.env` is supported. The locale precedence is
-`--locale`, project `displayLocale`, then request language detection.
 
 ## Embedded Documentation
 

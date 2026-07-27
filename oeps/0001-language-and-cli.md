@@ -12,8 +12,8 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-26
-revision: 18
+updated: 2026-07-27
+revision: 19
 requires: [0]
 replaces: []
 superseded-by: null
@@ -1018,94 +1018,13 @@ record the language compatibility version where compatibility is evaluated.
 A compiler package patch or minor release MUST NOT implicitly change language
 compatibility merely because the package version changed.
 
-### Language Server Agent
+### Withdrawn Language Server Agent experiment
 
-**OEP-0001-R079:** The finite Language Server Agent command MUST use this
-grammar:
-
-```text
-osr lsa [--session <id>] [--locale <bcp47>] [--file <path>]
-        [--format json|text] <request>
-```
-
-`lsa` means Language Server Agent. It is an Osiris explanation and example
-service, not a coding agent. It MAY retrieve embedded syntax, standard-library
-records and examples, compiler facts, prior LSA turns, and a source file
-explicitly selected with `--file`. It MUST NOT apply patches, execute shell
-commands, invoke a Python agent runtime, or modify project source and package
-metadata.
-
-**OEP-0001-R080:** LSA MUST return one versioned JSON object by default. Every
-result MUST contain `sessionId`, `answer`, `examples`, and `references`.
-`--format text` MAY provide a human projection of the same result. Every Osiris
-example MUST be passed through the canonical reader/formatter and compiler
-before it is returned. The result MUST state whether compilation succeeded,
-retain validation diagnostics when it failed, and MUST NOT claim evaluation
-unless the generated program was actually evaluated. Model text is not
-compiler evidence. A compiled example eligible for automatic evaluation MUST
-be executed with the current project Python, and `result` MUST contain only the
-captured runtime value rather than a model prediction. Provider output MUST
-contain Osiris source, never generated Python. Evaluation MUST compile the
-example as a temporary entry in the current project workspace, resolve normal
-Osiris imports and extension interfaces, emit every generated workspace module
-and private runtime component, and use the same embedded-Python and Python
-import semantics as `osr run`. Evaluation MUST use a private temporary runtime
-distribution, remove credentials and unrelated environment variables, enforce
-finite time and output limits, and preserve a runtime failure as a diagnostic.
-A declaration-only module MAY be evaluated successfully with a null result.
-When one provider response contains both successful and failed example
-candidates, LSA MUST return only the candidates that compiled and evaluated
-successfully. When the request requires an example and no candidate succeeds
-after the one bounded repair request, LSA MUST replace the model-authored answer
-with a compiler-owned validation-failure statement and retain the failed
-candidate diagnostics only as failure evidence. It MUST NOT present the model's
-explanation or failed source as a correct answer.
-When the provider omits its answer after obtaining a successful symbol-context
-result, LSA MAY project the compiler-owned hover, signature, and definition
-location directly as a factual fallback. Such a projection MUST contain no
-model inference and MUST NOT trigger an example-repair request when the caller
-explicitly requested no example.
-
-**OEP-0001-R081:** LSA locale selection MUST use a well-formed canonical BCP 47
-tag and the precedence `--locale`, project `displayLocale`, then conservative
-request-language detection. Locale changes presentation only. LSA differs from
-LSC here: LSC preserves authored `:default` semantics for finite compiler
-queries, while LSA generates a natural-language answer for the caller.
-
-**OEP-0001-R082:** LSA follow-up requests MUST name a project-local session ID.
-Session history MUST be editable JSONC, use a versioned schema, be replaced
-atomically, remain outside build artifacts, and never contain an API key.
-Malformed, unknown-schema, mismatched, oversized, or path-escaping sessions
-MUST fail closed. Every response, including the first turn, MUST return its
-session ID.
-
-**OEP-0001-R083:** Each LSA turn MUST use one finite initial OpenAI-compatible
-exchange, MAY continue it only through the bounded read-only tool protocol
-below, and MAY use at most one additional request to repair examples rejected
-by compiler diagnostics. It MUST NOT enter an unbounded model/validation loop.
-The initial wire adapters are `responses`, using `POST /responses`, and
-`chatCompletions`, using `POST /chat/completions`; selection MUST be explicit
-configuration and MUST NOT silently retry a different protocol. Only the
-explicitly selected source file and bounded retrieved documentation/context MAY
-be sent to that provider; LSA MUST NOT implicitly upload the project source
-tree. Provider failures MUST be reported without exposing credentials. LSA
-MUST not be required by the reader, compiler, formatter, LSC, LSP, build, or
-generated program.
-
-For a Chat Completions provider that supports native function calling, LSA
-SHOULD expose its read-only LSC operations as native tools rather than asking
-the model to encode tool calls in prose JSON. It MUST replay the assistant
-`tool_calls` message and return each compiler-owned result with the matching
-`role: tool` and `tool_call_id`. Tool rounds and total calls MUST be bounded.
-Final DeepSeek responses MUST use JSON Mode, explicitly describe and exemplify
-the required JSON object in the prompt, disable `thinking`, and omit
-`reasoning_effort`. Empty or structurally incomplete JSON is a failed provider
-response, not an answer. Static instructions and schemas SHOULD remain a stable
-message prefix so providers may reuse an automatic prefix/KV cache; retrieved
-material, conversation, and compact tool evidence follow that prefix. Search
-results, references, and source MUST be bounded before they are sent back to
-the provider, without discarding the selected definition, signature,
-documentation, or source location.
+The experimental network-backed Language Server Agent and `osr lsa` command
+were withdrawn before language stabilization. They are not part of the Osiris
+language or CLI contract. Local, deterministic language intelligence remains
+available through LSC and LSP; applications may build separate AI experiences
+on those public facts without adding a provider client to the compiler.
 
 ## Rationale
 
@@ -1295,15 +1214,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
-- Revision 18, 2026-07-26: Required bounded execution evidence for eligible
-  LSA examples and prohibited model-predicted results.
-- Revision 17, 2026-07-25: Added an explicit `chatCompletions` wire adapter
-  after verifying that the OpenCode `@ai-sdk/openai-compatible` provider uses
-  `/chat/completions`; retained Responses without implicit protocol fallback,
-  and bounded compiler-diagnostic example repair to one additional request.
-- Revision 16, 2026-07-25: Defined `osr lsa` as the finite Language Server
-  Agent for explanations and compiler-validated examples, including locale,
-  session, provider, source-disclosure, and non-coding-agent boundaries.
+- Revision 19, 2026-07-27: Withdrew the experimental network-backed Language
+  Server Agent and `osr lsa` before language stabilization; retained local LSC
+  and LSP capabilities as the public tooling boundary.
 - Revision 15, 2026-07-25: Defined generic embedded blocks as ordinary
   exportable `Str` bindings, made embedded Python labels private provider
   handles used by symbolic `extern python`, and added static Rich Metadata

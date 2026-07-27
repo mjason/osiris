@@ -150,10 +150,10 @@ impl LspState {
     }
 
     fn refresh_workspace_symbols(&mut self, updated: &OpenDocument) {
-        let index = updated.workspace_symbols.clone();
+        let index = Arc::clone(&updated.workspace_symbols);
         for document in self.documents.values_mut() {
             if index.source_uris.contains(&document.uri) {
-                document.workspace_symbols = index.clone();
+                document.workspace_symbols = Arc::clone(&index);
             }
         }
     }
@@ -174,10 +174,10 @@ impl LspState {
                 let workspace_symbols = build_single_symbol_index(&analysis, &uri, &text);
                 ProjectDocumentAnalysis {
                     analysis,
-                    function_interfaces: BTreeMap::new(),
-                    macro_interfaces: BTreeMap::new(),
+                    function_interfaces: Arc::new(BTreeMap::new()),
+                    macro_interfaces: Arc::new(BTreeMap::new()),
                     display_locale: None,
-                    workspace_symbols,
+                    workspace_symbols: Arc::new(workspace_symbols),
                 }
             });
         frontend.analysis.document = snapshot;
@@ -185,8 +185,20 @@ impl LspState {
     }
 
     fn analyze_project_document(&mut self, uri: &str, text: &str) -> Option<ProjectDocumentAnalysis> {
+        // Stage timings for one notification, on the same `OSIRIS_TIMINGS`
+        // switch the workspace compiler uses.
+        let timings = std::env::var_os("OSIRIS_TIMINGS").is_some();
+        let t0 = std::time::Instant::now();
+        macro_rules! lap {
+            ($label:literal) => {
+                if timings {
+                    eprintln!("  lsp lap {:22} {:?}", $label, t0.elapsed());
+                }
+            };
+        }
         let source_path = file_uri_to_path(uri)?;
         let project = ProjectConfig::discover(&source_path).ok()?;
+        lap!("discover");
         let target_path = fs::canonicalize(&source_path).ok()?;
         let target_module = project.module_name_for_source(&source_path).ok()?;
 
@@ -231,118 +243,114 @@ impl LspState {
             });
         }
         let target_index = target_index?;
+        lap!("collect+read files");
         let fingerprint = workspace_fingerprint(&project, &buffers, &self.site_roots);
-        if let Some(cache) = self.workspace_cache.as_ref()
-            && cache.project_root == project.root
-            && cache.fingerprint == fingerprint
-        {
-            let mut analysis = cache.analyses.get(target_index)?.clone();
-            analysis.diagnostics.extend(
-                cache
-                    .workspace_diagnostics
-                    .iter()
-                    .filter(|located| located.input_index == target_index)
-                    .map(|located| located.diagnostic.clone()),
-            );
-            analysis.diagnostics.sort_by(|left, right| {
-                (left.span.start, left.span.end, left.code, &left.message).cmp(&(
-                    right.span.start,
-                    right.span.end,
-                    right.code,
-                    &right.message,
-                ))
-            });
-            analysis.diagnostics.dedup_by(|left, right| {
-                left.span == right.span && left.code == right.code && left.message == right.message
-            });
-            let workspace_symbols = remap_workspace_uri(
-                cache.workspace_symbols.clone(),
-                cache.buffers.get(target_index)?.uri.as_str(),
-                uri,
-            );
-            return Some(ProjectDocumentAnalysis {
-                analysis,
-                function_interfaces: cache.function_interfaces.clone(),
-                macro_interfaces: cache.macro_interfaces.clone(),
-                display_locale: cache.display_locale.clone(),
-                workspace_symbols,
+        lap!("fingerprint");
+        let reusable = self.workspace_cache.as_ref().is_some_and(|cache| {
+            cache.project_root == project.root && cache.fingerprint == fingerprint
+        });
+        if !reusable {
+            let inputs = buffers
+                .iter()
+                .map(|buffer| CompileInput::new(&buffer.source, &buffer.options))
+                .collect::<Vec<_>>();
+            let external_interfaces = load_project_interfaces(&project, &self.site_roots)?;
+            lap!("load interfaces");
+            let workspace = compiler::analyze_workspace(&inputs, &external_interfaces);
+            lap!("analyze_workspace");
+            let recovering = workspace.has_errors();
+            let (analyses, workspace_diagnostics) = if recovering {
+                (
+                    compiler::analyze_workspace_recovering(&inputs, &external_interfaces),
+                    workspace.diagnostics,
+                )
+            } else {
+                (
+                    workspace
+                        .units
+                        .into_iter()
+                        .map(|unit| unit.analysis)
+                        .collect(),
+                    Vec::new(),
+                )
+            };
+            lap!("recovering pass");
+            if !recovering {
+                debug_assert_eq!(analyses.get(target_index)?.hir.name, target_module);
+            }
+            let function_interfaces = collect_function_interfaces(&analyses, &external_interfaces);
+            let macro_interfaces = collect_macro_interfaces(&analyses, &external_interfaces);
+            lap!("collect interfaces");
+            let workspace_symbols = build_project_symbol_index(&analyses, &buffers);
+            lap!("symbol index");
+            self.workspace_cache = Some(WorkspaceAnalysisCache {
+                project_root: project.root.clone(),
+                fingerprint,
+                buffers,
+                analyses,
+                workspace_diagnostics,
+                function_interfaces: Arc::new(function_interfaces),
+                macro_interfaces: Arc::new(macro_interfaces),
+                workspace_symbols: Arc::new(workspace_symbols),
+                display_locale: project.display_locale,
             });
         }
-        let inputs = buffers
-            .iter()
-            .map(|buffer| CompileInput::new(&buffer.source, &buffer.options))
-            .collect::<Vec<_>>();
-        let external_interfaces = load_project_interfaces(&project, &self.site_roots)?;
-        let workspace = compiler::analyze_workspace(&inputs, &external_interfaces);
-        let recovering = workspace.has_errors();
-        let (analyses, workspace_diagnostics) = if recovering {
-            (
-                compiler::analyze_workspace_recovering(&inputs, &external_interfaces),
-                workspace.diagnostics,
-            )
-        } else {
-            (
-                workspace
-                    .units
-                    .into_iter()
-                    .map(|unit| unit.analysis)
-                    .collect(),
-                Vec::new(),
-            )
-        };
-        let function_interfaces = collect_function_interfaces(&analyses, &external_interfaces);
-        let macro_interfaces = collect_macro_interfaces(&analyses, &external_interfaces);
-        let workspace_symbols = build_project_symbol_index(&analyses, &buffers);
-        self.workspace_cache = Some(WorkspaceAnalysisCache {
-            project_root: project.root.clone(),
-            fingerprint,
-            buffers: buffers.clone(),
-            analyses: analyses.clone(),
-            workspace_diagnostics: workspace_diagnostics.clone(),
-            function_interfaces: function_interfaces.clone(),
-            macro_interfaces: macro_interfaces.clone(),
-            workspace_symbols: workspace_symbols.clone(),
-            display_locale: project.display_locale.clone(),
-        });
-        let mut analysis = analyses.into_iter().nth(target_index)?;
-        analysis.diagnostics.extend(
-            workspace_diagnostics
-                .into_iter()
-                .filter(|located| located.input_index == target_index)
-                .map(|located| located.diagnostic),
-        );
-        analysis.diagnostics.sort_by(|left, right| {
-            (left.span.start, left.span.end, left.code, &left.message).cmp(&(
-                right.span.start,
-                right.span.end,
-                right.code,
-                &right.message,
-            ))
-        });
-        analysis.diagnostics.dedup_by(|left, right| {
-            left.span == right.span && left.code == right.code && left.message == right.message
-        });
-        if !recovering {
-            debug_assert_eq!(analysis.hir.name, target_module);
-        }
-        Some(ProjectDocumentAnalysis {
-            analysis,
-            function_interfaces,
-            macro_interfaces,
-            display_locale: project.display_locale,
-            workspace_symbols,
-        })
+        let projected = project_document_from_cache(self.workspace_cache.as_ref()?, target_index, uri);
+        lap!("project from cache");
+        projected
     }
 }
 
+/// Projects one document out of the shared workspace analysis. Everything the
+/// editor queries is reference-counted, so only the target module's diagnostics
+/// are materialized per notification.
+fn project_document_from_cache(
+    cache: &WorkspaceAnalysisCache,
+    target_index: usize,
+    uri: &str,
+) -> Option<ProjectDocumentAnalysis> {
+    let mut analysis = cache.analyses.get(target_index)?.clone();
+    analysis.diagnostics.extend(
+        cache
+            .workspace_diagnostics
+            .iter()
+            .filter(|located| located.input_index == target_index)
+            .map(|located| located.diagnostic.clone()),
+    );
+    analysis.diagnostics.sort_by(|left, right| {
+        (left.span.start, left.span.end, left.code, &left.message).cmp(&(
+            right.span.start,
+            right.span.end,
+            right.code,
+            &right.message,
+        ))
+    });
+    analysis.diagnostics.dedup_by(|left, right| {
+        left.span == right.span && left.code == right.code && left.message == right.message
+    });
+    let workspace_symbols = remap_workspace_uri(
+        Arc::clone(&cache.workspace_symbols),
+        cache.buffers.get(target_index)?.uri.as_str(),
+        uri,
+    );
+    Some(ProjectDocumentAnalysis {
+        analysis,
+        function_interfaces: Arc::clone(&cache.function_interfaces),
+        macro_interfaces: Arc::clone(&cache.macro_interfaces),
+        display_locale: cache.display_locale.clone(),
+        workspace_symbols,
+    })
+}
+
 fn remap_workspace_uri(
-    mut index: WorkspaceSymbolIndex,
+    index: Arc<WorkspaceSymbolIndex>,
     from: &str,
     to: &str,
-) -> WorkspaceSymbolIndex {
+) -> Arc<WorkspaceSymbolIndex> {
     if from == to {
         return index;
     }
+    let mut index = (*index).clone();
     if index.source_uris.remove(from) {
         index.source_uris.insert(to.to_owned());
     }
@@ -383,7 +391,7 @@ fn remap_workspace_uri(
             relation.uri = to.to_owned();
         }
     }
-    index
+    Arc::new(index)
 }
 
 fn workspace_fingerprint(

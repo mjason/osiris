@@ -49,48 +49,8 @@
       "type": "string",
       "minLength": 1,
       "default": "zh-CN",
-      "description": "Default BCP 47 language tag for LSP labels and documentation. It never changes binding identity or generated code. LSA uses it after an explicit --locale and before request-language detection.",
+      "description": "Default BCP 47 language tag for LSP labels and documentation. It never changes binding identity or generated code.",
       "examples": ["zh-CN", "en", "ja"]
-    },
-    "agent": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Optional OpenAI-compatible provider settings for osr lsa. Keep OSR_API_KEY in the environment or project .env, never in this object.",
-      "properties": {
-        "model": {
-          "type": "string",
-          "minLength": 1,
-          "default": "deepseek-v4-flash",
-          "description": "Provider model identifier. OSR_MODEL takes precedence."
-        },
-        "baseUrl": {
-          "type": "string",
-          "format": "uri",
-          "default": "https://api.deepseek.com/v1",
-          "description": "OpenAI-compatible API base URL. OSR_BASE_URL takes precedence; credentials must not be included in the URL."
-        },
-        "wireApi": {
-          "type": "string",
-          "enum": ["responses", "chatCompletions"],
-          "default": "chatCompletions",
-          "description": "OpenAI-compatible wire protocol: responses calls /responses; chatCompletions calls /chat/completions. OSR_WIRE_API takes precedence."
-        },
-        "thinking": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable provider thinking mode. OSR_THINKING takes precedence. DeepSeek receives an enabled or disabled thinking object."
-        },
-        "reasoningEffort": {
-          "type": "string",
-          "enum": ["low", "medium", "high"],
-          "description": "Optional provider reasoning effort. It is omitted by default. OSR_REASONING_EFFORT takes precedence."
-        },
-        "stream": {
-          "type": "boolean",
-          "default": false,
-          "description": "Request an SSE Chat Completions response and aggregate it before emitting the stable LSA JSON result. OSR_STREAM takes precedence."
-        }
-      }
     }
   },
   "$defs": {

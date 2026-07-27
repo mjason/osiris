@@ -8,8 +8,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use unicode_normalization::UnicodeNormalization;
@@ -47,7 +49,7 @@ use state::ProjectDocumentAnalysis;
 pub use state::{LspState, OpenDocument};
 use symbols::*;
 use text::{apply_content_change, escape_markdown, node_id_for_span};
-pub use text::{offset_to_position, position_to_offset, span_to_range};
+pub use text::{LineIndex, offset_to_position, position_to_offset, span_to_range};
 use workspace::*;
 
 #[cfg(test)]

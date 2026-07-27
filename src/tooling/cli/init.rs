@@ -44,17 +44,7 @@ const PROJECT_CONFIG: &str = r#"{
   "strict": true,
 
   // LSP 展示语言使用标准 BCP 47 tag，例如 zh-CN、ja 或 en。
-  "displayLocale": "zh-CN",
-
-  // LSA 已内置以下默认值。需要切换模型、服务地址或协议时再取消注释。
-  // "agent": {
-  //   "model": "deepseek-v4-flash",
-  //   "baseUrl": "https://api.deepseek.com/v1",
-  //   "wireApi": "chatCompletions",
-  //   "thinking": false,
-  //   "reasoningEffort": "medium",
-  //   "stream": false
-  // }
+  "displayLocale": "zh-CN"
 }
 "#;
 

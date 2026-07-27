@@ -4,7 +4,8 @@ pub(super) fn build_single_symbol_index(
     source: &str,
 ) -> WorkspaceSymbolIndex {
     let mut index = WorkspaceSymbolIndex::default();
-    index_analysis_symbols(&mut index, analysis, uri, source);
+    let semantic = SemanticDocument::from_analysis(analysis, uri);
+    index_analysis_symbols(&mut index, analysis, semantic, uri, source);
     finish_symbol_index(&mut index);
     index
 }
@@ -13,9 +14,18 @@ pub(super) fn build_project_symbol_index(
     analyses: &[Analysis],
     buffers: &[WorkspaceBuffer],
 ) -> WorkspaceSymbolIndex {
+    // Semantic projection is by far the most expensive part and depends only
+    // on its own module, so project every module up front in parallel and keep
+    // the merge below serial: the shared index resolves ambiguous definitions
+    // and provider names in buffer order.
+    let semantics = analyses
+        .par_iter()
+        .zip(buffers)
+        .map(|(analysis, buffer)| SemanticDocument::from_analysis(analysis, &buffer.uri))
+        .collect::<Vec<_>>();
     let mut index = WorkspaceSymbolIndex::default();
-    for (analysis, buffer) in analyses.iter().zip(buffers) {
-        index_analysis_symbols(&mut index, analysis, &buffer.uri, &buffer.source);
+    for ((analysis, buffer), semantic) in analyses.iter().zip(buffers).zip(semantics) {
+        index_analysis_symbols(&mut index, analysis, semantic, &buffer.uri, &buffer.source);
     }
     finish_symbol_index(&mut index);
     index
@@ -24,13 +34,14 @@ pub(super) fn build_project_symbol_index(
 pub(super) fn index_analysis_symbols(
     index: &mut WorkspaceSymbolIndex,
     analysis: &Analysis,
+    semantic: SemanticDocument,
     uri: &str,
     source: &str,
 ) {
     index.source_uris.insert(uri.to_owned());
     index.sources.insert(uri.to_owned(), source.to_owned());
-    let semantic = SemanticDocument::from_analysis(analysis, uri);
-    index_module_relations(index, analysis, &semantic, uri, source);
+    let lines = LineIndex::new(source);
+    index_module_relations(index, analysis, &semantic, uri, source, &lines);
     let local_prefix = format!("{}::", analysis.hir.name);
     for symbol in &semantic.symbols {
         index
@@ -42,7 +53,7 @@ pub(super) fn index_analysis_symbols(
         {
             let definition = Location {
                 uri: uri.to_owned(),
-                range: span_to_range(source, symbol.definition),
+                range: lines.range(source, symbol.definition),
             };
             match index.definitions.get(&symbol.binding_id) {
                 Some(existing) if existing != &definition => {
@@ -65,7 +76,7 @@ pub(super) fn index_analysis_symbols(
             .or_default()
             .extend(symbol.occurrences.iter().copied().map(|span| Location {
                 uri: uri.to_owned(),
-                range: span_to_range(source, span),
+                range: lines.range(source, span),
             }));
         index_symbol_rename_occurrences(index, analysis, symbol, uri, source);
         if symbol.public && symbol.binding_id.starts_with(&local_prefix) {
@@ -106,6 +117,7 @@ fn index_module_relations(
     semantic: &SemanticDocument,
     uri: &str,
     source: &str,
+    lines: &LineIndex,
 ) {
     let module = format!("module:{}", analysis.hir.name);
     for item in &analysis.hir.items {
@@ -116,7 +128,7 @@ fn index_module_relations(
                     to: format!("module:{}", import.module),
                     kind: "imports".to_owned(),
                     uri: uri.to_owned(),
-                    range: span_to_range(source, item.span),
+                    range: lines.range(source, item.span),
                 });
             }
             hir::ItemKind::Function(function) => {
@@ -131,7 +143,7 @@ fn index_module_relations(
                             to: target.clone(),
                             kind: "calls".to_owned(),
                             uri: uri.to_owned(),
-                            range: span_to_range(source, operation.span),
+                            range: lines.range(source, operation.span),
                         });
                     }
                 }
@@ -154,7 +166,7 @@ fn index_module_relations(
             to: alias.target.as_str().to_owned(),
             kind: "alias-of".to_owned(),
             uri: uri.to_owned(),
-            range: span_to_range(source, alias.span),
+            range: lines.range(source, alias.span),
         });
     }
     for symbol in &semantic.symbols {
@@ -180,7 +192,7 @@ fn index_module_relations(
                 to: symbol.binding_id.clone(),
                 kind: "references".to_owned(),
                 uri: uri.to_owned(),
-                range: span_to_range(source, *reference),
+                range: lines.range(source, *reference),
             });
         }
     }

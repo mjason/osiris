@@ -73,12 +73,7 @@ trailing commas are accepted. A typical configuration is deliberately small:
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN",
-  "agent": {
-    "model": "deepseek-v4-flash",
-    "baseUrl": "https://api.deepseek.com/v1",
-    "wireApi": "chatCompletions"
-  }
+  "displayLocale": "zh-CN"
 }
 ```
 
@@ -109,27 +104,8 @@ init` writes `"displayLocale": "zh-CN"` by default. LSC intentionally does not
 inherit it: pass `--locale <bcp47>` when a finite CLI query needs a particular
 language.
 
-`osr lsa "<request>"` is the finite Language Server Agent for explaining
-Osiris and generating compiler-validated examples. Examples are compiled as
-temporary entries in the current workspace and executed with the project
-Python; ordinary imports and `~python` use the same staging rules as `osr run`.
-Only the captured runtime value is reported as `result`. It returns JSON by
-default and includes a `sessionId`; pass that ID with `--session` for a follow-up. The
-API key is read from `OSR_API_KEY` in the environment or project `.env`.
-`OSR_MODEL`, `OSR_BASE_URL`, and `OSR_WIRE_API` override the `agent` object.
-The default `chatCompletions` calls `/chat/completions`; set `wireApi` or
-`OSR_WIRE_API` to `responses` for `/responses`. Protocol fallback is never
-implicit.
-Use `--file <path>` to explicitly include one local source file as context.
-Use `--at <path>:<line>:<column>` when a question is anchored to one expression.
-For broader feature requests, LSA performs bounded, read-only searches over a
-libSQL semantic graph and follows with precise LSP queries before generating an
-example. Compiler-owned `languageService` evidence keeps definitions,
-signatures, references, ambiguity, and source locations separate from model
-interpretation. Only selected Osiris forms use provider context; the complete
-workspace and raw Python implementation are never uploaded. The disposable
-graph is stored at `.osiris/cache/language-graph.sqlite3`, while session JSONC
-is kept under `.osiris/cache/agent/`; neither enters `dist`.
+LSC project queries use a disposable libSQL semantic graph stored at
+`.osiris/cache/language-graph.sqlite3`; it never enters `dist`.
 Graph-only searches open a matching cache before workspace analysis. Source,
 configuration, lock, or static-interface changes refresh it automatically;
 unchanged files reuse hashes from a persistent input manifest, so hot validation

@@ -4,14 +4,5 @@
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN",
-  // LSA defaults; uncomment this block only to override them.
-  // "agent": {
-  //   "model": "deepseek-v4-flash",
-  //   "baseUrl": "https://api.deepseek.com/v1",
-  //   "wireApi": "chatCompletions",
-  //   "thinking": false,
-  //   "reasoningEffort": "medium",
-  //   "stream": false
-  // }
+  "displayLocale": "zh-CN"
 }

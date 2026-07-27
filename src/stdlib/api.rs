@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use oxilangtag::LanguageTag;
 use serde::Serialize;
@@ -57,65 +57,73 @@ pub struct StandardApiSelection {
     pub provenance: &'static str,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct StandardRetrievalRecord {
-    pub(crate) binding_id: String,
-    pub(crate) canonical: &'static str,
-    pub(crate) call_shapes: Vec<String>,
-    pub(crate) signature: String,
-    pub(crate) documentation: SemanticDocumentation,
-    pub(crate) examples: Vec<Vec<String>>,
+/// The standard API catalog, built once per process.
+///
+/// Building it reads and clones every standard interface artifact, so editor
+/// queries such as hover — which run per request — resolve against this shared
+/// catalog and its lookup index instead of rebuilding it each time.
+fn catalog() -> &'static [StandardApiRecord] {
+    static CATALOG: OnceLock<Vec<StandardApiRecord>> = OnceLock::new();
+    // Deliberately serial: [`warm_api_catalog`] builds this on a background
+    // thread while the editor is analyzing a workspace, and saturating the
+    // shared rayon pool here would stall the request being served.
+    CATALOG.get_or_init(|| {
+        NAMESPACES
+            .iter()
+            .flat_map(|namespace| exports(namespace))
+            .map(api_record)
+            .collect()
+    })
 }
 
-pub(crate) fn retrieval_record(binding: StandardBinding) -> StandardRetrievalRecord {
-    let details = super::artifacts::binding_source_details(binding).ok();
-    let metadata = details
-        .as_ref()
-        .map(|details| details.metadata.clone())
-        .unwrap_or_default();
-    let call_shapes = if binding.kind == BindingKind::Macro {
-        macro_shapes(binding.canonical)
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    } else if let Some(shapes) = source_dispatched_call_shapes(binding.canonical) {
-        shapes.iter().map(ToString::to_string).collect()
-    } else {
-        vec![details.as_ref().map_or_else(
-            || format!("({} ...)", binding.canonical),
-            |details| details.call_shape.clone(),
-        )]
-    };
-    StandardRetrievalRecord {
-        binding_id: binding.id().as_str().to_owned(),
-        canonical: binding.canonical,
-        call_shapes,
-        signature: details.map_or_else(|| "Any".to_owned(), |details| details.signature),
-        documentation: crate::semantic::documentation(&metadata),
-        examples: metadata_string_vectors(&metadata, "examples"),
-    }
+/// Every spelling [`query_api`] accepts, mapped to the records it selects.
+fn catalog_index() -> &'static BTreeMap<String, Vec<usize>> {
+    static INDEX: OnceLock<BTreeMap<String, Vec<usize>>> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let mut index = BTreeMap::<String, Vec<usize>>::new();
+        for (position, record) in catalog().iter().enumerate() {
+            for key in [
+                record.binding_id.clone(),
+                record.canonical.to_owned(),
+                format!("{}/{}", record.namespace, record.canonical),
+                format!("{}.{}", record.namespace, record.canonical),
+            ] {
+                let entry = index.entry(key).or_default();
+                if entry.last() != Some(&position) {
+                    entry.push(position);
+                }
+            }
+        }
+        index
+    })
 }
 
 #[must_use]
 pub fn api_catalog() -> Vec<StandardApiRecord> {
-    NAMESPACES
-        .iter()
-        .flat_map(|namespace| exports(namespace))
-        .map(api_record)
-        .collect()
+    catalog().to_vec()
+}
+
+/// Builds the standard API catalog on a background thread.
+///
+/// Long-lived callers such as the language server invoke this at startup so
+/// the first request that needs the catalog does not block on building it.
+pub fn warm_api_catalog() {
+    std::thread::spawn(|| {
+        catalog_index();
+    });
 }
 
 #[must_use]
 pub fn api_record(binding: StandardBinding) -> StandardApiRecord {
     let call_shapes = call_shapes(binding);
-    let interface = super::interface_artifact(binding.namespace).ok();
-    let public = interface.as_ref().and_then(|interface| {
+    let interface = super::interface_artifact_ref(binding.namespace).ok();
+    let public = interface.and_then(|interface| {
         interface
             .bindings
             .iter()
             .find(|public| public.id == binding.id().as_str())
     });
-    let function = interface.as_ref().and_then(|interface| {
+    let function = interface.and_then(|interface| {
         interface
             .functions
             .iter()
@@ -200,15 +208,12 @@ fn public_signature(binding: StandardBinding, inferred: String) -> String {
 
 #[must_use]
 pub fn query_api(query: &str, locale: Option<&str>) -> Vec<StandardApiSelection> {
-    let mut records = api_catalog()
+    let catalog = catalog();
+    let mut records = catalog_index()
+        .get(query)
         .into_iter()
-        .filter(|record| {
-            record.binding_id == query
-                || record.canonical == query
-                || format!("{}/{}", record.namespace, record.canonical) == query
-                || format!("{}.{}", record.namespace, record.canonical) == query
-        })
-        .map(|api| select_locale(api, locale))
+        .flatten()
+        .map(|position| select_locale(catalog[*position].clone(), locale))
         .collect::<Vec<_>>();
     records.sort_by(|left, right| left.api.binding_id.cmp(&right.api.binding_id));
     records
@@ -358,7 +363,7 @@ fn call_shapes(binding: StandardBinding) -> Vec<String> {
     if let Some(shapes) = source_dispatched_call_shapes(binding.canonical) {
         return shapes.iter().map(ToString::to_string).collect();
     }
-    let Ok(interface) = super::interface_artifact(binding.namespace) else {
+    let Ok(interface) = super::interface_artifact_ref(binding.namespace) else {
         return vec![format!("({} ...)", binding.canonical)];
     };
     let Some(function) = interface

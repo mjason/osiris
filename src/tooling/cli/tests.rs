@@ -12,21 +12,6 @@ fn bare_source_path_remains_an_error() {
 }
 
 #[test]
-fn lsa_requires_a_request_and_rejects_invalid_options() {
-    let missing = run_cli(&arguments(&["lsa"]));
-    assert_eq!(missing.exit_code, 2);
-    assert!(missing.stderr.contains("osr lsa [options] <request>"));
-
-    let format = run_cli(&arguments(&["lsa", "explain map", "--format", "yaml"]));
-    assert_eq!(format.exit_code, 2);
-    assert!(format.stderr.contains("--format must be 'json' or 'text'"));
-
-    let locale = run_cli(&arguments(&["lsa", "explain map", "--locale", "zh_CN"]));
-    assert_eq!(locale.exit_code, 2);
-    assert!(locale.stderr.contains("invalid BCP 47 locale"));
-}
-
-#[test]
 fn lsc_requires_a_known_operation() {
     let outcome = run_cli(&arguments(&["lsc", "inspect"]));
     assert_eq!(outcome.exit_code, 2);

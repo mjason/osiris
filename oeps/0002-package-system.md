@@ -12,8 +12,8 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-26
-revision: 16
+updated: 2026-07-27
+revision: 17
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -118,19 +118,13 @@ compiler fields:
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN",
-  "agent": {
-    "model": "deepseek-v4-flash",
-    "baseUrl": "https://api.deepseek.com/v1",
-    "wireApi": "chatCompletions"
-  }
+  "displayLocale": "zh-CN"
 }
 ```
 
 `$schema` is an editor aid. `source`, `outDir`, `targetPython`, `strict`, and
-`displayLocale` are compiler fields; `agent` configures the optional LSA client.
-The config MUST NOT contain `watch`,
-`extensions`, `buildGroups`, or `trust` fields in this version.
+`displayLocale` are compiler fields. The config MUST NOT contain `watch`,
+`extensions`, `buildGroups`, `trust`, or `agent` fields in this version.
 
 **OEP-0002-R004:** `source` MUST be a non-empty ordered set of distinct,
 project-relative source directories. Absolute paths, paths escaping the project
@@ -482,42 +476,10 @@ preserves evaluation order and module initialization. These projections MUST
 NOT reconstruct standard macros as compiler syntax: macro expansion and the
 standard-library/kernel boundary remain authoritative.
 
-**OEP-0002-R049:** The optional `agent` object MUST accept only `model`,
-`baseUrl`, `wireApi`, `thinking`, `reasoningEffort`, and `stream`. The first
-three built-in defaults MUST be `deepseek-v4-flash`,
-`https://api.deepseek.com/v1`, and `chatCompletions`; `thinking` and `stream`
-MUST default to false, while `reasoningEffort` MUST be absent by default and
-accept only `low`, `medium`, or `high`.
-`wireApi` MUST accept only `responses` and `chatCompletions` in the initial
-version. `OSR_MODEL`, `OSR_BASE_URL`, `OSR_WIRE_API`, `OSR_THINKING`,
-`OSR_REASONING_EFFORT`, and `OSR_STREAM` MUST override project values, and the
-API key MUST be read only
-from `OSR_API_KEY`. A project-root `.env` MUST be loaded with dotenv semantics
-without replacing an environment variable already supplied by the process.
-Credentials MUST NOT be written to `osiris.jsonc`, logs, provider errors, or
-session history.
-The official DeepSeek endpoint is the default so the default setup requires
-only a DeepSeek API key. A compatible gateway remains an explicit `baseUrl`
-override and MUST NOT be embedded as a distribution default.
-`osr init` MUST write the complete default `agent` object as commented JSONC,
-including all six fields. This keeps the generated project
-minimal while making every override discoverable in place; uncommenting the
-block MUST preserve the same behavior as the built-in defaults.
-
-LSA sessions MUST be stored at
-`.osiris/cache/agent/<session-id>/session.jsonc`. This state is user-editable
-JSONC, not a build-cache entry: it MUST be safe to delete, MUST NOT affect
-compilation, MUST NOT enter `outDir` or a package, and MUST be ignored by
-project source discovery. Implementations MUST constrain session identifiers
-to one path component and atomically replace a validated versioned session.
-
-**OEP-0002-R050:** LSA MUST retrieve the release-pinned English project and
-package manual when a request concerns configuration, initialization, source
-scope, output, build, execution, dependencies, or publication. It MUST explain
-these workflows without requiring an Osiris source example. Current project
-configuration MUST be sent to a provider only when the user explicitly selects
-`osiris.jsonc` with `--file`; provider URLs and credentials MUST be redacted,
-and credential-bearing files such as `.env` MUST NOT be accepted as context.
+**OEP-0002-R049:** Compiler configuration MUST NOT contain network-provider,
+credential, model, or conversation settings. The compiler MUST NOT load a
+project `.env` for language tooling. The withdrawn Language Server Agent
+experiment creates no package, cache, configuration, or credential contract.
 
 **OEP-0002-R051:** The published JSON Schema for `osiris.jsonc` MUST describe
 every accepted field, its default, effect, and representative values. Editor
@@ -539,7 +501,7 @@ Python capability enters the graph only through its declared Osiris interface.
 The graph is a disposable tooling cache, never an artifact. Its identity MUST
 include the graph schema, compiler/language versions, and deterministic compiler
 facts. A changed identity MUST atomically replace graph contents. Project paths
-stored in nodes, edges, LSC results, or provider context MUST use stable
+stored in nodes, edges, LSC results, or other tooling output MUST use stable
 `osiris-workspace:///` URIs rather than machine-specific absolute paths.
 
 Cache validation MUST happen before complete workspace analysis. Its input
@@ -577,8 +539,8 @@ observable.
 workspace analysis, and atomically replace the complete graph. It is a recovery
 and diagnostic escape hatch, not a required step after source edits.
 
-**OEP-0002-R053:** LSC MUST be the protocol boundary between LSA and language
-servers. It MUST provide bounded composite `workspace-search`, `symbol-context`,
+**OEP-0002-R053:** LSC MUST be the public CLI boundary for composite local
+language services. It MUST provide bounded `workspace-search`, `symbol-context`,
 and `source-context` operations backed by the semantic graph and applicable LSP
 requests. `symbol-context` MUST use advertised capabilities for hover,
 definition, signature help, references, document symbols, and workspace symbols,
@@ -586,24 +548,6 @@ and MUST represent unavailable capabilities, missing services, ambiguity,
 multiple definitions, invalid URIs, and request errors explicitly rather than
 guessing. Source context MUST be limited to configured, non-excluded Osiris
 sources or validated packaged standard source and to a bounded enclosing form.
-
-**OEP-0002-R054:** LSA MAY run a bounded read-only tool loop over those LSC
-operations for a natural-language project request. LSA MUST require a configured
-Osiris/uv project; there is no reduced non-project evaluation mode. It MUST NOT upload the whole
-workspace or expose arbitrary file reads. Only graph-selected, bounded Osiris
-facts and source forms MAY be sent to the provider; `outDir`, `.osiris`, `.env`,
-excluded paths, credentials, and raw Python implementation bodies MUST remain
-outside provider context. `--at <path>:<line>:<column>` MUST provide an exact
-initial source anchor without changing ordinary natural-language requests.
-
-**OEP-0002-R055:** The final LSA JSON MUST retain compiler-owned
-`languageService` evidence with operation, status, URI/range-bearing result,
-and explanatory error where applicable. Provider-authored language-service
-evidence, compilation status, evaluation status, diagnostics, runtime result,
-and references MUST be discarded. Answers MUST distinguish LSP/graph facts from
-model interpretation and MUST expose ambiguous candidates instead of selecting
-one silently. Generated examples MUST still compile and evaluate as temporary
-entries in the real project workspace.
 
 ## Rationale
 
@@ -718,8 +662,6 @@ A conforming implementation provides evidence that:
 - semantic-graph fixtures prove libSQL persistence and invalidation, multilingual
   Rich Metadata search, cross-file calls/references, ambiguity, dependency-interface
   discovery, workspace-URI redaction, and exclusion of raw Python bodies;
-- mock-provider LSA fixtures require at least one graph/LSP tool round before a
-  final project-adapted answer and verify compiler ownership of all evidence;
 - generated Python and linked runtime fixtures are idempotent under the pinned
   Ruff profile, and source maps refer to the formatted line layout;
 - generated-source fixtures retain fallback docstrings, readable hygienic
@@ -746,6 +688,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 17, 2026-07-27: Withdrew the experimental Language Server Agent,
+  removed provider/session configuration, and retained the semantic graph as a
+  local LSC/LSP implementation detail.
 - Revision 16, 2026-07-26: Added a persistent per-input manifest so normal
   semantic graph validation stats all configured inputs but reads and hashes
   only new or changed files; added observable validation counts and
@@ -755,16 +700,8 @@ A conforming implementation provides evidence that:
   lazy language-server startup, automatic input-aware replacement, cache status,
   and an explicit full `osr lsc cache rebuild` recovery path.
 - Revision 14, 2026-07-26: Added the disposable libSQL project semantic graph,
-  graph-backed LSC composite queries, bounded project-aware LSA tool use,
-  workspace URI privacy, and compiler-owned language-service evidence.
-- Revision 13, 2026-07-26: Required LSA retrieval for project configuration and
-  package workflows, explicit and redacted project-config context, and standard
-  JSON language-service coverage through the published schema.
-- Revision 12, 2026-07-25: Added explicit `responses` and `chatCompletions`
-  provider selection and made Chat Completions the compatibility-first default.
-- Revision 11, 2026-07-25: Added the OpenAI-compatible LSA provider
-  configuration, dotenv/environment precedence, credential boundary, and
-  project-local editable session layout.
+  graph-backed LSC composite queries, workspace URI privacy, and
+  compiler-owned language-service evidence.
 - Revision 10, 2026-07-25: Made embedded Python provider handles module-private
   implementation details and required consumer reachability to begin at their
   validated Osiris `extern` bindings.

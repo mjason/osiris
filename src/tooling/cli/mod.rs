@@ -69,7 +69,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
     if arguments.first().is_some_and(|command| {
         matches!(
             command.as_str(),
-            "check" | "build" | "compile" | "run" | "expand" | "lsc" | "lsa"
+            "check" | "build" | "compile" | "run" | "expand" | "lsc"
         )
     }) {
         if let Err(error) = crate::stdlib::validate_resources() {
@@ -93,7 +93,6 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
         [command, rest @ ..] if command == "expand" => run_expand(rest),
         [command, rest @ ..] if command == "fmt" => run_fmt(rest),
         [command, rest @ ..] if command == "lsc" => run_lsc(rest),
-        [command, rest @ ..] if command == "lsa" => run_lsa(rest),
         [command, rest @ ..] if command == "syntax" => run_syntax(rest),
         [command, rest @ ..] if command == "doc" => run_doc(rest),
         _ => CliOutcome::usage_error("unexpected arguments"),
@@ -105,12 +104,10 @@ mod build_cache;
 mod check;
 mod compile;
 mod docs;
-mod evaluation;
 mod expand;
 mod extensions;
 mod fmt;
 mod init;
-mod lsa;
 mod lsc;
 mod registry;
 mod run;
@@ -124,12 +121,10 @@ use build_cache::*;
 use check::*;
 use compile::*;
 use docs::*;
-pub(crate) use evaluation::*;
 use expand::*;
 use extensions::*;
 use fmt::*;
 use init::*;
-use lsa::*;
 use lsc::*;
 use run::*;
 use source_io::*;

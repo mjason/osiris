@@ -12,11 +12,11 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-26
-revision: 16
+updated: 2026-07-27
+revision: 17
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 16
+source-revision: 17
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -94,18 +94,13 @@ OEP-0002-R005 定义的可选 `exclude` field，不得包含其他 compiler fiel
   "outDir": "dist",
   "targetPython": "3.11",
   "strict": true,
-  "displayLocale": "zh-CN",
-  "agent": {
-    "model": "deepseek-v4-flash",
-    "baseUrl": "https://api.deepseek.com/v1",
-    "wireApi": "chatCompletions"
-  }
+  "displayLocale": "zh-CN"
 }
 ```
 
 `$schema` 是 editor aid；`source`、`outDir`、`targetPython`、`strict`、`displayLocale` 是
-compiler field；`agent` 配置可选 LSA client。本版本 config 禁止包含 `watch`、
-`extensions`、`buildGroups` 或 `trust`。
+compiler field。本版本 config 禁止包含 `watch`、`extensions`、`buildGroups`、`trust` 或
+`agent`。
 
 **OEP-0002-R004：** `source` 必须是非空、有序、互不重复的 project-relative source
 directory 集合。必须拒绝 absolute path、逃逸 project root 的路径、作为 source 的 output
@@ -391,32 +386,9 @@ hygienic binding/helper 必须使用能看出用途的 private name，不得泄�
 flow、terminal temporary 和重复 import。这些 projection 不得在 compiler 中把 standard
 macro 重建为语法；macro expansion 以及 standard-library/kernel boundary 仍是权威定义。
 
-**OEP-0002-R049：** 可选 `agent` object 只能接受 `model`、`baseUrl`、`wireApi`、
-`thinking`、`reasoningEffort` 和 `stream`。前三项内置默认值必须分别是
-`deepseek-v4-flash`、`https://api.deepseek.com/v1` 与 `chatCompletions`；`thinking` 与
-`stream` 必须默认为 false，`reasoningEffort` 默认不得发送且只能接受 `low`、`medium` 或
-`high`。
-第一版 `wireApi` 只能接受 `responses` 与 `chatCompletions`。`OSR_MODEL`、`OSR_BASE_URL`、
-`OSR_WIRE_API`、`OSR_THINKING`、`OSR_REASONING_EFFORT` 与 `OSR_STREAM` 必须覆盖
-project value，API key 只能从 `OSR_API_KEY` 读取。必须按 dotenv semantic 加载 project-root
-`.env`，且不得替换 process 已提供的 environment variable。Credential 不得写入
-`osiris.jsonc`、log、provider error 或 session history。
-默认使用 DeepSeek 官方 endpoint，因此默认设置只需要 DeepSeek API key。兼容 gateway 仍可
-通过显式 `baseUrl` 覆盖，但不得作为 distribution default 内嵌。
-`osr init` 必须把完整默认 `agent` object 作为已注释的 JSONC 写入，包括 `model`、
-全部六个 field。这样 generated project 保持最小，同时每个 override 都能在原地发现；
-取消该 block 的注释后，行为必须与 built-in default 相同。
-
-LSA session 必须存放在 `.osiris/cache/agent/<session-id>/session.jsonc`。该状态是用户可
-编辑 JSONC，不是 build-cache entry：必须可安全删除，不得影响 compilation，不得进入
-`outDir`/package，并且必须被 project source discovery 忽略。实现必须把 session ID 限制为
-单个 path component，并原子替换经过验证、带版本的 session。
-
-**OEP-0002-R050：** 当请求涉及 configuration、initialization、source scope、output、
-build、execution、dependency 或 publication 时，LSA 必须检索随当前 release 固定的英文项目与
-package manual。解释这些 workflow 时不得强制生成无关的 Osiris source example。只有用户通过
-`--file` 显式选择 `osiris.jsonc` 时，才允许把当前项目配置发送给 provider；必须遮盖 provider
-URL 与 credential，并拒绝把 `.env` 等 credential-bearing file 作为 context。
+**OEP-0002-R049：** Compiler configuration 禁止包含 network provider、credential、model
+或 conversation setting。Compiler 不得为 language tooling 加载 project `.env`。已撤回的
+Language Server Agent 实验不形成 package、cache、configuration 或 credential contract。
 
 **OEP-0002-R051：** 发布的 `osiris.jsonc` JSON Schema 必须说明每个已接受 field 的 default、
 effect 与代表性 value。Editor integration 必须通过标准 JSON language service 与该 schema
@@ -433,7 +405,7 @@ Compiler 能确定时，edge 至少必须覆盖 `imports`、`exports`、`calls`�
 
 该 graph 是可删除 tooling cache，绝不是 artifact。Identity 必须覆盖 graph schema、
 compiler/language version 与确定性的 compiler fact；identity 改变时必须原子替换 graph 内容。
-Node、edge、LSC result 或 provider context 中的 project path 必须使用稳定的
+Node、edge、LSC result 或其他 tooling output 中的 project path 必须使用稳定的
 `osiris-workspace:///` URI，不得保存机器绝对路径。
 
 Cache validation 必须发生在完整 workspace analysis 之前。input identity 必须覆盖配置范围内、
@@ -461,26 +433,13 @@ provisional-interface construction、macro expansion 与 frontend analysis。
 排障后路，不是源码修改后的
 日常步骤。
 
-**OEP-0002-R053：** LSC 必须作为 LSA 与 language server 之间的 protocol boundary，并提供由
+**OEP-0002-R053：** LSC 必须作为复合本地 language service 的公开 CLI boundary，并提供由
 semantic graph 和适用 LSP request 支持的有界 `workspace-search`、`symbol-context` 与
 `source-context` 复合操作。`symbol-context` 必须根据 advertised capability 使用 hover、
 definition、signature help、references、document symbols 与 workspace symbols；language
 service/capability 不可用、歧义、多定义、非法 URI 与 request error 必须显式表示，禁止猜测。
 Source context 只能来自配置范围内未排除的 Osiris source 或验证过的 packaged standard source，
 并限制为有界 enclosing form。
-
-**OEP-0002-R054：** 对自然语言 project request，LSA 可以在这些 LSC operation 上运行有界、
-只读 tool loop。LSA 必须要求已配置的 Osiris/uv project，不提供降级的非 project evaluation
-mode。它禁止上传整个 workspace 或提供任意文件读取；只能向 provider 发送 graph
-选中的有界 Osiris fact/source form。`outDir`、`.osiris`、`.env`、excluded path、credential
-与 raw Python implementation body 必须留在 provider context 外。`--at
-<path>:<line>:<column>` 必须提供精确的初始 source anchor，同时不得改变普通自然语言 request。
-
-**OEP-0002-R055：** 最终 LSA JSON 必须保留 compiler-owned `languageService` evidence，其中
-包含 operation、status、带 URI/range 的 result，以及适用的可解释 error。Provider 编写的
-language-service evidence、compilation/evaluation status、diagnostic、runtime result 与
-reference 必须丢弃。回答必须区分 LSP/graph fact 与模型解释，歧义时必须暴露 candidate，禁止
-静默选择。生成的 example 仍必须作为临时 entry 在真实 project workspace 中 compile/evaluate。
 
 ## 理由 (Rationale)
 
@@ -572,8 +531,6 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 - semantic-graph fixture 证明 libSQL persistence/invalidation、多语言 Rich Metadata search、
   cross-file call/reference、歧义、dependency-interface discovery、workspace URI 脱敏与 raw
   Python body 排除；
-- mock-provider LSA fixture 必须在最终 project-adapted answer 前发生至少一轮 graph/LSP tool，
-  并验证所有 evidence 都由 compiler 所有；
 - generated Python/runtime fixture 对固定 Ruff profile 保持 idempotent，source map 指向
   formatting 后的 line layout；
 - generated-source fixture 保留 fallback docstring、可读 hygienic name、惯用的
@@ -594,20 +551,15 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 17，2026-07-27：撤回实验性的 Language Server Agent，移除 provider/session
+  configuration，并保留 semantic graph 作为本地 LSC/LSP implementation detail。
 - Revision 16，2026-07-26：加入持久化逐 input manifest；正常 semantic graph validation 会 stat
   所有配置 input，但只读取和 hash 新增或变化文件；加入可观察 validation count 与 dependency
   layer 并行完整分析，同时明确 cache 失效后的 semantic analysis 仍是完整 workspace analysis。
 - Revision 15，2026-07-26：要求 analysis 前验证 semantic graph、惰性启动 language server、
   根据 input 自动替换、提供 cache status，并加入显式完整 `osr lsc cache rebuild` 恢复入口。
 - Revision 14，2026-07-26：加入可删除的 libSQL project semantic graph、graph-backed LSC
-  复合查询、有界 project-aware LSA tool use、workspace URI 隐私与 compiler-owned
-  language-service evidence。
-- Revision 13，2026-07-26：要求 LSA 检索 project configuration 与 package workflow，规定
-  显式且脱敏的 project-config context，并通过发布的 schema 使用标准 JSON language service。
-- Revision 12，2026-07-25：加入显式 `responses`/`chatCompletions` provider selection，
-  并将 Chat Completions 设为 compatibility-first default。
-- Revision 11，2026-07-25：加入 OpenAI-compatible LSA provider 配置、dotenv/environment
-  precedence、credential boundary 和 project-local 可编辑 session layout。
+  复合查询、workspace URI 隐私与 compiler-owned language-service evidence。
 - Revision 10，2026-07-25：把 embedded Python provider handle 规定为 module-private
   implementation detail，并要求 consumer reachability 从 validated Osiris `extern` binding
   开始。
