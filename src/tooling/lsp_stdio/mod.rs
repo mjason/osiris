@@ -2,22 +2,35 @@
 
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
-use crate::lsp::JsonRpcMachine;
+use crate::lsp::{JsonRpcMachine, log};
 
 const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Runs an LSP server over the process standard streams.
 pub fn run_stdio() -> io::Result<()> {
+    // A real editor session is the case where nobody can see what the server
+    // is doing, so record document synchronization by default. `OSIRIS_LSP_LOG`
+    // overrides this in either direction.
+    log::set_default_level(log::Level::Info);
     let stdin = io::stdin();
     let stdout = io::stdout();
-    serve(
+    let result = serve(
         &mut BufReader::new(stdin.lock()),
         &mut BufWriter::new(stdout.lock()),
-    )
+    );
+    match &result {
+        Ok(()) => log::info("session ended"),
+        Err(error) => log::error(&format!("session ended: {error}")),
+    }
+    result
 }
 
 /// Serves framed LSP messages until EOF or an `exit` notification.
 pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result<()> {
+    log::info(&format!(
+        "osr {} language server started",
+        crate::version()
+    ));
     let mut machine = JsonRpcMachine::new();
     while let Some(payload) = read_message(reader)? {
         let input = std::str::from_utf8(&payload).map_err(|error| {

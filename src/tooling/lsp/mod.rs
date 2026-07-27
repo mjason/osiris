@@ -32,6 +32,8 @@ use crate::{
     types::Type,
 };
 
+#[macro_use]
+pub(crate) mod log;
 mod protocol;
 mod rpc;
 mod signature;

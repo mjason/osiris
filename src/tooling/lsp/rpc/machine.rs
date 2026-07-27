@@ -103,22 +103,90 @@ pub fn handle_json_rpc(state: &mut LspState, input: &str) -> JsonRpcOutcome {
     };
     let id = object.get("id").cloned();
     let params = object.get("params").cloned().unwrap_or(JsonValue::Null);
-    match dispatch(state, method, &params) {
+    let started = std::time::Instant::now();
+    lsp_debug!("-> {method}{}{}", request_id(id.as_ref()), subject(&params));
+    let outcome = match dispatch(state, method, &params) {
         Ok(dispatch) => JsonRpcOutcome {
             response: id.map(|id| rpc_success(id, dispatch.result.unwrap_or(JsonValue::Null))),
             notifications: dispatch.notifications,
         },
-        Err(error) => JsonRpcOutcome {
-            response: id.map(|id| {
-                rpc_error(
-                    id,
-                    error.code,
-                    &error.message,
-                    Some(json!({ "method": method })),
-                )
-            }),
-            notifications: Vec::new(),
-        },
+        Err(error) => {
+            lsp_error!(
+                "{method} failed after {:.1}ms: [{}] {}",
+                started.elapsed().as_secs_f64() * 1000.0,
+                error.code,
+                error.message
+            );
+            return JsonRpcOutcome {
+                response: id.map(|id| {
+                    rpc_error(
+                        id,
+                        error.code,
+                        &error.message,
+                        Some(json!({ "method": method })),
+                    )
+                }),
+                notifications: Vec::new(),
+            };
+        }
+    };
+    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    // Document synchronization drives every reanalysis, so report it at info
+    // level; individual editor queries are projections and stay at debug.
+    if method.starts_with("textDocument/did") || method == "initialize" {
+        lsp_info!(
+            "<- {method} {elapsed:.1}ms{}{}",
+            subject(&params),
+            published_diagnostics(&outcome)
+        );
+    } else {
+        lsp_debug!("<- {method} {elapsed:.1}ms");
+    }
+    outcome
+}
+
+/// ` id=7`, or empty for a notification.
+fn request_id(id: Option<&JsonValue>) -> String {
+    id.map_or_else(String::new, |id| format!(" id={id}"))
+}
+
+/// The document and version a message concerns, when it names one.
+fn subject(params: &JsonValue) -> String {
+    let document = params.get("textDocument");
+    let Some(uri) = document
+        .and_then(|document| document.get("uri"))
+        .and_then(JsonValue::as_str)
+    else {
+        return String::new();
+    };
+    let name = uri.rsplit('/').next().unwrap_or(uri);
+    match document.and_then(|document| document.get("version")) {
+        Some(version) => format!(" {name}@{version}"),
+        None => format!(" {name}"),
+    }
+}
+
+/// ` diagnostics=3`, summarizing what the message published.
+fn published_diagnostics(outcome: &JsonRpcOutcome) -> String {
+    let count = outcome
+        .notifications
+        .iter()
+        .filter(|notification| {
+            notification.get("method").and_then(JsonValue::as_str)
+                == Some("textDocument/publishDiagnostics")
+        })
+        .filter_map(|notification| {
+            notification
+                .get("params")?
+                .get("diagnostics")?
+                .as_array()
+                .map(Vec::len)
+        })
+        .sum::<usize>();
+    if count == 0 {
+        String::new()
+    } else {
+        format!(" diagnostics={count}")
     }
 }
 

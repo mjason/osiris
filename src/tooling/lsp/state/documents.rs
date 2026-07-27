@@ -185,20 +185,18 @@ impl LspState {
     }
 
     fn analyze_project_document(&mut self, uri: &str, text: &str) -> Option<ProjectDocumentAnalysis> {
-        // Stage timings for one notification, on the same `OSIRIS_TIMINGS`
-        // switch the workspace compiler uses.
-        let timings = std::env::var_os("OSIRIS_TIMINGS").is_some();
+        // Per-stage timings for one reanalysis. `lap` reports the time spent in
+        // the stage just finished, so a slow phase is attributable on sight.
         let t0 = std::time::Instant::now();
-        macro_rules! lap {
-            ($label:literal) => {
-                if timings {
-                    eprintln!("  lsp lap {:22} {:?}", $label, t0.elapsed());
-                }
-            };
-        }
+        let mut mark = t0;
+        let mut lap = |label: &str| {
+            let elapsed = mark.elapsed().as_secs_f64() * 1000.0;
+            mark = std::time::Instant::now();
+            lsp_debug!("    {label:<20} {elapsed:>7.1}ms");
+        };
         let source_path = file_uri_to_path(uri)?;
         let project = ProjectConfig::discover(&source_path).ok()?;
-        lap!("discover");
+        lap("discover project");
         let target_path = fs::canonicalize(&source_path).ok()?;
         let target_module = project.module_name_for_source(&source_path).ok()?;
 
@@ -243,21 +241,27 @@ impl LspState {
             });
         }
         let target_index = target_index?;
-        lap!("collect+read files");
+        lap("collect sources");
         let fingerprint = workspace_fingerprint(&project, &buffers, &self.site_roots);
-        lap!("fingerprint");
+        lap("fingerprint");
         let reusable = self.workspace_cache.as_ref().is_some_and(|cache| {
             cache.project_root == project.root && cache.fingerprint == fingerprint
         });
+        lsp_debug!(
+            "  workspace {} ({} modules, {})",
+            if reusable { "cache hit" } else { "reanalysis" },
+            buffers.len(),
+            project.root.display()
+        );
         if !reusable {
             let inputs = buffers
                 .iter()
                 .map(|buffer| CompileInput::new(&buffer.source, &buffer.options))
                 .collect::<Vec<_>>();
             let external_interfaces = load_project_interfaces(&project, &self.site_roots)?;
-            lap!("load interfaces");
+            lap("load interfaces");
             let workspace = compiler::analyze_workspace(&inputs, &external_interfaces);
-            lap!("analyze_workspace");
+            lap("strict analysis");
             let recovering = workspace.has_errors();
             let (analyses, workspace_diagnostics) = if recovering {
                 (
@@ -274,15 +278,17 @@ impl LspState {
                     Vec::new(),
                 )
             };
-            lap!("recovering pass");
+            if recovering {
+                lap("recovering analysis");
+            }
             if !recovering {
                 debug_assert_eq!(analyses.get(target_index)?.hir.name, target_module);
             }
             let function_interfaces = collect_function_interfaces(&analyses, &external_interfaces);
             let macro_interfaces = collect_macro_interfaces(&analyses, &external_interfaces);
-            lap!("collect interfaces");
+            lap("collect interfaces");
             let workspace_symbols = build_project_symbol_index(&analyses, &buffers);
-            lap!("symbol index");
+            lap("symbol index");
             self.workspace_cache = Some(WorkspaceAnalysisCache {
                 project_root: project.root.clone(),
                 fingerprint,
@@ -295,8 +301,13 @@ impl LspState {
                 display_locale: project.display_locale,
             });
         }
-        let projected = project_document_from_cache(self.workspace_cache.as_ref()?, target_index, uri);
-        lap!("project from cache");
+        let projected =
+            project_document_from_cache(self.workspace_cache.as_ref()?, target_index, uri);
+        lap("project document");
+        lsp_debug!(
+            "  workspace analysis total {:.1}ms",
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
         projected
     }
 }

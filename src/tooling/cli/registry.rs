@@ -440,7 +440,7 @@ const COMMANDS: &[CommandDefinition] = &[
         input: "LSP JSON-RPC Content-Length frames on stdin.",
         output: "LSP JSON-RPC frames on stdout.",
         stdout: "Protocol transport only.",
-        stderr: "Transport failures only.",
+        stderr: "Session log and transport failures. `OSIRIS_LSP_LOG` selects the level (off, error, warn, info, debug, trace; default info) and `OSIRIS_LSP_LOG_FILE` also appends records to a file.",
         formats: &["lsp-json-rpc"],
         filesystem_effects: "Read-only except editor-requested operations are previews.",
         process_effects: "Long-running stdio server.",
