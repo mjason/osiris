@@ -14,15 +14,29 @@ fn syntax_and_graphql_are_served_from_the_embedded_snapshot() {
         value["data"]["documentationCapabilities"]["source"],
         "embedded"
     );
+    // The channel follows the build profile: a release publishes `stable`, any
+    // other build publishes `preview`. What is served must match what was
+    // built, whichever that is.
+    let channel = env!("OSIRIS_DOC_PUBLICATION_CHANNEL");
     assert_eq!(
         value["data"]["documentationCapabilities"]["publicationChannel"],
-        "preview"
+        channel
     );
+
+    // Draft proposals are discussions, which only the preview channel carries;
+    // `stable` admits Accepted, Active and Final source alone.
     let response =
         execute_graphql("{ document(id: \"oep/0001\") { status normative } }").expect("OEP query");
     let value: serde_json::Value = serde_json::from_str(&response).unwrap();
-    assert_eq!(value["data"]["document"]["status"], "Draft");
-    assert_eq!(value["data"]["document"]["normative"], false);
+    if channel == "preview" {
+        assert_eq!(value["data"]["document"]["status"], "Draft");
+        assert_eq!(value["data"]["document"]["normative"], false);
+    } else {
+        assert!(
+            value["data"]["document"].is_null(),
+            "a stable snapshot must not publish a Draft proposal: {value}"
+        );
+    }
 }
 
 #[test]

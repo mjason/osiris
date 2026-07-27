@@ -170,6 +170,9 @@ fn main() {
     let database = out.join("osiris-documentation.sqlite3");
     build_database(&database, &documents, &snapshot_hash, channel_name);
     let database_hash = hash_bytes(&fs::read(&database).expect("read documentation database"));
+    // The channel decides which documents the snapshot contains, so tests and
+    // diagnostics can compare what is served against what was built.
+    println!("cargo:rustc-env=OSIRIS_DOC_PUBLICATION_CHANNEL={channel_name}");
     println!("cargo:rustc-env=OSIRIS_DOC_SNAPSHOT_HASH={snapshot_hash}");
     println!("cargo:rustc-env=OSIRIS_DOC_DATABASE_HASH={database_hash}");
     let standard_root = Path::new("stdlib");
