@@ -11,11 +11,11 @@ areas:
   - Packaging
   - Tooling
 created: 2026-07-23
-updated: 2026-07-24
-revision: 11
+updated: 2026-07-27
+revision: 12
 language: zh-CN
 source: ../../0003-standard-library.md
-source-revision: 11
+source-revision: 12
 translation-status: Current
 requires: [0, 1, 2]
 replaces: []
@@ -425,8 +425,8 @@ argument information。Documentation/localized name 必须使用 OEP-0001-R057 �
 OEP-0001-R065 的 metadata contract；鼓励增加其他 BCP 47 translation，但不得改变
 binding identity。
 
-**OEP-0003-R044：** Standard metadata 可以提供 localized name、example、Agent intent
-与 Agent tag。Authored metadata 不得制造 inferred/verified fact。
+**OEP-0003-R044：** Standard metadata 可以提供 localized name 与 example。Authored
+metadata 不得制造 inferred/verified fact。
 
 **OEP-0003-R045：** Standard `.osri` 必须包含 public signature、macro signature、
 validated macro IR、所需 private Phase-1 helper closure、Rich Metadata、facade identity、
@@ -877,6 +877,9 @@ Name-based solver 会破坏 alias、import、extension replacement 和 stable id
 
 ## 修订历史 (Change History)
 
+- Revision 12，2026-07-27：从 OEP-0003-R044 允许 standard binding 提供的 metadata 中
+  移除 Agent intent 与 Agent tag；没有任何 standard binding 使用它们，也没有 compiler
+  或 tooling 行为消费它们。
 - Revision 11，2026-07-24：禁止把 public standard source 作为 Rust constant 内嵌，要求
   compiler 与 tooling 统一使用 hash-validated standard-resource provider，并明确
   `osiris-stdlib:///` 标识 logical packaged source，而不是 binary storage。

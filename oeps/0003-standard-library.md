@@ -11,8 +11,8 @@ areas:
   - Packaging
   - Tooling
 created: 2026-07-23
-updated: 2026-07-24
-revision: 11
+updated: 2026-07-27
+revision: 12
 requires: [0, 1, 2]
 replaces: []
 superseded-by: null
@@ -519,9 +519,8 @@ and localized names MUST use the OEP-0001-R057 through OEP-0001-R065 metadata
 contract; additional BCP 47 translations are encouraged and must not alter
 binding identity.
 
-**OEP-0003-R044:** Standard metadata MAY provide localized names, examples,
-Agent intent, and Agent tags. Authored metadata MUST NOT manufacture inferred
-or verified facts.
+**OEP-0003-R044:** Standard metadata MAY provide localized names and examples.
+Authored metadata MUST NOT manufacture inferred or verified facts.
 
 **OEP-0003-R045:** Standard `.osri` interfaces MUST contain public signatures,
 macro signatures, validated macro IR, required private Phase-1 helper closures,
@@ -1039,6 +1038,9 @@ This OEP cannot become Final while any required initial namespace is missing.
 
 ## Change History
 
+- Revision 12, 2026-07-27: Dropped Agent intent and Agent tags from the metadata
+  OEP-0003-R044 allows standard bindings to provide; no standard binding used
+  them and no compiler or tooling behavior consumes them.
 - Revision 11, 2026-07-24: Prohibited embedding public standard source as Rust
   constants, required one hash-validated standard-resource provider for the
   compiler and tooling, and clarified that `osiris-stdlib:///` identifies

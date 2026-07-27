@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 19
+revision: 20
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 19
+source-revision: 20
 translation-status: Current
 requires: [0]
 replaces: []
@@ -285,9 +285,9 @@ code 缺失或不兼容时必须 fail closed。
 declared contract、static record 和 compiler-verified fact 必须分别保存和暴露。源码
 或宏 metadata 不得宣称 compiler verification。
 
-**OEP-0001-R022：** Osiris 标准化的 metadata key 必须包含本地化文档与名称、API
-lifecycle data 和 namespaced Agent information。未知 namespaced key 必须作为数据
-保留，但没有 Accepted contract 时不得获得 compiler semantic。
+**OEP-0001-R022：** Osiris 标准化的 metadata key 必须包含本地化文档与名称，以及 API
+lifecycle data。未知 namespaced key 必须作为数据保留，但没有 Accepted contract 时
+不得获得 compiler semantic。
 
 **OEP-0001-R023：** 从包导入的 metadata 必须视为不可信数据。Renderer 必须清理
 active link 或 markup；AI client 不得把 authored metadata 解释成指令、权限或已验证
@@ -1014,6 +1014,9 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 20，2026-07-27：从 OEP-0001-R022 要求 Osiris 标准化的 metadata key 中
+  移除 namespaced Agent information；这些 key 不带 compiler semantic，由未知
+  namespaced key 规则覆盖。
 - Revision 19，2026-07-27：在语言定型前撤回实验性的联网 Language Server Agent 与
   `osr lsa`；保留本地 LSC/LSP 能力作为公开 tooling boundary。
 - Revision 15，2026-07-25：规定 generic embedded block 是普通可 export `Str` binding，

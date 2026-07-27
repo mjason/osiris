@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 19
+revision: 20
 requires: [0]
 replaces: []
 superseded-by: null
@@ -343,9 +343,9 @@ and exposed as distinct categories. Source or macro metadata MUST NOT be able
 to claim compiler verification.
 
 **OEP-0001-R022:** Metadata keys standardized by Osiris MUST include localized
-documentation and names, API lifecycle data, and namespaced Agent information.
-Unknown namespaced keys MUST be preserved as data but MUST NOT acquire compiler
-semantics without an accepted contract.
+documentation and names, and API lifecycle data. Unknown namespaced keys MUST be
+preserved as data but MUST NOT acquire compiler semantics without an accepted
+contract.
 
 **OEP-0001-R023:** Metadata imported from a package MUST be treated as
 untrusted data. Renderers MUST sanitize active links or markup, and AI clients
@@ -1214,6 +1214,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 20, 2026-07-27: Dropped namespaced Agent information from the
+  metadata keys OEP-0001-R022 requires Osiris to standardize; those keys carry
+  no compiler semantics and are covered by the unknown-namespaced-key rule.
 - Revision 19, 2026-07-27: Withdrew the experimental network-backed Language
   Server Agent and `osr lsa` before language stabilization; retained local LSC
   and LSP capabilities as the public tooling boundary.
