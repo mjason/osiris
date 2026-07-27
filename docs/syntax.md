@@ -184,8 +184,7 @@ following supported syntax node:
   :osiris/names
   {"zh-CN" {:preferred 全部加一
              :aliases [逐项加一]}}
-  :examples [increment-all-example]
-  :agent/tags [:data :transform]}
+  :examples [increment-all-example]}
 (defn ^{:type (Vector Int)} increment-all
   [^{:type (Vector Int)} values]
   (mapv (fn [^Int value] (+ value 1)) values))

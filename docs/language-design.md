@@ -704,9 +704,7 @@ Rich Metadata 是附着在语法上的不可执行数据。v0 对齐 Clojure 1.1
   :since "0.1"
   :osiris/names
   {"zh-CN" {:preferred 归一化
-             :aliases [标准化]}}
-  :agent/intent :data/normalize
-  :agent/tags [:data :transform]}
+             :aliases [标准化]}}}
 (defn normalize ...)
 ```
 
@@ -739,7 +737,6 @@ Clojure reader 会给部分 form 添加 `:line`/`:column`，Osiris 则把 source
 - `:doc`：无翻译时可直接写非空 default string；有翻译时写包含 `:default` 无标签回退内容和 BCP 47 locale translation 的 map。可复用 package 推荐用英文写 `:default`，但 compiler 允许中文、日文或其他 authored default。声明 docstring 是 default string 形式的语法糖。
 - `:since`、`:deprecated`、`:replacement`：API 生命周期信息；deprecated alias 可以给出独立替代名和原因。
 - `:osiris/names`：第 4.6 节的本地化 preferred name 和 alias 表。
-- `:agent/intent`、`:agent/summary`、`:agent/tags`、`:agent/examples`：供检索、选择和说明使用的作者 metadata，不是编译器证明。
 - 其他扩展 key 必须使用 namespace，例如 `:data/unit`、`:service/endpoint`、`:render/group`；未知 namespaced key 被保留，但不获得编译语义。
 
 `:doc`、`:osiris/names` 的规范结构、locale fallback 和 JSON 投影由
