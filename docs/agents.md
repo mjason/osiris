@@ -2,7 +2,7 @@
 document-id: tooling/agents
 title: Working with Osiris as an Agent
 language: en
-revision: 1
+revision: 2
 ---
 
 # Working with Osiris as an Agent
@@ -20,6 +20,93 @@ you.
 Three other manuals carry the material this one deliberately omits: `osr syntax`
 for the language, `osr doc` for released documents including the command manual
 `tooling/cli`, and the diagnostic manual for error codes.
+
+## Osiris is not Clojure
+
+Osiris takes Clojure's reader, macro model and much of its core vocabulary, so
+code you have seen before usually reads correctly. The differences below are the
+ones that silently produce wrong code if you assume otherwise. When in doubt,
+`osr syntax` is authoritative; this section only lists where a Clojure habit
+misleads.
+
+### Module headers are not `ns`
+
+There is no `ns` form. A module declares itself, its imports and its exports as
+separate top-level forms:
+
+```clojure
+(module demo.app)
+(export [answer])
+(import demo.lib :refer [step])
+(import demo.other :as other)
+```
+
+`:refer`, `:refer :all` and `:as` mean what they do in Clojure. Phase-1
+dependencies use `import-for-syntax`, and Python modules use `py/import`; these
+are three distinct operations and none of them executes Python at compile time.
+
+### Exports are explicit
+
+Clojure publishes every `def` unless it is marked private. Osiris publishes
+nothing unless it is named in `(export [...])`, because the public surface
+defines the interface hash that decides when dependents must be recompiled.
+
+`defn-` exists, but it does not mean what it means in Clojure. It is an ordinary
+macro that attaches `:private true` as authored metadata; the metadata records
+intent and enforces nothing. A name listed in `(export [...])` stays public even
+when marked private. Privacy comes from leaving the name out of the export
+list — nothing else.
+
+A macro cannot generate an `export`: module, import and export are authored
+boundaries fixed before expansion. A declaration macro that generates public
+names therefore relies on its caller to export them.
+
+### Types are checked
+
+Declarations carry types — `(defn ^Int step [^Int x] ...)` — and they are
+verified, not documentation. `^TypeTag` in other positions remains metadata.
+Bare `Vector`, `List`, `Set` and `Option` tags mean a dynamic container whose
+elements are `Any`; a bare `Map` means `Map[Any, Any]`.
+
+### The reader is closed
+
+No `#()`, no tagged literals, no reader macros, and no way for a package to add
+tokenizer or parser rules. `'`, `` ` ``, `~`, `~@`, `^` and `#{...}` are fixed
+grammar. New syntax comes from ordinary data forms and hygienic macros.
+
+### Names carry identity, not just spelling
+
+Every declaration has a locale-independent canonical binding ID. Localized
+preferred names and aliases resolve to that identity rather than declaring
+something new, so renaming by string replacement corrupts a program that a
+Clojure-style rename would not.
+
+### Metadata is layered and non-executable
+
+`^` reads Rich Metadata as in Clojure 1.12, including `^[...]` parameter tags.
+But authored metadata, static records, dependency-declared facts and
+compiler-verified facts stay separate, and there is no runtime Var metadata:
+no `alter-meta!`, no `reset-meta!`, no `*print-meta*`, no `with-redefs`.
+Metadata a package ships is untrusted data, never instructions.
+
+### What is absent
+
+Present and behaving as expected: `loop`/`recur`, `letfn`, `trampoline`,
+`while`, `dotimes`, `binding` with `^:dynamic`, `future`/`promise`/`deliver`/
+`deref`, `pmap`/`pcalls`/`pvalues`, `lock`/`locking`, `try`/`catch`/`finally`,
+`with-open`, `delay`/`force`, and the usual sequence vocabulary.
+
+Absent in this version, so do not reach for them: Clojure's `agent`, `send`,
+`send-off` and `await`; refs and `dosync`; `with-redefs`, `with-bindings` and
+`with-local-vars`; `transduce` and `eduction`; the full Seq/Transducer
+protocols. Sequence functions commit to an explicit boundary instead — `map`,
+`filter`, `remove`, `take` and `drop` return a memoized `LazySeq`, while
+`mapv`, `filterv`, `removev` and `forv` return an eager `Vector`.
+
+### The host is Python
+
+Interoperation targets Python, not the JVM. Generated code is ordinary Python
+and requires no Osiris runtime package.
 
 ## Orient before editing
 

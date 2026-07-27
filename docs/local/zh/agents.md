@@ -3,7 +3,7 @@ document-id: tooling/agents
 title: 以 Agent 身份使用 Osiris
 language: zh-CN
 source: ../../agents.md
-source-revision: 1
+source-revision: 2
 translation-status: Current
 ---
 
@@ -20,6 +20,84 @@ OEP 冲突时，以 OEP 为准。请在修改 `.osr` 之前阅读，而不是在
 
 另有三份手册承载本文刻意省略的内容：`osr syntax` 讲语言，`osr doc` 提供已发布
 文档（含命令手册 `tooling/cli`），诊断手册讲错误码。
+
+## Osiris 不是 Clojure
+
+Osiris 沿用了 Clojure 的 reader、宏模型和大部分核心词汇，因此你见过的代码通常
+读起来是对的。下面列出的是那些「按 Clojure 习惯来就会悄悄写错」的地方。有疑问
+时以 `osr syntax` 为准；本节只列 Clojure 习惯会误导人的部分。
+
+### 模块头不是 `ns`
+
+没有 `ns` 形式。模块声明、导入与导出是各自独立的顶层形式：
+
+```clojure
+(module demo.app)
+(export [answer])
+(import demo.lib :refer [step])
+(import demo.other :as other)
+```
+
+`:refer`、`:refer :all` 和 `:as` 的含义与 Clojure 一致。Phase-1 依赖用
+`import-for-syntax`，Python 模块用 `py/import`；三者是不同的操作，且都不会在
+编译期执行 Python。
+
+### 导出是显式的
+
+Clojure 默认公开每个 `def`，除非标记为私有。Osiris 则是不写进
+`(export [...])` 就不公开——因为公开面决定接口哈希，而接口哈希决定下游何时
+必须重新编译。
+
+`defn-` 存在，但含义与 Clojure 不同。它只是一个普通宏，给声明挂上
+`:private true` 这条 authored metadata；该元数据只记录意图，不产生任何强制力。
+被写进 `(export [...])` 的名字即使标了私有也仍然公开。私有性只来自「不写进
+导出清单」，别无他途。
+
+宏不能生成 `export`：module、import 与 export 是在展开前固定的作者边界。因此
+生成公开名字的声明宏，只能依赖调用方把它们导出。
+
+### 类型会被检查
+
+声明携带类型——`(defn ^Int step [^Int x] ...)`——并且会被验证，不是文档。
+其他位置上的 `^TypeTag` 仍然只是元数据。裸 `Vector`、`List`、`Set`、`Option`
+表示元素为 `Any` 的动态容器，裸 `Map` 表示 `Map[Any, Any]`。
+
+### reader 是封闭的
+
+没有 `#()`、没有 tagged literal、没有 reader macro，包也无法注册 tokenizer 或
+parser 规则。`'`、`` ` ``、`~`、`~@`、`^` 和 `#{...}` 是固定语法。新语法只能
+来自普通数据形式与卫生宏。
+
+### 名字携带身份，不只是拼写
+
+每个声明都有与 locale 无关的 canonical binding ID。本地化首选名和别名解析到
+该身份，而不是声明出新的东西。因此用字符串替换做重命名会破坏程序，而在
+Clojure 里这样做通常不会。
+
+### 元数据分层且不可执行
+
+`^` 读取 Rich Metadata，与 Clojure 1.12 一致，包含 `^[...]` 参数标签简写。
+但 authored metadata、static record、依赖声明的事实与编译器已证明的事实彼此
+分离，且没有运行时 Var metadata：没有 `alter-meta!`、`reset-meta!`、
+`*print-meta*`、`with-redefs`。包携带的元数据是不可信数据，绝不是指令。
+
+### 缺失的部分
+
+存在且行为符合预期：`loop`/`recur`、`letfn`、`trampoline`、`while`、`dotimes`、
+配合 `^:dynamic` 的 `binding`、`future`/`promise`/`deliver`/`deref`、
+`pmap`/`pcalls`/`pvalues`、`lock`/`locking`、`try`/`catch`/`finally`、
+`with-open`、`delay`/`force`，以及常用的序列词汇。
+
+本版本没有，不要去用：Clojure 的 `agent`、`send`、`send-off`、`await`；ref 与
+`dosync`；`with-redefs`、`with-bindings`、`with-local-vars`；`transduce` 与
+`eduction`；完整的 Seq/Transducer 协议。序列函数改用明确的边界——`map`、
+`filter`、`remove`、`take`、`drop` 返回记忆化的 `LazySeq`，而 `mapv`、
+`filterv`、`removev`、`forv` 返回 eager `Vector`。
+
+### 宿主是 Python
+
+互操作面向 Python 而非 JVM。生成的代码是普通 Python，运行时不需要任何 Osiris
+包。
 
 ## 动手前先定位
 
