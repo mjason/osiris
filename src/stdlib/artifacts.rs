@@ -155,7 +155,105 @@ pub fn interface_artifact_ref(namespace: &str) -> Result<&'static Interface, Str
         .ok_or_else(|| format!("standard interface `{namespace}` is missing"))
 }
 
+/// Compiles `osiris.core`, reusing a cached result across processes.
+///
+/// The core facade is assembled by compiling it from source, which costs a
+/// substantial fraction of a second. Short-lived commands such as `osr lsc`
+/// otherwise pay it on every invocation, and an editor pays it at startup.
 fn compile_core_interface() -> Result<Interface, String> {
+    if let Some(cached) = core_interface_cache::load() {
+        return Ok(cached);
+    }
+    let interface = compile_core_interface_uncached()?;
+    core_interface_cache::store(&interface);
+    Ok(interface)
+}
+
+/// Caches the rendered core interface keyed by everything it derives from.
+///
+/// A different standard source tree, compiler build, or ABI produces a
+/// different key, so a stale entry is never consulted rather than invalidated.
+/// The stored text is re-read through `interface::read`, which validates the
+/// model's own hashes, so a corrupt or truncated entry degrades to a rebuild.
+mod core_interface_cache {
+    use std::{fs, path::PathBuf};
+
+    use super::{Interface, interface, standard_resource_hash};
+
+    fn key() -> String {
+        let digest = crate::hash::sha256(
+            [
+                "osiris-core-interface-v1",
+                standard_resource_hash(),
+                crate::version(),
+                interface::COMPILER_ABI,
+                interface::LANGUAGE_ABI,
+            ]
+            .join("\u{1f}")
+            .as_bytes(),
+        );
+        // `sha256:` prefixed digests are not valid Windows file names.
+        digest
+            .rsplit_once(':')
+            .map_or(digest.clone(), |(_, hex)| hex.to_owned())
+    }
+
+    fn path() -> Option<PathBuf> {
+        let directory = if let Some(explicit) = std::env::var_os("OSIRIS_CACHE_DIR") {
+            PathBuf::from(explicit)
+        } else if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+            PathBuf::from(xdg).join("osiris")
+        } else if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            PathBuf::from(local).join("osiris")
+        } else {
+            PathBuf::from(std::env::var_os("HOME")?)
+                .join(".cache")
+                .join("osiris")
+        };
+        Some(directory.join(format!("core-interface-{}.osri", key())))
+    }
+
+    pub(super) fn load() -> Option<Interface> {
+        let source = fs::read_to_string(path()?).ok()?;
+        interface::read(&source).ok()
+    }
+
+    pub(super) fn store(model: &Interface) {
+        let Some(path) = path() else {
+            return;
+        };
+        let Ok(rendered) = interface::render(model) else {
+            return;
+        };
+        let Some(directory) = path.parent() else {
+            return;
+        };
+        if fs::create_dir_all(directory).is_err() {
+            return;
+        }
+        // Rename into place so a concurrent reader never observes a partial
+        // file, and so racing writers simply overwrite identical content.
+        let staging = directory.join(format!(
+            "core-interface-{}-{}.tmp",
+            std::process::id(),
+            key()
+        ));
+        if fs::write(&staging, rendered.as_bytes()).is_err() {
+            let _ = fs::remove_file(&staging);
+            return;
+        }
+        if fs::rename(&staging, &path).is_err() {
+            let _ = fs::remove_file(&staging);
+        }
+    }
+}
+
+#[cfg(test)]
+pub(super) fn compile_core_interface_uncached_for_tests() -> Result<Interface, String> {
+    compile_core_interface_uncached()
+}
+
+fn compile_core_interface_uncached() -> Result<Interface, String> {
     let compilation_sources = compilation_sources()?;
     let namespaces = ["osiris.core.kernel", CORE_NAMESPACE];
     let options = namespaces

@@ -288,3 +288,26 @@ fn linked_standard_types_resolve_to_the_private_kernel_package() {
     assert!(!concurrent.contains("from osiris."), "{concurrent}");
     assert!(support.helpers.contains("Lock"));
 }
+
+#[test]
+fn cached_core_interface_matches_a_fresh_compilation() {
+    // `osr lsc` and editor startup read the core facade from a cross-process
+    // cache. A cached entry must be indistinguishable from compiling it, or
+    // short-lived commands would disagree with a cold run.
+    let compiled =
+        artifacts::compile_core_interface_uncached_for_tests().expect("core interface compiles from source");
+    let served = interface_artifact(CORE_NAMESPACE).expect("core interface is served");
+
+    assert_eq!(
+        served.semantic_interface_hash(),
+        compiled.semantic_interface_hash()
+    );
+    assert_eq!(
+        served.tooling_metadata_hash(),
+        compiled.tooling_metadata_hash()
+    );
+    assert_eq!(
+        crate::interface::render(&served).expect("rendered served interface"),
+        crate::interface::render(&compiled).expect("rendered fresh interface")
+    );
+}
