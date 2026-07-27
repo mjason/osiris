@@ -437,7 +437,7 @@ const COMMANDS: &[CommandDefinition] = &[
         synopsis: "osr lsp",
         positionals: &[],
         options: &[],
-        input: "LSP JSON-RPC Content-Length frames on stdin.",
+        input: "LSP JSON-RPC Content-Length frames on stdin. Edits are analyzed once the editor goes quiet; `OSIRIS_LSP_DEBOUNCE_MS` sets that period (default 150).",
         output: "LSP JSON-RPC frames on stdout.",
         stdout: "Protocol transport only.",
         stderr: "Session log and transport failures. `OSIRIS_LSP_LOG` selects the level (off, error, warn, info, debug, trace; default info) and `OSIRIS_LSP_LOG_FILE` also appends records to a file.",

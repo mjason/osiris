@@ -420,3 +420,138 @@ fn malformed_request_has_json_rpc_error_shape() {
     assert_eq!(response["jsonrpc"], "2.0");
     assert!(response["error"]["code"].is_number());
 }
+
+#[test]
+fn deferred_changes_coalesce_into_one_analysis() {
+    let mut state = LspState::new();
+    state.did_open(URI, 1, "(module demo)\n(def value 1)\n");
+    let baseline = state.analysis_runs();
+
+    for (offset, version) in (2..=6).enumerate() {
+        state
+            .defer_change(
+                URI,
+                version,
+                &[TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: format!("(module demo)\n(def value {})\n", offset + 2),
+                }],
+            )
+            .expect("deferred edit");
+    }
+
+    // Nothing is analyzed until the flush, and the document still reports the
+    // model a query would see.
+    assert_eq!(state.analysis_runs(), baseline);
+    assert!(state.has_deferred_changes());
+    assert_eq!(state.document_version(URI), Some(1));
+
+    let published = state.flush_analysis();
+
+    assert_eq!(state.analysis_runs(), baseline + 1, "five edits, one analysis");
+    assert!(!state.has_deferred_changes());
+    assert_eq!(state.document_version(URI), Some(6));
+    assert_eq!(published.len(), 1);
+    assert_eq!(
+        state.document(URI).expect("document").text,
+        "(module demo)\n(def value 6)\n"
+    );
+}
+
+#[test]
+fn a_deferred_change_is_rejected_when_it_does_not_advance_the_version() {
+    let mut state = LspState::new();
+    state.did_open(URI, 1, "(module demo)\n(def value 1)\n");
+    state
+        .defer_change(
+            URI,
+            5,
+            &[TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "(module demo)\n(def value 5)\n".to_owned(),
+            }],
+        )
+        .expect("deferred edit");
+
+    // The pending edit, not the analyzed document, is what a later edit must
+    // advance past.
+    let stale = state.defer_change(
+        URI,
+        5,
+        &[TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "(module demo)".to_owned(),
+        }],
+    );
+
+    assert!(stale.is_err());
+    state.flush_analysis();
+    assert_eq!(
+        state.document(URI).expect("document").text,
+        "(module demo)\n(def value 5)\n"
+    );
+}
+
+#[test]
+fn a_request_settles_deferred_edits_before_it_is_answered() {
+    let mut machine = JsonRpcMachine::new();
+    machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": URI, "languageId": "osiris", "version": 1,
+                "text": "(module demo)\n(def value 1)\n"
+            }}
+        })
+        .to_string(),
+    );
+
+    let changed = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": URI, "version": 2},
+                "contentChanges": [{"text": "(module demo)\n(def value missing)\n"}]
+            }
+        })
+        .to_string(),
+    );
+
+    assert!(
+        changed.notifications.is_empty(),
+        "an edit publishes nothing until it settles"
+    );
+
+    // A request must observe the edit, and carry its diagnostics along.
+    let hovered = machine.handle(
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "textDocument/hover",
+            "params": {"textDocument": {"uri": URI}, "position": {"line": 1, "character": 6}}
+        })
+        .to_string(),
+    );
+
+    let published = hovered
+        .notifications
+        .iter()
+        .find(|notification| {
+            notification["method"] == "textDocument/publishDiagnostics"
+        })
+        .expect("settling the edit publishes its diagnostics");
+    assert_eq!(published["params"]["uri"], URI);
+    assert!(
+        !published["params"]["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .is_empty(),
+        "the unresolved name in the deferred edit is reported"
+    );
+    assert_eq!(machine.state.document_version(URI), Some(2));
+}

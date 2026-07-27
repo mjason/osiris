@@ -9,6 +9,30 @@ fn dispatch(
     method: &str,
     params: &JsonValue,
 ) -> Result<DispatchOutcome, LspStateError> {
+    // Every method other than a further edit observes the analyzed model, so
+    // deferred edits are settled first and their diagnostics ride along with
+    // whatever this message produces.
+    let flushed = if method == "textDocument/didChange" {
+        Vec::new()
+    } else {
+        state
+            .flush_analysis()
+            .into_iter()
+            .map(publish_diagnostics_notification)
+            .collect()
+    };
+    let mut outcome = dispatch_settled(state, method, params)?;
+    if !flushed.is_empty() {
+        outcome.notifications.splice(..0, flushed);
+    }
+    Ok(outcome)
+}
+
+fn dispatch_settled(
+    state: &mut LspState,
+    method: &str,
+    params: &JsonValue,
+) -> Result<DispatchOutcome, LspStateError> {
     match method {
         "initialize" => {
             // Building the standard API catalog takes about a second and every
@@ -65,15 +89,12 @@ fn dispatch(
         }
         "textDocument/didChange" => {
             let params: DidChangeParams = decode_params(params)?;
-            let diagnostics = state.did_change(
+            state.defer_change(
                 &params.text_document.uri,
                 params.text_document.version,
                 &params.content_changes,
             )?;
-            Ok(DispatchOutcome {
-                result: None,
-                notifications: vec![publish_diagnostics_notification(diagnostics)],
-            })
+            Ok(DispatchOutcome::default())
         }
         "textDocument/didClose" => {
             let params: DidCloseParams = decode_params(params)?;

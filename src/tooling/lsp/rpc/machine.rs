@@ -44,6 +44,31 @@ impl JsonRpcMachine {
     pub fn handle_json(&mut self, input: &str) -> Vec<String> {
         self.handle(input).messages()
     }
+
+    /// Analyzes deferred edits and returns the diagnostics to publish.
+    ///
+    /// A transport calls this once the editor stops sending edits, so a burst
+    /// of keystrokes costs one analysis instead of one per keystroke.
+    pub fn flush(&mut self) -> JsonRpcOutcome {
+        let started = std::time::Instant::now();
+        let notifications = self
+            .state
+            .flush_analysis()
+            .into_iter()
+            .map(publish_diagnostics_notification)
+            .collect::<Vec<_>>();
+        if !notifications.is_empty() {
+            lsp_info!(
+                "analyzed {} deferred document(s) in {:.1}ms",
+                notifications.len(),
+                started.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        JsonRpcOutcome {
+            response: None,
+            notifications,
+        }
+    }
 }
 
 impl LspState {

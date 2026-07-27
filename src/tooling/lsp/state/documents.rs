@@ -146,7 +146,73 @@ impl LspState {
     }
 
     pub fn did_close(&mut self, uri: &str) -> bool {
+        self.deferred.remove(uri);
         self.documents.remove(uri).is_some()
+    }
+
+    /// Applies edits without analyzing them.
+    ///
+    /// Typing produces one notification per keystroke, and analyzing each one
+    /// discards the result before the next keystroke arrives. Deferring lets a
+    /// transport coalesce a burst into a single analysis; the edits themselves
+    /// are still applied in order and version checks still run immediately.
+    /// Call [`Self::flush_analysis`] before answering any request.
+    pub fn defer_change(
+        &mut self,
+        uri: &str,
+        version: i64,
+        changes: &[TextDocumentContentChangeEvent],
+    ) -> Result<(), LspStateError> {
+        let Some(document) = self.documents.get_mut(uri) else {
+            return Err(LspStateError::new(
+                DOCUMENT_NOT_FOUND,
+                format!("document {uri} is not open"),
+            ));
+        };
+        let current_version = document
+            .pending
+            .as_ref()
+            .map_or(document.version, |pending| pending.version);
+        if version <= current_version {
+            return Err(LspStateError::new(
+                STALE_DOCUMENT_VERSION,
+                format!("document version {version} is not newer than {current_version}"),
+            ));
+        }
+        let mut text = document
+            .pending
+            .as_ref()
+            .map_or_else(|| document.text.clone(), |pending| pending.text.clone());
+        for change in changes {
+            apply_content_change(&mut text, change)?;
+        }
+        document.pending = Some(PendingEdit { version, text });
+        self.deferred.insert(uri.to_owned());
+        Ok(())
+    }
+
+    /// Whether any document has edits awaiting analysis.
+    #[must_use]
+    pub fn has_deferred_changes(&self) -> bool {
+        !self.deferred.is_empty()
+    }
+
+    /// Analyzes every deferred edit and returns the diagnostics to publish.
+    pub fn flush_analysis(&mut self) -> Vec<PublishDiagnosticsParams> {
+        let deferred = std::mem::take(&mut self.deferred);
+        let mut published = Vec::new();
+        for uri in deferred {
+            let Some(document) = self.documents.get_mut(&uri) else {
+                continue;
+            };
+            let Some(pending) = document.pending.take() else {
+                continue;
+            };
+            if let Ok(diagnostics) = self.did_change_full(&uri, pending.version, pending.text) {
+                published.push(diagnostics);
+            }
+        }
+        published
     }
 
     fn refresh_workspace_symbols(&mut self, updated: &OpenDocument) {

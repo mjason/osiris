@@ -12,6 +12,18 @@ pub struct OpenDocument {
     pub(super) macro_interfaces: Arc<BTreeMap<String, interface::MacroInterface>>,
     pub(super) display_locale: Option<String>,
     workspace_symbols: Arc<WorkspaceSymbolIndex>,
+    /// Text of edits received but not yet analyzed. The analyzed `text` and
+    /// `analysis` above stay consistent with each other until a flush, so a
+    /// query that races an edit answers from the last complete analysis rather
+    /// than from new text against a stale model.
+    pub(super) pending: Option<PendingEdit>,
+}
+
+/// One or more edits applied to a document but not yet analyzed.
+#[derive(Clone, Debug)]
+pub(super) struct PendingEdit {
+    pub(super) version: i64,
+    pub(super) text: String,
 }
 
 impl OpenDocument {
@@ -41,6 +53,7 @@ impl OpenDocument {
             macro_interfaces,
             display_locale,
             workspace_symbols,
+            pending: None,
         }
     }
 }
@@ -82,6 +95,8 @@ pub struct LspState {
     analysis_runs: u64,
     shutdown_requested: bool,
     pub(super) workspace_cache: Option<WorkspaceAnalysisCache>,
+    /// Documents with edits awaiting analysis.
+    pub(super) deferred: BTreeSet<String>,
     /// Per-module analyses reused across edits within one workspace.
     pub(super) memo: Arc<compiler::WorkspaceMemo>,
 }
@@ -97,6 +112,7 @@ impl Default for LspState {
             analysis_runs: 0,
             shutdown_requested: false,
             workspace_cache: None,
+            deferred: BTreeSet::new(),
             memo: Arc::default(),
         }
     }
