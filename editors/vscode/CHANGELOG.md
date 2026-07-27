@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.10
+
+- Reuse unchanged workspace analysis so hover and definition requests are not blocked by repeated full-project compilation.
+- Improve navigation across Unicode paths and strengthen LSA project-symbol preflight for project API questions.
+
 ## 0.3.9
 
 - Use the official DeepSeek endpoint and native tool calling for project-aware LSA requests.
