@@ -33,10 +33,25 @@ impl LspState {
                 code: diagnostic.code.to_owned(),
                 source: LSP_SERVER_NAME.to_owned(),
                 message: diagnostic.message.clone(),
+                related_information: diagnostic
+                    .related
+                    .iter()
+                    // A span in another module is a byte range this buffer
+                    // cannot position, so it stays in `data` for agents only.
+                    .filter(|related| related.module.is_none())
+                    .map(|related| DiagnosticRelatedInformation {
+                        location: Location {
+                            uri: uri.to_owned(),
+                            range: span_to_range(&document.text, related.span),
+                        },
+                        message: related.message.clone(),
+                    })
+                    .collect(),
                 data: json!({
                     "span": diagnostic.span,
                     "nodeId": node_id_for_span(document, diagnostic.span),
                     "documentVersion": document.version,
+                    "related": diagnostic.related,
                 }),
             })
             .collect::<Vec<_>>();
@@ -46,6 +61,7 @@ impl LspState {
             code: lint.code.to_owned(),
             source: LSP_SERVER_NAME.to_owned(),
             message: lint.message.clone(),
+            related_information: Vec::new(),
             data: json!({
                 "span": lint.span,
                 "nodeId": node_id_for_span(document, lint.span),
@@ -303,6 +319,7 @@ fn alias_migration_diagnostics(
             code: "OSR-L0002".to_owned(),
             source: LSP_SERVER_NAME.to_owned(),
             message,
+            related_information: Vec::new(),
             data: json!({
                 "span": advisory.span,
                 "nodeId": node_id_for_span(document, advisory.span),

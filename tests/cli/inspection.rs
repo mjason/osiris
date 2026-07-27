@@ -205,6 +205,36 @@ fn check_reports_stable_reader_diagnostic() {
 }
 
 #[test]
+fn check_renders_the_macro_chain_behind_a_diagnostic() {
+    // OEP-0001-R032A/R032C: the only authored call is `(outer n)`, so without
+    // the chain the reported line belongs to a macro the author never called.
+    let fixture = SourceFixture::new(
+        "(defmacro inner [value] `(no-such-fn ~value))\n\
+         (defmacro outer [value] `(inner ~value))\n\
+         (defn ^Int demo [^Int n] (outer n))\n",
+    );
+    let output = osr(&["check", path_argument(&fixture.path)]);
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.contains("OSR-N0012"), "{stderr}");
+    assert!(
+        stderr.contains("= note: expanded from macro `outer` called here"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("= note: expanded from macro `inner` called here"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("= note: macro `inner` is defined here"),
+        "{stderr}"
+    );
+    // The call-site note must point at the authored call on line 3.
+    assert!(stderr.contains("示例.osr:3:26"), "{stderr}");
+}
+
+#[test]
 fn check_analyzes_project_imports_against_source_interfaces() {
     let fixture = SourceFixture::new("(def ignored 0)\n");
     let app = fixture.write(

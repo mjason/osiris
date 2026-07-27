@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 21
+revision: 22
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 21
+source-revision: 22
 translation-status: Current
 requires: [0]
 replaces: []
@@ -267,6 +267,11 @@ untyped HIR 或 backend callback。
 **OEP-0001-R017：** 宏创建的 identifier 必须默认卫生。故意使用 call-site name 必须
 经过显式 syntax operation，展开结果必须同时保留 definition 与 call-site origin chain。
 
+**OEP-0001-R017A：** 卫生适用于宏 template 直接书写的每一个 binding position。
+当 template 的 binding position 无法在展开前识别时，编译器必须保留原有名称，
+不得基于假设进行重命名；syntax manual 必须列出这些形态，使宏作者知道何时需要
+显式使用全新名称。
+
 **OEP-0001-R018：** Phase-1 package interface 必须静态声明 macro code 和编译期
 dependency。宏展开只能依赖 OEP-0002 选择的 locked、validated interface；所需 macro
 code 缺失或不兼容时必须 fail closed。
@@ -340,8 +345,26 @@ effect 的 expression。Target-specific rewrite 不得静默削弱类型、tempo
 effect 诊断。
 
 **OEP-0001-R032：** 诊断必须有稳定 code、severity、primary source span、human
-message，以及适用时的 machine-readable related information。宏诊断必须携带
-expansion trace，生成 Python 的 failure 必须能够映射回 authored source。
+message，以及一组有序的 related location。每个 related location 必须携带稳定的
+machine-readable kind 与 span；当该 span 不属于报告该诊断的 module 时，必须写明
+它所属的 module。identity 不得依赖 human message 文本。生成 Python 的 failure
+必须能够映射回 authored source。
+
+**OEP-0001-R032A：** 针对宏展开所产生语法报告的诊断，必须以 related location
+形式携带该次展开。chain 中的每一次展开都必须同时贡献其 call site 与 macro
+definition，按最外层展开在前排序，并且必须用 binding ID 标识该宏，使消费者无需
+比较 span 就能把诊断关联到 expansion trace。该要求适用于展开之后运行的每一个
+pass 所产生的诊断，而不仅是展开器自身报告的诊断。
+
+**OEP-0001-R032B：** source span 是不带文件标识的字节区间。诊断不得把属于某个
+module 的 span 报告到另一个 module 的文本上。当展开从导入宏的 template 复制语法
+时，编译器必须把该语法重新指向 call site，并改为通过 R032 的 related location
+记录定义所在的 module。
+
+**OEP-0001-R032C：** 每个编译器自有的诊断出口——CLI 渲染、`osr lsc` JSON 以及
+LSP 发布——都必须暴露诊断携带的 related location，任何出口都不得静默丢弃条目。
+machine-readable 出口必须暴露每个条目的 kind、span、module 与 macro binding ID。
+无法把外部 module 的 span 解析为行列的出口，仍必须写明该 module。
 
 **OEP-0001-R033：** `osr lsc syntax` 必须暴露 lossless syntax view；
 `osr lsc semantic` 必须暴露 canonical binding ID、type、metadata category、
@@ -997,7 +1020,9 @@ format/validate。
   resolution、递归 `~osiris` formatting，以及 documentation-only reference 不产生 runtime
   reachability；
 - kernel inventory 与 standard macro inventory 可以独立查询；
-- 宏测试证明 hygiene、phase isolation、determinism 和 origin chain；
+- 宏测试证明 hygiene、phase isolation、determinism 和 origin chain，包括：
+  展开之后的 pass 所产生的诊断携带每一个产生该语法的宏的有序 call-site 与
+  definition chain；没有诊断把其他 module 的 span 报告到本地文本上；
 - type/`defstruct` 测试证明 inference 与 public boundary rule；
 - Python output 可被选定 target 解析，并能把 diagnostic 映射回 source；
 - 每条公开 CLI 命令有一份完整 command definition；

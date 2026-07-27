@@ -390,11 +390,31 @@ expands to normal Osiris forms:
      (+ value# value#)))
 ```
 
-An automatic gensym such as `value#` creates a fresh binding on every
-expansion. Template names resolve at the macro definition; unquoted syntax
-retains the caller's context. Macros run in a deterministic, restricted phase 1
-and cannot import Python, access the network, inspect runtime values, or bypass
-normal type and semantic checks.
+A name a template binds in `let` or `fn` is hygienic: it receives a fresh
+identity on every expansion, so caller syntax spliced in through unquote can
+never be captured by it. Writing `value#` makes that identity explicit and is
+still required when one name must be shared across two separate templates,
+because `value#` is stable only within a single syntax quote.
+
+Reaching a call-site name is deliberate and needs the explicit `~'name`
+operation:
+
+```clojure
+(defmacro with-it [expression body]
+  `(let [~'it ~expression] ~body))    ; `it` is visible to the caller's body
+```
+
+Two shapes stay outside this pass because they cannot be read statically: a
+binding vector built by unquote-splicing (`` `(let [~@pairs] ...) ``) and map
+destructuring in a template binding position. Names there keep their authored
+spelling, so use `value#` or `(gensym)` when writing them.
+
+Unquoted syntax retains the caller's context. A template name exported by the
+defining module resolves at that module; a name defined in the same module as
+the macro currently resolves at the call site, so qualify it or pass it through
+unquote when the caller might shadow it. Macros run in a deterministic,
+restricted phase 1 and cannot import Python, access the network, inspect
+runtime values, or bypass normal type and semantic checks.
 
 Use `defn-for-syntax` for a compile-time helper and `import-for-syntax` for a
 compile-time dependency. Use `osr expand <path>` to inspect expansion.

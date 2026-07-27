@@ -235,9 +235,11 @@ pub(super) fn pattern_binding_names(pattern: &Pattern) -> Vec<String> {
     }
 }
 
+/// Resolve a phase-1 builtin. The name must match exactly: dropping a
+/// qualifier here would let `any.module/count` silently reach the phase-1
+/// `count` builtin instead of failing as an unbound name.
 pub(super) fn builtin_name(name: &str) -> Option<&'static str> {
-    let short = name.rsplit('/').next().unwrap_or(name);
-    match short {
+    match name {
         "identity" => Some("identity"),
         "reduced" => Some("reduced"),
         "reduced?" => Some("reduced?"),

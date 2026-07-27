@@ -85,6 +85,47 @@ fn state_reuses_one_analysis_for_all_queries() {
 }
 
 #[test]
+fn published_diagnostics_carry_the_macro_chain_as_related_information() {
+    // OEP-0001-R032C: an editor must be able to jump from the reported line to
+    // the call that produced it, so the chain travels as LSP locations.
+    let uri = "file:///workspace/chain.osr";
+    let source = "(module chain)\n\
+                  (defmacro inner [value] `(no-such-fn ~value))\n\
+                  (defmacro outer [value] `(inner ~value))\n\
+                  (defn ^Int demo [^Int n] (outer n))\n";
+    let mut state = LspState::new();
+    let published = state.did_open(uri, 1, source);
+    let diagnostic = published
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "OSR-N0012")
+        .expect("the generated call should not resolve");
+
+    assert_eq!(diagnostic.related_information.len(), 4, "{diagnostic:?}");
+    assert!(
+        diagnostic.related_information[0]
+            .message
+            .contains("expanded from macro `outer`"),
+        "{diagnostic:?}"
+    );
+    assert!(
+        diagnostic
+            .related_information
+            .iter()
+            .all(|related| related.location.uri == uri)
+    );
+    // The machine-readable copy keeps the kind and binding id.
+    assert_eq!(
+        diagnostic.data["related"][0]["kind"],
+        JsonValue::from("macro-call-site")
+    );
+    assert_eq!(
+        diagnostic.data["related"][0]["binding_id"],
+        JsonValue::from("chain::macro::outer")
+    );
+}
+
+#[test]
 fn migration_alias_diagnostics_preserve_roles_and_locale_replacements() {
     let uri = "file:///workspace/aliases.osr";
     let source = r#"(module aliases)

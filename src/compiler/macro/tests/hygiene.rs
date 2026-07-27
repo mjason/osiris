@@ -112,6 +112,112 @@ fn auto_gensym_has_stable_spelling_and_unforgeable_identity() {
 }
 
 #[test]
+fn template_let_bindings_are_hygienic_without_an_explicit_gensym() {
+    // The caller's `value` reaches the expansion through unquote, so the name
+    // the template binds must not be the same name.
+    let source = "(defmacro with-doubled [expression body]\n  `(let [value (* 2 ~expression)] ~body))\n(with-doubled 10 (+ value 1))";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.is_empty(),
+        "{:?}",
+        result.document.diagnostics
+    );
+    let expansion = render_document_text(&result.document);
+    assert!(
+        expansion.ends_with("(let [value__osr_g0 (* 2 10)] (+ value 1))\n"),
+        "{expansion}"
+    );
+    let generated = gensym_occurrences(&result.document.forms[1]);
+    assert_eq!(generated.len(), 1);
+}
+
+#[test]
+fn template_fn_parameters_and_destructuring_are_hygienic() {
+    let source = "(defmacro apply-pair [body]\n  `((fn [[left right]] ~body) [1 2]))\n(apply-pair (+ left right))";
+    let expansion = expanded(source);
+    assert!(
+        expansion.ends_with(
+            "((fn [[left__osr_g0 right__osr_g1]] (+ left right)) [1 2])\n"
+        ),
+        "{expansion}"
+    );
+}
+
+#[test]
+fn unquoted_quote_is_the_explicit_call_site_capture_operation() {
+    // `~'it` is the deliberate escape from hygiene; a plain `it` is not.
+    let anaphoric = expanded(
+        "(defmacro with-it [expression body]\n  `(let [~'it ~expression] ~body))\n(with-it 1 (* it 2))",
+    );
+    assert!(anaphoric.ends_with("(let [it 1] (* it 2))\n"), "{anaphoric}");
+
+    let hygienic = expanded(
+        "(defmacro with-it [expression body]\n  `(let [it ~expression] ~body))\n(with-it 1 (* it 2))",
+    );
+    assert!(
+        hygienic.ends_with("(let [it__osr_g0 1] (* it 2))\n"),
+        "{hygienic}"
+    );
+}
+
+#[test]
+fn spliced_binding_vectors_keep_their_authored_names() {
+    // The expander cannot see which spliced forms are binding positions, so it
+    // must leave the whole vector alone rather than rename on a guess.
+    let source = "(defmacro bind-all [pairs body]\n  `(let [~@pairs] ~body))\n(bind-all [value 1] (+ value 2))";
+    let expansion = expanded(source);
+    assert!(
+        expansion.ends_with("(let [value 1] (+ value 2))\n"),
+        "{expansion}"
+    );
+}
+
+#[test]
+fn a_local_macro_does_not_intercept_another_modules_qualified_call() {
+    let source = "(module caller)\n(defmacro count [value] `(:hijacked ~value))\n(other/count items)";
+    let expansion = expanded(source);
+    assert!(expansion.ends_with("(other/count items)\n"), "{expansion}");
+
+    let self_qualified = expanded(
+        "(module caller)\n(defmacro count [value] `(:tagged ~value))\n(caller/count items)",
+    );
+    assert!(
+        self_qualified.ends_with("(:tagged items)\n"),
+        "{self_qualified}"
+    );
+}
+
+#[test]
+fn phase_one_names_do_not_resolve_to_builtins_through_a_qualifier() {
+    let source = "(defmacro broken [values] (any.module/count values))\n(broken [1 2])";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "OSR-M0004"
+                && diagnostic
+                    .message
+                    .contains("unbound phase-1 name `any.module/count`")
+        }),
+        "{:?}",
+        result.document.diagnostics
+    );
+}
+
+#[test]
+fn constructed_names_cannot_forge_a_hygienic_identity() {
+    // `\0osr-gensym:0:value` is the identity `value#` receives first.
+    let source = "(defmacro capture [body]\n  `(let [value# 100] ~body))\n(defmacro forged [] (symbol \"\\u0000osr-gensym:0:value\"))\n(capture (forged))";
+    let result = expand(&read(source), ExpansionOptions::default());
+    assert!(
+        result.document.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "OSR-M0004" && diagnostic.message.contains("control character")
+        }),
+        "{:?}",
+        result.document.diagnostics
+    );
+}
+
+#[test]
 fn explicit_gensym_is_shared_through_unquotes() {
     let source = "(defmacro hold [expr]\n  (let [binding (gensym \"held\")]\n    `(let [~binding ~expr] ~binding)))\n(hold value)";
     let result = expand(&read(source), ExpansionOptions::default());
@@ -170,6 +276,106 @@ fn phase_recursion_limit_is_recoverable() {
             .any(|diagnostic| diagnostic.code == "OSR-M0005")
     );
     assert_eq!(result.document.forms.len(), 4);
+}
+
+#[test]
+fn a_diagnostic_after_expansion_carries_the_whole_macro_chain() {
+    // OEP-0001-R032A. `no-such-fn` is written in `inner`, `inner` is written in
+    // `outer`, and only `(outer n)` appears in the authored function.
+    let source = "(module chain)\n\
+                  (defmacro inner [value] `(no-such-fn ~value))\n\
+                  (defmacro outer [value] `(inner ~value))\n\
+                  (defn ^Int demo [^Int n] (outer n))";
+    let analysis = analyze(source, &CompileOptions::new("chain", PythonVersion::default()));
+    let diagnostic = analysis
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "OSR-N0012")
+        .expect("the generated call should not resolve");
+    assert_eq!(
+        diagnostic
+            .related
+            .iter()
+            .map(|related| (related.kind, related.binding_id.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![
+            (RelatedKind::MacroCallSite, Some("chain::macro::outer")),
+            (RelatedKind::MacroDefinition, Some("chain::macro::outer")),
+            (RelatedKind::MacroCallSite, Some("chain::macro::inner")),
+            (RelatedKind::MacroDefinition, Some("chain::macro::inner")),
+        ]
+    );
+    // Every entry must join to a recorded trace without comparing spans.
+    for related in &diagnostic.related {
+        assert!(
+            analysis.expansion_traces.iter().any(|trace| {
+                Some(trace.macro_binding_id.as_str()) == related.binding_id.as_deref()
+            }),
+            "{related:?}"
+        );
+    }
+    let call_site = &diagnostic.related[0];
+    assert_eq!(call_site.module, None);
+    assert!(source[call_site.span.start..call_site.span.end].starts_with("(outer"));
+}
+
+#[test]
+fn a_phase_one_failure_carries_the_chain_that_was_expanding() {
+    let source = "(module reject)\n\
+                  (defmacro inner [value] (syntax-error value \"inner rejects this\"))\n\
+                  (defmacro outer [value] `(inner ~value))\n\
+                  (defn ^Int demo [^Int n] (outer n))";
+    let analysis = analyze(source, &CompileOptions::new("reject", PythonVersion::default()));
+    let diagnostic = analysis
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "OSR-M0007")
+        .expect("the macro should reject its argument");
+    assert_eq!(
+        diagnostic
+            .related
+            .iter()
+            .map(|related| related.binding_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            Some("reject::macro::outer"),
+            Some("reject::macro::outer"),
+            Some("reject::macro::inner"),
+            Some("reject::macro::inner"),
+        ]
+    );
+}
+
+#[test]
+fn an_imported_macro_reports_the_call_site_and_names_its_module() {
+    // OEP-0001-R032B: a span from `dep.broken` means nothing in this module, so
+    // the primary span must be the call and the module must be named instead.
+    let module = imported_module(
+        "dep.broken",
+        "(defmacro emit [value] `(no-such-function ~value))",
+        &[("emit", "emit")],
+    );
+    let source = "(module caller)\n(defn ^Int demo [^Int n] (emit n))";
+    let expanded =
+        expand_with_imported_phase_modules(&read(source), &[module], ExpansionOptions::default());
+    let trace = &expanded.traces[0];
+    assert_eq!(trace.definition_module.as_deref(), Some("dep.broken"));
+
+    let related = super::expansion_related(&expanded.traces, trace.call_span);
+    let definition = related
+        .iter()
+        .find(|related| related.kind == RelatedKind::MacroDefinition)
+        .expect("the definition half of the chain is required");
+    assert_eq!(definition.module.as_deref(), Some("dep.broken"));
+    assert!(definition.message.contains("dep.broken"), "{definition:?}");
+
+    // Nothing the caller sees may point outside its own text.
+    let call_site = related
+        .iter()
+        .find(|related| related.kind == RelatedKind::MacroCallSite)
+        .expect("the call-site half of the chain is required");
+    assert_eq!(call_site.module, None);
+    assert!(call_site.span.end <= source.len());
 }
 
 #[test]

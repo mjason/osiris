@@ -44,6 +44,68 @@ pub(super) fn form_node_count(form: &Form) -> usize {
     1_usize.saturating_add(metadata).saturating_add(children)
 }
 
+pub(super) fn collect_spans(form: &Form, spans: &mut BTreeSet<(usize, usize)>) {
+    spans.insert((form.span.start, form.span.end));
+    for entry in &form.metadata {
+        collect_spans(&entry.key, spans);
+        collect_spans(&entry.value, spans);
+    }
+    match &form.kind {
+        FormKind::List(items)
+        | FormKind::Vector(items)
+        | FormKind::Map(items)
+        | FormKind::Set(items) => {
+            for item in items {
+                collect_spans(item, spans);
+            }
+        }
+        FormKind::ReaderMacro { form, .. } => collect_spans(form, spans),
+        _ => {}
+    }
+}
+
+pub(super) fn retarget_spans(
+    mut form: Form,
+    caller_spans: &BTreeSet<(usize, usize)>,
+    call_span: Span,
+) -> Form {
+    if !caller_spans.contains(&(form.span.start, form.span.end)) {
+        form.span = call_span;
+        form.datum_span = call_span;
+    }
+    form.metadata = form
+        .metadata
+        .into_iter()
+        .map(|entry| MetadataEntry {
+            key: retarget_spans(entry.key, caller_spans, call_span),
+            value: retarget_spans(entry.value, caller_spans, call_span),
+        })
+        .collect();
+    form.kind = match form.kind {
+        FormKind::List(items) => FormKind::List(retarget_items(items, caller_spans, call_span)),
+        FormKind::Vector(items) => FormKind::Vector(retarget_items(items, caller_spans, call_span)),
+        FormKind::Map(items) => FormKind::Map(retarget_items(items, caller_spans, call_span)),
+        FormKind::Set(items) => FormKind::Set(retarget_items(items, caller_spans, call_span)),
+        FormKind::ReaderMacro { macro_kind, form } => FormKind::ReaderMacro {
+            macro_kind,
+            form: Box::new(retarget_spans(*form, caller_spans, call_span)),
+        },
+        kind => kind,
+    };
+    form
+}
+
+fn retarget_items(
+    items: Vec<Form>,
+    caller_spans: &BTreeSet<(usize, usize)>,
+    call_span: Span,
+) -> Vec<Form> {
+    items
+        .into_iter()
+        .map(|item| retarget_spans(item, caller_spans, call_span))
+        .collect()
+}
+
 pub(super) fn none(span: Span) -> Form {
     Form::new(FormKind::None, span)
 }

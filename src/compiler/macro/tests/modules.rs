@@ -1,5 +1,6 @@
 use crate::{
-    compiler::{CompileOptions, compile},
+    compiler::{CompileOptions, analyze, compile},
+    diagnostic::RelatedKind,
     printer::render_document_text,
     project::PythonVersion,
     reader::read,

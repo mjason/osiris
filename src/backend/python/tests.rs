@@ -79,6 +79,45 @@ fn lowers_control_flow_and_structured_collections() {
 }
 
 #[test]
+fn shadowing_locals_receive_separate_python_names() {
+    // `let` lowers to statements in the enclosing Python function, so a nested
+    // or later binding that reused the spelling would overwrite the first.
+    let nested = compile("(defn ^Int nested [^Int n] (let [x 1 y (let [x 2] (+ x n))] (+ x y)))");
+    assert!(nested.contains("x = 1"), "{nested}");
+    assert!(nested.contains("x_2 = 2"), "{nested}");
+    assert!(nested.contains("return x + y"), "{nested}");
+
+    let sibling = compile("(defn ^Int sibling [^Int n] (+ (let [x 1] x) (let [x 2] x) n))");
+    assert!(sibling.contains("return x + x_2 + n"), "{sibling}");
+
+    // Separate functions never share a Python scope, so both keep `x`.
+    let separate =
+        compile("(defn ^Int left [^Int n] (let [x n] x)) (defn ^Int right [^Int n] (let [x n] x))");
+    assert_eq!(separate.matches("x = n").count(), 2, "{separate}");
+}
+
+#[test]
+fn a_local_never_hides_a_module_name_the_same_function_reads() {
+    // `(helper n)` sits outside the `let`, so it means the module-level
+    // function. Assigning `helper` anywhere in the body would make the name
+    // local for the whole Python function and break that call.
+    let shadowed = compile(
+        "(defn ^Int helper [^Int n] (* n 2))\n\
+         (defn ^Int demo [^Int n] (+ (helper n) (let [helper 7] helper)))",
+    );
+    assert!(shadowed.contains("helper_2 = 7"), "{shadowed}");
+    assert!(shadowed.contains("helper(n) + helper_2"), "{shadowed}");
+
+    // Shadowing a module-level name the function never reads is harmless, so
+    // the authored spelling survives.
+    let unread = compile(
+        "(defn ^Int helper [^Int n] (* n 2))\n\
+         (defn ^Int demo [^Int n] (let [helper 7] helper))",
+    );
+    assert!(unread.contains("helper = 7"), "{unread}");
+}
+
+#[test]
 fn lowers_nested_runtime_destructuring_to_readable_assignments() {
     let source = compile(
         r#"(defn ^Int total [^{:type (Map Str Int)} entry]
