@@ -440,7 +440,6 @@ fn macro_shapes(name: &str) -> &'static [&'static str] {
         "cond->>" => &["(cond->> value test step ...)"],
         "as->" => &["(as-> value name form...)"],
         "doto" => &["(doto value call...)"],
-        "defn-" => &["(defn- name parameters body...)"],
         "letfn" => &["(letfn [(name parameters body...) ...] body...)"],
         "loop" => &["(loop [pattern initial ...] body...)"],
         "recur" => &["(recur value...)"],

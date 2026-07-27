@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 22
+revision: 23
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 22
+source-revision: 23
 translation-status: Current
 requires: [0]
 replaces: []
@@ -231,6 +231,18 @@ identity。文件到模块的映射由 OEP-0002 规定；源码存在 `(module .
 **OEP-0001-R009：** 跨模块公开访问必须由显式 export 和已解析 interface 决定。
 源码顺序、文件系统枚举、display locale 和 Python import side effect 不得改变名称解析。
 
+**OEP-0001-R009A：** 一个声明必须通过以下两种显式形式之一公开：写进模块级
+`(export [...])` 清单，或在声明本身标上 `^:export`。公开面必须是二者的并集；
+同时以两种方式公开的名字必须只公开一次。`:export` 键上 `true` 以外的任何值必须
+仍是普通 authored metadata，不得公开任何名字。两种形式都未采用的声明必须保持模块
+私有；其他任何拼写、namespace 组成部分或 authored key 都不得隐含可见性。
+
+**OEP-0001-R009B：** 由于标记随它所公开的声明本身走，而不是挂在 authored boundary
+form 上，声明宏可以生成标记。因此宏贡献的公开面只会出现在由展开后 surface 构建的
+interface 中，编译器必须在发布 artifact 之前在该 surface 上收敛。这并不放宽 authored
+boundary：`module`、`import` 与 `export` 仍固定在展开之前，宏生成其中任何一个仍然
+必须被拒绝。
+
 **OEP-0001-R010：** 每个声明、参数、字段、类型和宏必须有一个与 locale 无关的
 canonical binding ID。中文或其他本地化 preferred name 与 alias 必须解析到该身份，
 不能建立第二个声明。
@@ -290,9 +302,9 @@ code 缺失或不兼容时必须 fail closed。
 declared contract、static record 和 compiler-verified fact 必须分别保存和暴露。源码
 或宏 metadata 不得宣称 compiler verification。
 
-**OEP-0001-R022：** Osiris 标准化的 metadata key 必须包含本地化文档与名称，以及 API
-lifecycle data。未知 namespaced key 必须作为数据保留，但没有 Accepted contract 时
-不得获得 compiler semantic。
+**OEP-0001-R022：** Osiris 标准化的 metadata key 必须包含本地化文档与名称、API
+lifecycle data 以及 `:export`。未知 namespaced key 必须作为数据保留，但没有
+Accepted contract 时不得获得 compiler semantic。
 
 **OEP-0001-R023：** 从包导入的 metadata 必须视为不可信数据。Renderer 必须清理
 active link 或 markup；AI client 不得把 authored metadata 解释成指令、权限或已验证
@@ -1046,6 +1058,13 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 23，2026-07-27：新增逐项 `^:export` 标记，作为公开一个声明的第二种显式
+  方式（OEP-0001-R009A）；允许声明宏生成该标记，同时保持 authored boundary 不变
+  （OEP-0001-R009B）；并把 `:export` 纳入 OEP-0001-R022 的标准化 metadata key。
+- Revision 22，2026-07-27：要求展开后各遍报告的诊断都携带宏展开链，禁止把一个模块的
+  span 报告到另一个模块的文本上，并要求每个诊断表面都暴露 related location
+  （OEP-0001-R032A 到 OEP-0001-R032C）；把卫生扩展到展开前无法识别的 template binding
+  position（OEP-0001-R017A）。
 - Revision 21，2026-07-27：新增 `osr agents`，打印内嵌的 `tooling/agents` 手册：
   OEP-0001-R054 到 OEP-0001-R056 所要求 AI 流程的操作性指引，投影方式与
   `osr syntax` 投影 `language/syntax` 完全一致。

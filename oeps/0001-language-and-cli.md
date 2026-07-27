@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 22
+revision: 23
 requires: [0]
 replaces: []
 superseded-by: null
@@ -275,6 +275,23 @@ import or execute the corresponding Python module.
 exports and resolved interfaces. Source order, filesystem enumeration, display
 locale, and Python import side effects MUST NOT change name resolution.
 
+**OEP-0001-R009A:** A declaration MUST be published by either of two explicit
+forms: naming it in a module-level `(export [...])` manifest, or marking the
+declaration itself with `^:export`. The public surface MUST be the union of the
+two, and a name published both ways MUST be published once. Any value other
+than `true` under the `:export` key MUST remain ordinary authored metadata and
+MUST NOT publish. A declaration published by neither form MUST remain module
+private; no other spelling, namespace component, or authored key MUST imply
+visibility.
+
+**OEP-0001-R009B:** Because a marker rides on the declaration it publishes
+rather than on an authored boundary form, a declaration macro MAY generate one.
+The public surface a macro contributes therefore appears only in the interface
+built from the expanded surface, and the compiler MUST converge on that surface
+before publishing an artifact. This does not relax the authored boundary:
+`module`, `import` and `export` remain fixed before expansion, and a macro that
+generates one MUST still be rejected.
+
 **OEP-0001-R010:** Every declaration, parameter, field, type, and macro MUST
 have one locale-independent canonical binding ID. Chinese or other localized
 preferred names and aliases MUST resolve to that identity rather than creating
@@ -349,9 +366,9 @@ and exposed as distinct categories. Source or macro metadata MUST NOT be able
 to claim compiler verification.
 
 **OEP-0001-R022:** Metadata keys standardized by Osiris MUST include localized
-documentation and names, and API lifecycle data. Unknown namespaced keys MUST be
-preserved as data but MUST NOT acquire compiler semantics without an accepted
-contract.
+documentation and names, API lifecycle data, and `:export`. Unknown namespaced
+keys MUST be preserved as data but MUST NOT acquire compiler semantics without
+an accepted contract.
 
 **OEP-0001-R023:** Metadata imported from a package MUST be treated as
 untrusted data. Renderers MUST sanitize active links or markup, and AI clients
@@ -1255,6 +1272,17 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 23, 2026-07-27: Added the per-item `^:export` marker as the second
+  explicit way to publish a declaration (OEP-0001-R009A), allowed a declaration
+  macro to generate one while leaving the authored boundary intact
+  (OEP-0001-R009B), and standardized the `:export` metadata key under
+  OEP-0001-R022.
+- Revision 22, 2026-07-27: Required macro-produced syntax to carry its ordered
+  expansion chain on every diagnostic raised after expansion, prohibited
+  reporting one module's span against another module's text, and required every
+  diagnostic surface to expose related locations (OEP-0001-R032A through
+  OEP-0001-R032C); extended hygiene to template binding positions that cannot
+  be identified before expansion (OEP-0001-R017A).
 - Revision 21, 2026-07-27: Added `osr agents`, which prints the embedded
   `tooling/agents` manual: operational guidance for the AI workflow required by
   OEP-0001-R054 through OEP-0001-R056, projected exactly as `osr syntax`

@@ -137,7 +137,6 @@ pub(super) fn is_reserved_rename_name(name: &str) -> bool {
             | "cond->>"
             | "as->"
             | "doto"
-            | "defn-"
             | "and"
             | "or"
             | "when"

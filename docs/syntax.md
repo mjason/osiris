@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 9
+revision: 10
 ---
 
 # Osiris Syntax
@@ -139,6 +139,40 @@ and exports:
 
 The project configuration maps source paths to module names. A written
 `module` declaration must agree with that mapping.
+
+## Publishing a Declaration
+
+Nothing is public unless it says so, and there are two explicit ways to say it.
+The `(export [...])` manifest above names declarations from one place. The
+per-item marker rides on the declaration itself:
+
+```clojure
+^:export (def ^Int limit 20)
+
+^{:doc "Advance one step." :export true}
+(defn ^Int step [^Int value] (+ value 1))
+```
+
+`^:export` reads as `^{:export true}`, and metadata written before a form is
+merged with metadata written on the declared name, so `^:export (def x 1)` and
+`(def ^:export x 1)` are the same declaration. Only `true` publishes; any other
+value stays ordinary authored metadata.
+
+The public surface is the union of the two, and a name written both ways is
+published once. A declaration published by neither is module private — there is
+no separate private form, and no metadata key asserts privacy.
+
+The marker is the one of the two a macro can produce. `export` is an authored
+boundary form fixed before expansion, so a macro cannot generate one; a marker
+is ordinary metadata on an ordinary declaration, so a declaration macro can
+publish what it generates instead of requiring every call site to repeat the
+names:
+
+```clojure
+(defmacro define-factor [label]
+  `(do ^{:doc "Factor name." :export true} (def ^Str factor-name ~label)
+       ^{:doc "Compute." :export true} (defn ^Int calculate [^Int value] value)))
+```
 
 ## Definitions and Functions
 

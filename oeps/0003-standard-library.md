@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-27
-revision: 12
+revision: 13
 requires: [0, 1, 2]
 replaces: []
 superseded-by: null
@@ -237,14 +237,14 @@ This OEP does not require the compiler to reject an external package that
 names such a namespace; catalog omission and compatibility status define the
 boundary until a package-access-control OEP specifies enforcement.
 
-**OEP-0003-R005G:** Osiris privacy MUST follow the Clojure binding model.
+**OEP-0003-R005G:** Osiris privacy MUST be the absence of publication.
 Namespace components, source paths, leading underscores, and trailing
-underscores MUST NOT imply privacy. A namespace-private function MUST be
-authored with `defn-`, which records `:private true`; other private declarations
-MUST use their specified authored `:private true` form. Names such as
+underscores MUST NOT imply privacy, and no authored key MUST assert it. A
+namespace-private declaration is one that is neither named in an `(export
+[...])` manifest nor marked `^:export` under OEP-0001-R009A. Names such as
 `osiris._core` MUST NOT be introduced to encode access control. A binding that
-must cross from `osiris.core.kernel` to the `osiris.core` facade cannot be
-`defn-`; it is exported from an internal namespace under R005F instead.
+must cross from `osiris.core.kernel` to the `osiris.core` facade is therefore
+published from an internal namespace under R005F rather than hidden.
 
 ### Phase-1 bootstrap contract
 
@@ -344,7 +344,7 @@ when when-not if-not
 cond case condp
 if-let when-let if-some when-some when-first
 -> ->> some-> some->> cond-> cond->> as-> doto
-defn- letfn loop recur for forv doseq dotimes while trampoline
+letfn loop recur for forv doseq dotimes while trampoline
 lazy-seq lazy-cat delay force deref realized?
 binding with-open assert throw comment time
 ```
@@ -697,7 +697,6 @@ forms and capabilities:
 | `cond->`, `cond->>` | `(cond-> value test step ...)`, `(cond->> value test step ...)` | Evaluate each test in order and conditionally thread one single-evaluated accumulator. |
 | `as->` | `(as-> value name form...)` | Bind each prior result to `name` for the next form. |
 | `doto` | `(doto value call...)` | Evaluate `value` once, insert it first into each call, and return the original value. |
-| `defn-` | `(defn- name params body...)` | Produce a non-exported `defn` carrying authored `:private true` intent. |
 | `letfn` | `(letfn [(name params body...) ...] body...)` | Predeclare all local functions and support single-arity self and mutual recursion. |
 | `loop`, `recur` | `(loop [pattern init ...] body...)`, `(recur value...)` | Evaluate initializers once; `recur` targets the nearest lexical loop or current function, is tail-only, arity/type checked, and constant-stack. |
 | `for`, `forv`, `doseq` | `(for [clauses...] body...)`, `(forv [clauses...] body...)`, `(doseq [clauses...] body...)` | Support multiple bindings plus `:let`, `:when`, and `:while`; `for` returns a memoized LazySeq, `forv` returns an eager Vector, and `doseq` executes effects then returns `none`, all in nested order. |
@@ -1038,6 +1037,12 @@ This OEP cannot become Final while any required initial namespace is missing.
 
 ## Change History
 
+- Revision 13, 2026-07-27: Removed `defn-` from the standard macro surface and
+  restated OEP-0003-R005G so privacy is the absence of publication rather than
+  an authored assertion. `defn-` recorded `:private true` as authored metadata
+  and enforced nothing: a name listed in `(export [...])` stayed public even
+  when marked, so the macro added no expressive power over an unpublished
+  `defn`. It had no use in the standard library and requires no migration.
 - Revision 12, 2026-07-27: Dropped Agent intent and Agent tags from the metadata
   OEP-0003-R044 allows standard bindings to provide; no standard binding used
   them and no compiler or tooling behavior consumes them.
@@ -1054,7 +1059,7 @@ This OEP cannot become Final while any required initial namespace is missing.
   `:osiris/facade-modules`/`:osiris/facade-macros` composition for a split
   `osiris.core` without changing public identities.
 - Revision 8, 2026-07-24: Required hierarchical implementation namespaces,
-  `:osiris/internal true`, and Clojure-style `defn-`/`:private` semantics;
+  `:osiris/internal true`, and Clojure-style privacy semantics;
   prohibited underscore-based namespace privacy.
 - Revision 7, 2026-07-24: Required public Kernel facades to be authored Osiris
   `defn`/`def` implementations over private minimal-metadata Kernel leaf

@@ -2,7 +2,7 @@
 document-id: tooling/agents
 title: Working with Osiris as an Agent
 language: en
-revision: 2
+revision: 3
 ---
 
 # Working with Osiris as an Agent
@@ -48,18 +48,23 @@ are three distinct operations and none of them executes Python at compile time.
 ### Exports are explicit
 
 Clojure publishes every `def` unless it is marked private. Osiris publishes
-nothing unless it is named in `(export [...])`, because the public surface
-defines the interface hash that decides when dependents must be recompiled.
+nothing unless it says so, because the public surface defines the interface hash
+that decides when dependents must be recompiled.
 
-`defn-` exists, but it does not mean what it means in Clojure. It is an ordinary
-macro that attaches `:private true` as authored metadata; the metadata records
-intent and enforces nothing. A name listed in `(export [...])` stays public even
-when marked private. Privacy comes from leaving the name out of the export
-list — nothing else.
+Two forms say so, and the public surface is their union: the module-level
+`(export [...])` manifest, and the per-item `^:export` marker on the declaration
+itself. Only `true` publishes. A declaration using neither is module private.
+
+There is no `defn-` and no private form of any declaration. Privacy is the
+absence of publication, so `:private` is not a mechanism here — a name that
+carries it is still public if it is published, and unknown keys mean nothing.
+Do not reach for a Clojure privacy spelling; leave the name unpublished.
 
 A macro cannot generate an `export`: module, import and export are authored
-boundaries fixed before expansion. A declaration macro that generates public
-names therefore relies on its caller to export them.
+boundaries fixed before expansion. It can generate a marker, because a marker is
+ordinary metadata on an ordinary declaration. A declaration macro that produces
+public names should mark them rather than require every call site to repeat
+them.
 
 ### Types are checked
 

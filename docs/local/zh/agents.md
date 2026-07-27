@@ -3,7 +3,7 @@ document-id: tooling/agents
 title: 以 Agent 身份使用 Osiris
 language: zh-CN
 source: ../../agents.md
-source-revision: 2
+source-revision: 3
 translation-status: Current
 ---
 
@@ -44,17 +44,19 @@ Osiris 沿用了 Clojure 的 reader、宏模型和大部分核心词汇，因此
 
 ### 导出是显式的
 
-Clojure 默认公开每个 `def`，除非标记为私有。Osiris 则是不写进
-`(export [...])` 就不公开——因为公开面决定接口哈希，而接口哈希决定下游何时
-必须重新编译。
+Clojure 默认公开每个 `def`，除非标记为私有。Osiris 则是不写明就不公开——因为
+公开面决定接口哈希，而接口哈希决定下游何时必须重新编译。
 
-`defn-` 存在，但含义与 Clojure 不同。它只是一个普通宏，给声明挂上
-`:private true` 这条 authored metadata；该元数据只记录意图，不产生任何强制力。
-被写进 `(export [...])` 的名字即使标了私有也仍然公开。私有性只来自「不写进
-导出清单」，别无他途。
+写明的方式有两种，公开面是二者的并集：模块级 `(export [...])` 清单，以及声明
+本身上的逐项 `^:export` 标记。只有 `true` 生效。两种都没用的声明就是模块私有。
 
-宏不能生成 `export`：module、import 与 export 是在展开前固定的作者边界。因此
-生成公开名字的声明宏，只能依赖调用方把它们导出。
+没有 `defn-`，也没有任何声明的私有形式。私有就是「未被公开」，因此 `:private`
+在这里不是机制——带着它的名字只要被公开就仍然公开，而未知的键什么也不意味着。
+不要去找 Clojure 的私有写法，让名字不被公开即可。
+
+宏不能生成 `export`：module、import 与 export 是在展开前固定的作者边界。但宏可以
+生成标记，因为标记只是普通声明上的普通元数据。产出公开名字的声明宏应当自己标记
+它们，而不是要求每个调用点重抄一遍。
 
 ### 类型会被检查
 

@@ -12,10 +12,10 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-27
-revision: 12
+revision: 13
 language: zh-CN
 source: ../../0003-standard-library.md
-source-revision: 12
+source-revision: 13
 translation-status: Current
 requires: [0, 1, 2]
 replaces: []
@@ -180,12 +180,12 @@ namespace/API catalog 中省略，不强制携带面向用户的 `:doc`，也没
 保证。在 package access-control OEP 规定 enforcement 之前，本 OEP 不要求 compiler 拒绝
 外部 package 显式命名这种 namespace；catalog omission 与 compatibility status 定义边界。
 
-**OEP-0003-R005G：** Osiris privacy 必须遵循 Clojure 的 binding model。Namespace
-component、source path、前导/尾随下划线都不得表示 privacy。Namespace-private function
-必须用 `defn-` 编写并记录 `:private true`；其他 private declaration 必须使用各自规定的
-authored `:private true` form。禁止引入 `osiris._core` 之类的名字来编码 access control。
-必须从 `osiris.core.kernel` 跨 namespace 提供给 `osiris.core` facade 的 binding 不能是
-`defn-`；它应按 R005F 从 internal namespace export。
+**OEP-0003-R005G：** Osiris privacy 必须就是「未被公开」。Namespace component、
+source path、前导/尾随下划线都不得表示 privacy，也不得由任何 authored key 断言。
+Namespace-private declaration 指的是既未写进 `(export [...])` 清单、也未按
+OEP-0001-R009A 标上 `^:export` 的声明。禁止引入 `osiris._core` 之类的名字来编码
+access control。必须从 `osiris.core.kernel` 跨 namespace 提供给 `osiris.core` facade 的
+binding 因此按 R005F 从 internal namespace 公开，而不是被隐藏。
 
 ### Phase-1 Bootstrap contract
 
@@ -272,7 +272,7 @@ when when-not if-not
 cond case condp
 if-let when-let if-some when-some when-first
 -> ->> some-> some->> cond-> cond->> as-> doto
-defn- letfn loop recur for forv doseq dotimes while trampoline
+letfn loop recur for forv doseq dotimes while trampoline
 lazy-seq lazy-cat delay force deref realized?
 binding with-open assert throw comment time
 ```
@@ -566,7 +566,6 @@ sequence，负 count 选择空 prefix；静态已知的 type/arity 错误产生�
 | `cond->`、`cond->>` | `(cond-> value test step ...)`、`(cond->> value test step ...)` | 按顺序判断 test，并对 single-evaluated accumulator 条件 threading。 |
 | `as->` | `(as-> value name form...)` | 每一步把 prior result 绑定到 `name`。 |
 | `doto` | `(doto value call...)` | `value` 只求值一次，作为每个 call 的第一参数，最后返回原值。 |
-| `defn-` | `(defn- name params body...)` | 产生 non-exported `defn` 并携带 authored `:private true`。 |
 | `letfn` | `(letfn [(name params body...) ...] body...)` | 预声明全部 local function，支持 single-arity self/mutual recursion。 |
 | `loop`、`recur` | `(loop [pattern init ...] body...)`、`(recur value...)` | Initializer 各求值一次；`recur` 指向最近 lexical loop 或当前函数，只允许 tail position，并检查 arity/type，以常量栈运行。 |
 | `for`、`forv`、`doseq` | `(for [clauses...] body...)`、`(forv [clauses...] body...)`、`(doseq [clauses...] body...)` | 支持多 binding、`:let`、`:when`、`:while`；`for` 返回 memoized LazySeq，`forv` 返回 eager Vector，`doseq` 执行 effect 后返回 `none`，顺序均按嵌套规则。 |
@@ -877,6 +876,10 @@ Name-based solver 会破坏 alias、import、extension replacement 和 stable id
 
 ## 修订历史 (Change History)
 
+- Revision 13，2026-07-27：从标准宏面移除 `defn-`，并改写 OEP-0003-R005G，使 privacy
+  成为「未被公开」而非一条 authored 断言。`defn-` 只把 `:private true` 记为 authored
+  metadata，不产生任何强制力：写进 `(export [...])` 的名字即使标了私有仍然公开，因此
+  该宏相对于一个不公开的 `defn` 没有增加表达力。标准库中零使用，无需迁移。
 - Revision 12，2026-07-27：从 OEP-0003-R044 允许 standard binding 提供的 metadata 中
   移除 Agent intent 与 Agent tag；没有任何 standard binding 使用它们，也没有 compiler
   或 tooling 行为消费它们。
@@ -890,7 +893,7 @@ Name-based solver 会破坏 alias、import、extension replacement 和 stable id
   `<namespace>.kernel`，并规定通过解析后的 `:osiris/facade-modules` 与
   `:osiris/facade-macros` 组合拆分后的 `osiris.core`，同时保持 public identity。
 - Revision 8，2026-07-24：要求使用层级 implementation namespace、
-  `:osiris/internal true` 与 Clojure 风格的 `defn-`/`:private` semantic，并禁止使用下划线
+  `:osiris/internal true` 与 Clojure 风格的 privacy semantic，并禁止使用下划线
   表示 namespace privacy。
 - Revision 7，2026-07-24：要求 public Kernel facade 是基于 private、minimal-metadata
   Kernel leaf declaration 编写的 Osiris `defn`/`def` implementation，并规定 public source

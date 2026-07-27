@@ -87,13 +87,6 @@ fn extended_threading_and_object_macros_preserve_single_evaluation() {
 }
 
 #[test]
-fn defn_dash_lowers_to_defn_with_private_authored_metadata() {
-    let output = expanded("(defn- helper [value] value)");
-    assert!(output.contains(":private true"), "{output}");
-    assert!(output.contains("(defn helper [value] value)"), "{output}");
-}
-
-#[test]
 fn negative_and_presence_binding_macros_expand_structurally() {
     assert_eq!(
         expanded("(if-not ready? (wait) (run))"),

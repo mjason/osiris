@@ -5,7 +5,7 @@
                           osiris.core.concurrent]
   :osiris/facade-macros [and or when when-not if-not cond case condp if-let when-let if-some
                          when-some when-first -> ->> some-> some->> cond-> cond->> as-> doto
-                         defn- letfn loop recur for forv doseq dotimes while trampoline lazy-seq
+                         letfn loop recur for forv doseq dotimes while trampoline lazy-seq
                          lazy-cat delay force deref realized? binding with-open assert throw
                          comment time]}
 (module osiris.core)

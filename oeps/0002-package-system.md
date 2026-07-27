@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-27
-revision: 17
+revision: 18
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -337,9 +337,9 @@ NOT become runtime providers implicitly.
 **OEP-0002-R033E:** A package MAY contain public facade modules, private
 implementation modules, Phase-1 macro helpers, and linkable backend modules.
 Only explicitly exported declarations are public to ordinary downstream source.
-Private declarations, including `defn-`, are available to a package macro only
-through its declared linkable closure and remain unavailable for consumer
-imports, completion, or direct reference.
+Unpublished declarations are available to a package macro only through its
+declared linkable closure and remain unavailable for consumer imports,
+completion, or direct reference.
 
 **OEP-0002-R033F:** Package source layout MUST follow normal module mapping
 under an `osiris.jsonc` source root. For example, `src/acme_text/core.osr` and
@@ -688,6 +688,10 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 18, 2026-07-27: Restated OEP-0002-R033E in terms of unpublished
+  declarations after `defn-` was removed from the standard macro surface under
+  OEP-0003-R005G; package visibility was never determined by the declaration
+  form, so no package behavior changes.
 - Revision 17, 2026-07-27: Withdrew the experimental Language Server Agent,
   removed provider/session configuration, and retained the semantic graph as a
   local LSC/LSP implementation detail.

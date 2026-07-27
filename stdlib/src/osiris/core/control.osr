@@ -3,7 +3,7 @@
 (module osiris.core.control)
 
 (export
-  [-> ->> cond-> cond->> as-> doto defn- and or when if-not when-not cond
+  [-> ->> cond-> cond->> as-> doto and or when if-not when-not cond
    if-let when-let if-some when-some some-> some->> condp case])
 
 (defn-for-syntax osiris.kernel/thread-first-step [value step]
@@ -113,22 +113,6 @@
        (do
          ~@(osiris.kernel/doto-calls temporary forms)
          ~temporary))))
-
-;; `defn-` is the Clojure spelling for a private function declaration.  Osiris
-;; already makes every non-exported binding private at the interface boundary,
-;; so the macro only preserves the authored intent as Rich Metadata while
-;; lowering to the ordinary compiler-owned `defn` declaration.
-^{:doc
-  {:default "Define a namespace-private function with authored private metadata."
-   "zh-CN" "定义携带显式私有元数据的命名空间私有函数。"}
-  :category "core"
-  :since "0.3.0"
-  :deprecated false}
-(defmacro defn- [name & declaration]
-  (if (not (symbol? name))
-    (syntax-error name "defn- requires a symbol name")
-    (let [definition (cons 'defn (cons name declaration))]
-      (with-meta definition (assoc (meta definition) :private true)))))
 
 (defn-for-syntax osiris.kernel/and-form [forms]
   (if (empty? forms)

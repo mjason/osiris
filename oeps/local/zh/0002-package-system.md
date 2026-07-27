@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-27
-revision: 17
+revision: 18
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 17
+source-revision: 18
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -274,9 +274,8 @@ Python dependency（例如 `pandas`）；这些 provider 保持普通 `Requires-
 
 **OEP-0002-R033E：** Package 可以包含 public facade module、private implementation
 module、Phase-1 macro helper 和 linkable backend module。只有 explicit export declaration
-对普通 downstream source 公开。包括 `defn-` 在内的 private declaration 只能由 package
-macro 通过其 declared linkable closure 使用，并且不能被 consumer import、completion 或
-直接引用。
+对普通 downstream source 公开。未公开的 declaration 只能由 package macro 通过其
+declared linkable closure 使用，并且不能被 consumer import、completion 或直接引用。
 
 **OEP-0002-R033F：** Package source layout 必须遵循 `osiris.jsonc` source root 下的普通
 module mapping。例如 `src/acme_text/core.osr` 与
@@ -551,6 +550,9 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 18，2026-07-27：在 OEP-0003-R005G 从标准宏面移除 `defn-` 之后，改用「未公开的
+  declaration」重述 OEP-0002-R033E；package 可见性从来不由声明形式决定，因此 package
+  行为不变。
 - Revision 17，2026-07-27：撤回实验性的 Language Server Agent，移除 provider/session
   configuration，并保留 semantic graph 作为本地 LSC/LSP implementation detail。
 - Revision 16，2026-07-26：加入持久化逐 input manifest；正常 semantic graph validation 会 stat

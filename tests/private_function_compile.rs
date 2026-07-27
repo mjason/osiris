@@ -20,12 +20,14 @@ fn temporary_directory() -> std::path::PathBuf {
     path
 }
 
+/// Privacy is the absence of publication, not a declaration form: a helper that
+/// is neither listed in `(export [...])` nor marked `^:export` stays off the
+/// interface while remaining an ordinary function in the generated Python.
 #[test]
-fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
+fn an_unpublished_helper_stays_private_and_lowers_to_a_normal_function() {
     let source = r#"
 (module private_function_compile)
-(import osiris.core :refer [defn-])
-(defn- ^Int increment [^Int value] (+ value 1))
+(defn ^Int increment [^Int value] (+ value 1))
 ^{:doc "Increment an integer through a private helper."}
 (defn ^Int public [^Int value] (increment value))
 (export [public])
@@ -36,6 +38,16 @@ fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
         "{:#?}",
         result.analysis.diagnostics
     );
+    let exported = result
+        .analysis
+        .hir
+        .bindings
+        .iter()
+        .filter(|binding| binding.public)
+        .map(|binding| binding.source_spelling.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(exported, ["public"]);
+
     let generated = result.python.expect("generated Python").source;
     assert!(generated.contains("def increment"), "{generated}");
     assert!(generated.contains("def public"), "{generated}");
@@ -65,15 +77,29 @@ fn defn_dash_keeps_private_metadata_and_lowers_to_a_normal_function() {
     fs::remove_dir_all(root).expect("remove temporary directory");
 }
 
+/// The per-item marker is the other explicit way to publish, so it must reach
+/// the same public surface the manifest does.
 #[test]
-fn malformed_defn_dash_reports_a_macro_diagnostic() {
-    let result = compile(
-        "(module private_function_compile) (import osiris.core :refer [defn-]) (defn- 1 [] 1)",
-        &options(),
+fn an_export_marker_publishes_without_a_manifest_entry() {
+    let source = r#"
+(module private_function_compile)
+(defn ^Int increment [^Int value] (+ value 1))
+^{:doc "Increment an integer through a private helper." :export true}
+(defn ^Int public [^Int value] (increment value))
+"#;
+    let result = compile(source, &options());
+    assert!(
+        result.analysis.diagnostics.is_empty(),
+        "{:#?}",
+        result.analysis.diagnostics
     );
-    assert!(result.analysis.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "OSR-M0007"
-            && diagnostic.message.contains("defn- requires a symbol name")
-    }));
-    assert!(result.python.is_none());
+    let exported = result
+        .analysis
+        .hir
+        .bindings
+        .iter()
+        .filter(|binding| binding.public)
+        .map(|binding| binding.source_spelling.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(exported, ["public"]);
 }

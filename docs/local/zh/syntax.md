@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 9
+revision: 10
 source: ../../syntax.md
-source-revision: 9
+source-revision: 10
 translation-status: Current
 ---
 
@@ -128,6 +128,35 @@ row.value             ; 静态字段或 Python 属性
   推荐的本地化拼写应使用带 `:preferred` 的 `:osiris/names`。
 
 项目配置把源码路径映射成模块名。源码中的 `module` 声明必须与该映射一致。
+
+## 公开一个声明
+
+不写明就不公开，而写明的方式有两种。上面的 `(export [...])` 清单在一处集中列出
+名字；逐项标记则随声明本身走：
+
+```clojure
+^:export (def ^Int limit 20)
+
+^{:doc "前进一步。" :export true}
+(defn ^Int step [^Int value] (+ value 1))
+```
+
+`^:export` 读作 `^{:export true}`；写在形式前的元数据会与写在名字上的元数据合并，
+因此 `^:export (def x 1)` 与 `(def ^:export x 1)` 是同一件事。只有 `true` 生效，其他
+值仍是普通 authored metadata。
+
+公开面是二者的并集，两种方式都写的名字只公开一次。两种都没写的声明就是模块私有——
+没有单独的私有形式，也没有任何元数据键能断言私有。
+
+两者之中只有标记是宏能产出的。`export` 是固定在展开之前的作者边界形式，宏不得生成；
+而标记只是普通声明上的普通元数据，因此声明宏可以直接公开它生成的东西，不必要求每个
+调用点重抄一遍名字：
+
+```clojure
+(defmacro define-factor [label]
+  `(do ^{:doc "因子名。" :export true} (def ^Str factor-name ~label)
+       ^{:doc "计算。" :export true} (defn ^Int calculate [^Int value] value)))
+```
 
 ## 定义与函数
 

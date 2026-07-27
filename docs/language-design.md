@@ -1,7 +1,7 @@
 # Osiris 语言设计规范（草案）
 
 - 状态：实现基线（持续演进）
-- 文档版本：0.7
+- 文档版本：0.8
 - 日期：2026-07-23
 - 项目：`osiris`
 - 编译器命令：`osr`
@@ -153,7 +153,7 @@ Osiris 模块导入与 Python 运行时导入必须在语义上区分。普通 `
 第一版核心至少包含：
 
 - `module`、`import`、`import-for-syntax`、`py/import`、`py/decorate`、`export`、`alias`、`extern`
-- `def`、`defn`、`defn-`、`fn`
+- `def`、`defn`、`fn`
 - `let`、`if`、`do`
 - phase-1 `quote` 和 syntax quote
 - `defstruct`、`defstatic-schema`、`static-record`
@@ -168,7 +168,7 @@ Osiris 模块导入与 Python 运行时导入必须在语义上区分。普通 `
 binding 条件、集合迭代和 threading macros 在 core 中以卫生宏或普通函数提供，
 不是未声明的编译器语法。`:refer`、`:exclude` 和 `:rename` 在 name lookup 前处理。
 
-`defn-` 是 `osiris.core` 的声明宏：它展开为普通 `defn` 并附加 `:private true` authored metadata。Osiris 的跨模块可见性仍由显式 `export` 决定，因此该标记用于 Rich Metadata/LSP 展示，不绕过或替代接口导出规则。
+可见性只有「已公开」与「未公开」两种状态，没有私有声明形式。公开有两种显式写法且取并集：模块级 `(export [...])` 清单，以及声明上的逐项 `^:export` 标记（`^:export` 读作 `^{:export true}`，只有 `true` 生效）。标记随声明本身走，因此声明宏可以生成它；`export` 仍是固定在展开之前的作者边界形式，宏不得生成。`:private` 之类的键不是机制，只是 authored metadata。
 
 ### 4.5 Threading macros
 
