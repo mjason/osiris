@@ -23,8 +23,8 @@ pub use api::{
 pub(crate) use artifacts::linked_standard_support;
 pub use artifacts::{
     StandardArtifactResource, StandardArtifacts, interface_artifact, interface_artifact_ref,
-    source_artifact,
-    source_artifact_by_uri, standard_artifacts, validate_resources, validate_standard_artifacts,
+    source_artifact, source_artifact_by_uri, standard_artifacts, validate_resources,
+    validate_standard_artifacts,
 };
 
 pub const CORE_NAMESPACE: &str = "osiris.core";

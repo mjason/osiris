@@ -56,10 +56,7 @@ pub fn run_stdio() -> io::Result<()> {
 /// analysis, and observing a `$/cancelRequest` that is already queued behind
 /// the request it cancels.
 pub fn serve<R: BufRead + Send, W: Write>(reader: &mut R, writer: &mut W) -> io::Result<()> {
-    log::info(&format!(
-        "osr {} language server started",
-        crate::version()
-    ));
+    log::info(&format!("osr {} language server started", crate::version()));
     let debounce = debounce();
     let mut machine = JsonRpcMachine::new();
     std::thread::scope(|scope| {
@@ -85,9 +82,8 @@ pub fn serve<R: BufRead + Send, W: Write>(reader: &mut R, writer: &mut W) -> io:
         let mut deferred_since: Option<Instant> = None;
         loop {
             // Wait out the quiet period, but never past the ceiling.
-            let waiting = deferred_since.map(|since| {
-                debounce.min(MAX_ANALYSIS_DELAY.saturating_sub(since.elapsed()))
-            });
+            let waiting = deferred_since
+                .map(|since| debounce.min(MAX_ANALYSIS_DELAY.saturating_sub(since.elapsed())));
             let received = match waiting {
                 Some(timeout) => receiver.recv_timeout(timeout),
                 None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),

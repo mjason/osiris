@@ -171,7 +171,11 @@ fn module_digest(input: &CompileInput<'_>) -> String {
         &options.distribution,
         &options.distribution_version,
         &options.target_python.to_string(),
-        if options.strict { "strict" } else { "permissive" },
+        if options.strict {
+            "strict"
+        } else {
+            "permissive"
+        },
         &options.trust_policy.hash,
     ])
 }
@@ -422,7 +426,9 @@ fn compile_workspace_scheduled(
     }
 
     let graph = match ModuleGraph::build_with_interfaces(
-        prepared.iter().map(|unit| std::sync::Arc::clone(&unit.header)),
+        prepared
+            .iter()
+            .map(|unit| std::sync::Arc::clone(&unit.header)),
         external_interfaces.clone(),
     ) {
         Ok(graph) => graph,
@@ -637,8 +643,7 @@ fn compile_workspace_scheduled(
                     &mut lowered.diagnostics,
                 );
                 let model = interface::build_provisional(&lowered.module).ok();
-                if let (Some(memo), Some(key), Some(generation)) =
-                    (memo, memo_key, memo_generation)
+                if let (Some(memo), Some(key), Some(generation)) = (memo, memo_key, memo_generation)
                 {
                     memo.expansions.insert(key, generation, model.clone());
                 }
@@ -792,11 +797,13 @@ fn compile_workspace_scheduled(
                 // Retain only fully validated modules. A batch that fails later
                 // still leaves its successful members reusable, which is the
                 // common case while an edit in progress breaks one module.
-                if let (Some(memo), Some(key), Some(generation)) =
-                    (memo, memo_key, memo_generation)
+                if let (Some(memo), Some(key), Some(generation)) = (memo, memo_key, memo_generation)
                 {
-                    memo.analyses
-                        .insert(key, generation, (analysis.clone(), interface_model.clone()));
+                    memo.analyses.insert(
+                        key,
+                        generation,
+                        (analysis.clone(), interface_model.clone()),
+                    );
                 }
                 (
                     module_name.clone(),

@@ -50,8 +50,8 @@ use signature::*;
 use state::ProjectDocumentAnalysis;
 pub use state::{LspState, OpenDocument};
 use symbols::*;
-use text::{apply_content_change, escape_markdown, node_id_for_span};
 pub use text::{LineIndex, offset_to_position, position_to_offset, span_to_range};
+use text::{apply_content_change, escape_markdown, node_id_for_span};
 use workspace::*;
 
 #[cfg(test)]

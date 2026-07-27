@@ -294,8 +294,8 @@ fn cached_core_interface_matches_a_fresh_compilation() {
     // `osr lsc` and editor startup read the core facade from a cross-process
     // cache. A cached entry must be indistinguishable from compiling it, or
     // short-lived commands would disagree with a cold run.
-    let compiled =
-        artifacts::compile_core_interface_uncached_for_tests().expect("core interface compiles from source");
+    let compiled = artifacts::compile_core_interface_uncached_for_tests()
+        .expect("core interface compiles from source");
     let served = interface_artifact(CORE_NAMESPACE).expect("core interface is served");
 
     assert_eq!(
