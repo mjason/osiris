@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   LanguageClient,
@@ -45,9 +47,48 @@ class StandardSourceProvider implements vscode.TextDocumentContentProvider {
   }
 }
 
+/// Locates the `osr` the workspace itself installs.
+///
+/// Osiris projects declare `osiris-lang` as a uv dependency, so the compiler
+/// that matches the project is the one in its environment. Preferring it over
+/// whatever `osr` happens to be on PATH keeps the language server in step with
+/// `osr check` and with a local or pinned compiler build.
+function workspaceServerPath(): string | undefined {
+  const executable = process.platform === "win32" ? "osr.exe" : "osr";
+  const binary = process.platform === "win32" ? "Scripts" : "bin";
+  const roots: string[] = [];
+  const active = process.env.VIRTUAL_ENV;
+  if (active !== undefined && active.length > 0) {
+    roots.push(active);
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    if (folder.uri.scheme === "file") {
+      roots.push(vscode.Uri.joinPath(folder.uri, ".venv").fsPath);
+    }
+  }
+  for (const root of roots) {
+    const candidate = path.join(root, binary, executable);
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Not every workspace folder has an environment; keep looking.
+    }
+  }
+  return undefined;
+}
+
 function createClient(): LanguageClient {
   const configuration = vscode.workspace.getConfiguration("osiris");
-  const command = configuration.get<string>("server.path", "osr");
+  const configured = configuration.inspect<string>("server.path");
+  const explicit =
+    configured?.workspaceFolderValue
+    ?? configured?.workspaceValue
+    ?? configured?.globalValue;
+  // An explicit setting always wins; otherwise prefer the workspace
+  // environment and fall back to PATH.
+  const command = explicit ?? workspaceServerPath() ?? "osr";
   const args = configuration.get<string[]>("server.arguments", ["lsp"]);
   const configuredLocale = configuration.get<string>("displayLocale", "").trim();
   const siteRoots = configuration.get<string[]>("server.siteRoots", []);

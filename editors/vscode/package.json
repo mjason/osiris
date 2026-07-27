@@ -75,7 +75,7 @@
           "type": "string",
           "default": "osr",
           "scope": "machine-overridable",
-          "description": "Path to the osr executable."
+          "description": "Path to the osr executable. When unset, the workspace environment (VIRTUAL_ENV, then .venv/bin/osr) is preferred over PATH so the language server matches the osiris-lang the project installs."
         },
         "osiris.server.arguments": {
           "type": "array",
