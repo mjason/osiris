@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 20
+revision: 21
 requires: [0]
 replaces: []
 superseded-by: null
@@ -501,9 +501,18 @@ MUST be:
 ```text
 osr syntax
 osr syntax --format markdown|json
+osr agents
+osr agents --format markdown|json
 osr doc <graphql-document>
 osr doc -
 ```
+
+`osr agents` MUST read the stable document ID `tooling/agents` from the embedded
+snapshot and MUST project it exactly as `osr syntax` projects `language/syntax`.
+That document is operational guidance for the workflow OEP-0001-R054 through
+OEP-0001-R056 require; it is not normative and MUST NOT restate a requirement as
+though it were the source. Where the document and an accepted OEP disagree, the
+OEP governs.
 
 `osr syntax` MUST read the stable document ID `language/syntax` from the
 embedded snapshot. Its default and `markdown` output MUST be exactly the
@@ -1214,6 +1223,10 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 21, 2026-07-27: Added `osr agents`, which prints the embedded
+  `tooling/agents` manual: operational guidance for the AI workflow required by
+  OEP-0001-R054 through OEP-0001-R056, projected exactly as `osr syntax`
+  projects `language/syntax`.
 - Revision 20, 2026-07-27: Dropped namespaced Agent information from the
   metadata keys OEP-0001-R022 requires Osiris to standardize; those keys carry
   no compiler semantics and are covered by the unknown-namespaced-key rule.

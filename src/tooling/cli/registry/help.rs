@@ -34,6 +34,30 @@ fn command_help(name: &str) -> CliOutcome {
         output.push_str("\nArguments:\n");
         for argument in command.positionals {
             output.push_str(&format!("  {:<18} {}\n", argument.name, argument.summary));
+            if argument.values.is_empty() {
+                continue;
+            }
+            // Wrap the accepted set so a long list stays readable in a terminal
+            // instead of relying on the emulator to fold one very long line.
+            let mut line = format!("  {:<18} One of: ", "");
+            let indent = line.len();
+            for (position, value) in argument.values.iter().enumerate() {
+                let separator = if position + 1 == argument.values.len() {
+                    ""
+                } else {
+                    ","
+                };
+                if line.len() > indent && line.len() + value.len() + 1 > 78 {
+                    output.push_str(line.trim_end());
+                    output.push('\n');
+                    line = " ".repeat(indent);
+                }
+                line.push_str(value);
+                line.push_str(separator);
+                line.push(' ');
+            }
+            output.push_str(line.trim_end());
+            output.push('\n');
         }
     }
     output.push_str("\nOptions:\n  -h, --help         Print help\n");
@@ -85,7 +109,7 @@ mod tests {
         assert_eq!(names.len(), COMMANDS.len());
         for required in [
             "init", "check", "build", "compile", "watch", "run", "fmt", "expand", "lsc", "lsp",
-            "syntax", "doc",
+            "syntax", "agents", "doc",
         ] {
             assert!(names.contains(required));
         }
@@ -95,6 +119,39 @@ mod tests {
             if !command.positionals.is_empty() {
                 assert!(!command.examples.is_empty(), "{}", command.name);
             }
+        }
+    }
+
+    /// The accepted set is enumerated in help, so it has to be the set the
+    /// command actually validates against rather than a copy that can drift.
+    #[test]
+    fn lsc_help_enumerates_every_accepted_operation() {
+        let help = command_help("lsc").stdout;
+        for operation in LSC_OPERATIONS {
+            assert!(
+                help.contains(operation),
+                "`osr lsc --help` omits `{operation}`"
+            );
+        }
+        assert!(
+            help.lines().all(|line| line.len() <= 80),
+            "help lines must stay within 80 columns:\n{help}"
+        );
+    }
+
+    /// An argument without a closed set must not print an empty enumeration.
+    #[test]
+    fn help_omits_the_accepted_set_for_open_arguments() {
+        for command in COMMANDS {
+            if command.positionals.iter().any(|a| !a.values.is_empty()) {
+                continue;
+            }
+            let help = command_help(command.name).stdout;
+            assert!(
+                !help.contains("One of:"),
+                "`osr {} --help` prints an empty accepted set",
+                command.name
+            );
         }
     }
 }

@@ -42,6 +42,12 @@
       "translations": { "zh-CN": "../docs/local/zh/syntax.md" }
     },
     {
+      "id": "tooling/agents",
+      "source": "../docs/agents.md",
+      // Translations are repository review aids and are never embedded.
+      "translations": { "zh-CN": "../docs/local/zh/agents.md" }
+    },
+    {
       "id": "tooling/cli",
       "source": "../docs/cli.md"
     },

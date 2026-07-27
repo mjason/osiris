@@ -94,6 +94,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
         [command, rest @ ..] if command == "fmt" => run_fmt(rest),
         [command, rest @ ..] if command == "lsc" => run_lsc(rest),
         [command, rest @ ..] if command == "syntax" => run_syntax(rest),
+        [command, rest @ ..] if command == "agents" => run_agents(rest),
         [command, rest @ ..] if command == "doc" => run_doc(rest),
         _ => CliOutcome::usage_error("unexpected arguments"),
     }

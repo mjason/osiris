@@ -44,24 +44,7 @@ fn parse_request(arguments: &[String]) -> Result<LscRequest, String> {
     let Some(operation) = arguments.first() else {
         return Err("missing OPERATION for 'lsc'".to_owned());
     };
-    let supported = [
-        "diagnostics",
-        "hover",
-        "completion",
-        "signature",
-        "definition",
-        "references",
-        "rename",
-        "expand",
-        "syntax",
-        "semantic",
-        "symbol",
-        "workspace-search",
-        "symbol-context",
-        "source-context",
-        "cache",
-    ];
-    if !supported.contains(&operation.as_str()) {
+    if !super::registry::LSC_OPERATIONS.contains(&operation.as_str()) {
         return Err(format!("unknown lsc operation '{operation}'"));
     }
     let mut locale = None;

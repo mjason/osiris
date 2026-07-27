@@ -505,3 +505,47 @@ fn lsc_rejects_an_unknown_format_as_cli_misuse() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("must be 'text' or 'json'"));
 }
+
+#[test]
+fn agents_serves_the_embedded_agent_manual_in_both_projections() {
+    let markdown = osr(&["agents"]);
+
+    assert!(
+        markdown.status.success(),
+        "{}",
+        String::from_utf8_lossy(&markdown.stderr)
+    );
+    assert!(markdown.stderr.is_empty());
+    let text = String::from_utf8(markdown.stdout).expect("manual should be UTF-8");
+    assert!(text.contains("document-id: tooling/agents"));
+    // The manual exists to carry working order and tool failure modes; if these
+    // sections disappear it has become a duplicate of another manual.
+    assert!(text.contains("## The change loop"));
+    assert!(text.contains("## Failure modes worth knowing"));
+
+    let json = osr(&["agents", "--format", "json"]);
+
+    assert!(json.status.success());
+    let document: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("projection should be JSON");
+    assert_eq!(document["id"], "tooling/agents");
+    assert!(
+        document["contentHash"]
+            .as_str()
+            .is_some_and(|hash| !hash.is_empty())
+    );
+    assert_eq!(document["markdown"].as_str(), Some(text.as_str()));
+}
+
+#[test]
+fn agents_rejects_an_unknown_format_as_cli_misuse() {
+    let output = osr(&["agents", "--format", "yaml"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("must be 'markdown' or 'json'"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

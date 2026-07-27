@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 20
+revision: 21
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 20
+source-revision: 21
 translation-status: Current
 requires: [0]
 replaces: []
@@ -420,9 +420,16 @@ lock file、project configuration、source file 或 published artifact。`check`
 ```text
 osr syntax
 osr syntax --format markdown|json
+osr agents
+osr agents --format markdown|json
 osr doc <graphql-document>
 osr doc -
 ```
+
+`osr agents` 必须从 embedded snapshot 读取 stable document ID `tooling/agents`，
+并以与 `osr syntax` 投影 `language/syntax` 完全相同的方式投影它。该文档是
+OEP-0001-R054 到 OEP-0001-R056 所要求流程的操作性指引；它不是规范性文本，也不得
+把某条要求复述成来源本身。该文档与已接受 OEP 冲突时，以 OEP 为准。
 
 `osr syntax` 必须从 embedded snapshot 读取 stable document ID `language/syntax`。默认
 输出和 `markdown` 输出必须是完整 authored English Markdown body，并以一个 LF 结尾。
@@ -1014,6 +1021,9 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 21，2026-07-27：新增 `osr agents`，打印内嵌的 `tooling/agents` 手册：
+  OEP-0001-R054 到 OEP-0001-R056 所要求 AI 流程的操作性指引，投影方式与
+  `osr syntax` 投影 `language/syntax` 完全一致。
 - Revision 20，2026-07-27：从 OEP-0001-R022 要求 Osiris 标准化的 metadata key 中
   移除 namespaced Agent information；这些 key 不带 compiler semantic，由未知
   namespaced key 规则覆盖。

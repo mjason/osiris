@@ -2,7 +2,7 @@
 document-id: tooling/cli
 title: Osiris Command-Line Interface
 language: en
-revision: 3
+revision: 4
 ---
 
 # Osiris Command-Line Interface
@@ -175,6 +175,12 @@ and stdout. It uses the same compiler queries and formatter as LSC and `fmt`.
 `osr syntax` prints the complete release-pinned English syntax manual.
 `osr syntax --format json` returns its identity, revision, content hash, and
 Markdown in one object.
+
+`osr agents` prints the complete release-pinned English agent manual: the
+working order, identity and provenance rules, and tool failure modes an AI
+agent needs before editing Osiris source. It accepts the same `--format`
+projection as `osr syntax`. The normative requirements it summarizes are
+OEP-0001-R054 through OEP-0001-R056.
 
 `osr doc <graphql-document>` executes exactly one GraphQL query against the
 read-only English documentation snapshot embedded in the executable. Use

@@ -12,6 +12,9 @@ pub(super) struct ArgumentDefinition {
     required: bool,
     multiple: bool,
     summary: &'static str,
+    /// The closed set this argument accepts, when it has one. Help enumerates
+    /// it so a caller does not have to read a manual to learn the spellings.
+    values: &'static [&'static str],
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -54,12 +57,33 @@ pub(super) struct CommandDefinition {
     examples: &'static [&'static str],
 }
 
+/// Every operation `osr lsc` accepts. This is the single source of truth: the
+/// command validates against it and `osr lsc --help` enumerates it.
+pub(super) const LSC_OPERATIONS: &[&str] = &[
+    "diagnostics",
+    "hover",
+    "completion",
+    "signature",
+    "definition",
+    "references",
+    "rename",
+    "expand",
+    "syntax",
+    "semantic",
+    "symbol",
+    "workspace-search",
+    "symbol-context",
+    "source-context",
+    "cache",
+];
+
 const PATH: ArgumentDefinition = ArgumentDefinition {
     name: "path",
     value_type: "path",
     required: false,
     multiple: false,
     summary: "Project, directory, or source path selected by the command.",
+    values: &[],
 };
 const FILES: ArgumentDefinition = ArgumentDefinition {
     name: "file",
@@ -67,6 +91,7 @@ const FILES: ArgumentDefinition = ArgumentDefinition {
     required: true,
     multiple: true,
     summary: "One or more explicit .osr source files.",
+    values: &[],
 };
 const PROJECT: ArgumentDefinition = ArgumentDefinition {
     name: "project",
@@ -74,6 +99,7 @@ const PROJECT: ArgumentDefinition = ArgumentDefinition {
     required: true,
     multiple: false,
     summary: "Directory to create; optional only with --existing.",
+    values: &[],
 };
 const GRAPHQL: ArgumentDefinition = ArgumentDefinition {
     name: "graphql-document",
@@ -81,6 +107,7 @@ const GRAPHQL: ArgumentDefinition = ArgumentDefinition {
     required: true,
     multiple: false,
     summary: "One GraphQL query document, or - to read it from stdin.",
+    values: &[],
 };
 const OPERATION: ArgumentDefinition = ArgumentDefinition {
     name: "operation",
@@ -88,6 +115,7 @@ const OPERATION: ArgumentDefinition = ArgumentDefinition {
     required: true,
     multiple: false,
     summary: "A finite local language-service operation and its operands.",
+    values: LSC_OPERATIONS,
 };
 const SITE_ROOT: OptionDefinition = OptionDefinition {
     name: "--site-root",
@@ -450,6 +478,39 @@ const COMMANDS: &[CommandDefinition] = &[
         interruption: "Stops promptly and releases workspace state.",
         requirements: &["OEP-0001-R066", "OEP-0001-R077"],
         diagnostics: &["OSR-L0001"],
+        examples: &[],
+    },
+    CommandDefinition {
+        id: "cli/agents",
+        name: "agents",
+        aliases: &[],
+        lifecycle: "active",
+        summary: "Print the embedded complete English agent manual.",
+        synopsis: "osr agents [--format markdown|json]",
+        positionals: &[],
+        options: &[OptionDefinition {
+            name: "--format",
+            aliases: &[],
+            value_type: "markdown|json",
+            default: Some("markdown"),
+            multiple: false,
+            conflicts: &[],
+            precedence: "command line",
+            summary: "Select complete Markdown or its versioned JSON projection.",
+        }],
+        input: "The release-pinned embedded documentation snapshot.",
+        output: "The tooling/agents document.",
+        stdout: "Complete Markdown or one JSON object.",
+        stderr: "Snapshot validation failures.",
+        formats: &["markdown", "json"],
+        filesystem_effects: "May materialize a verified read-only snapshot in the temporary directory.",
+        process_effects: "None.",
+        network_effects: "None.",
+        dependency_effects: "None.",
+        exit_codes: &[0, 1, 2],
+        interruption: "Stops without changing documentation.",
+        requirements: &["OEP-0001-R043", "OEP-0001-R054"],
+        diagnostics: &["OSR-D0001"],
         examples: &[],
     },
     CommandDefinition {

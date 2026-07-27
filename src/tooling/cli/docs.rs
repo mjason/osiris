@@ -3,6 +3,19 @@ use std::io::{self, Read};
 use super::*;
 
 pub(super) fn run_syntax(arguments: &[String]) -> CliOutcome {
+    print_manual(arguments, "syntax", crate::documentation::syntax_markdown)
+}
+
+pub(super) fn run_agents(arguments: &[String]) -> CliOutcome {
+    print_manual(arguments, "agents", crate::documentation::agents_markdown)
+}
+
+/// Prints one embedded manual as Markdown or its versioned JSON projection.
+fn print_manual(
+    arguments: &[String],
+    command: &str,
+    load: fn() -> Result<crate::documentation::SyntaxDocument, String>,
+) -> CliOutcome {
     let format = match arguments {
         [] => "markdown",
         [option, format]
@@ -11,11 +24,17 @@ pub(super) fn run_syntax(arguments: &[String]) -> CliOutcome {
             format
         }
         [option, _] if option == "--format" => {
-            return CliOutcome::usage_error("--format must be 'markdown' or 'json' for 'syntax'");
+            return CliOutcome::usage_error(format!(
+                "--format must be 'markdown' or 'json' for '{command}'"
+            ));
         }
-        _ => return CliOutcome::usage_error("usage: osr syntax [--format markdown|json]"),
+        _ => {
+            return CliOutcome::usage_error(format!(
+                "usage: osr {command} [--format markdown|json]"
+            ));
+        }
     };
-    let document = match crate::documentation::syntax_markdown() {
+    let document = match load() {
         Ok(document) => document,
         Err(message) => return CliOutcome::failure(1, String::new(), format!("osr: {message}\n")),
     };
@@ -34,7 +53,7 @@ pub(super) fn run_syntax(arguments: &[String]) -> CliOutcome {
         Err(error) => CliOutcome::failure(
             1,
             String::new(),
-            format!("osr: could not serialize syntax document: {error}\n"),
+            format!("osr: could not serialize {command} document: {error}\n"),
         ),
     }
 }

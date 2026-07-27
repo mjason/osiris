@@ -220,6 +220,12 @@ pub fn syntax_markdown() -> Result<SyntaxDocument, String> {
         .ok_or_else(|| "embedded snapshot does not contain language/syntax".to_owned())
 }
 
+/// Load the complete authored agent manual through the embedded snapshot.
+pub fn agents_markdown() -> Result<SyntaxDocument, String> {
+    document_markdown("tooling/agents")?
+        .ok_or_else(|| "embedded snapshot does not contain tooling/agents".to_owned())
+}
+
 /// Load one complete authored Markdown document through the embedded snapshot.
 pub(crate) fn document_markdown(id: &str) -> Result<Option<SyntaxDocument>, String> {
     block_on(async {
