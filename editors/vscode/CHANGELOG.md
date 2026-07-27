@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11
+
+- Avoid initializing project language services for generic requests while retaining project-symbol preflight for project API questions.
+
 ## 0.3.10
 
 - Reuse unchanged workspace analysis so hover and definition requests are not blocked by repeated full-project compilation.
