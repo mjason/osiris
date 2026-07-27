@@ -694,7 +694,10 @@ fn hovering_a_macro_call_reports_the_macro_and_its_documentation() {
          ^{:doc \"Double the expression.\"} (defmacro twice [x] `(+ ~x ~x))\n",
     )
     .expect("provider source");
-    let app_source = "(module demo.app)\n(import demo.lib :refer [twice])\n(def a (twice 3))\n";
+    // The second call is a top-level expression, so expansion leaves no
+    // binding covering its argument and the fallback below is reachable.
+    let app_source = "(module demo.app)\n(import demo.lib :refer [twice])\n\
+         (def a (twice 3))\n(twice 4)\n";
     let app = source_root.join("app.osr");
     fs::write(&app, app_source).expect("application source");
     let uri = format!("file://{}", app.display());
@@ -726,6 +729,39 @@ fn hovering_a_macro_call_reports_the_macro_and_its_documentation() {
 
     let definition = state.definition(&uri, call).expect("macro definition");
     assert!(definition.uri.ends_with("lib.osr"), "{definition:?}");
+
+    // A clause keyword inside a macro call is not a binding of its own, so the
+    // useful answer is the macro whose documentation describes it. Occurrences
+    // stay narrow, so this widening is hover-only.
+    let clause = offset_to_position(app_source, app_source.rfind('4').expect("argument"));
+    assert!(
+        state
+            .semantic_document(&uri)
+            .and_then(|semantic| semantic.symbol_at_source(
+                position_to_offset(app_source, clause).expect("offset"),
+                app_source
+            ))
+            .is_none(),
+        "the fixture must place the clause where nothing else resolves"
+    );
+    let enclosing = state.hover(&uri, clause, Some("en")).expect("enclosing macro");
+    assert!(
+        enclosing.contents.value.contains("Double the expression."),
+        "{}",
+        enclosing.contents.value
+    );
+    assert!(
+        state.references(&uri, clause).is_empty(),
+        "the fallback must not widen what counts as a reference"
+    );
+
+    // Both surfaces read one kernel, so the machine projection must agree.
+    assert!(
+        state
+            .hover_machine_projection(&uri, clause, Some("en"))
+            .is_some(),
+        "lsc must report the same enclosing macro as the editor"
+    );
 
     drop(state);
     fs::remove_dir_all(root).expect("workspace cleanup");

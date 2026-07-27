@@ -174,9 +174,30 @@ pub fn handle_json_rpc(state: &mut LspState, input: &str) -> JsonRpcOutcome {
             published_diagnostics(&outcome)
         );
     } else {
-        lsp_debug!("<- {method} {elapsed:.1}ms");
+        // Whether a query found anything is the first thing worth knowing when
+        // an editor shows nothing, so record it rather than the duration alone.
+        lsp_debug!(
+            "<- {method} {elapsed:.1}ms{} {}",
+            subject(&params),
+            outcome_summary(&outcome)
+        );
     }
     outcome
+}
+
+/// What a request produced: an empty result is the common cause of an editor
+/// showing nothing, and is otherwise indistinguishable from a fast success.
+fn outcome_summary(outcome: &JsonRpcOutcome) -> &'static str {
+    let Some(response) = outcome.response.as_ref() else {
+        return "accepted";
+    };
+    match response.get("result") {
+        None => "error",
+        Some(JsonValue::Null) => "empty",
+        Some(JsonValue::Array(items)) if items.is_empty() => "empty",
+        Some(JsonValue::Object(fields)) if fields.is_empty() => "empty",
+        Some(_) => "ok",
+    }
 }
 
 /// ` id=7`, or empty for a notification.

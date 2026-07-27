@@ -88,6 +88,20 @@
           "scope": "window",
           "description": "Arguments used to start the Osiris language server."
         },
+        "osiris.server.log": {
+          "type": "string",
+          "enum": [
+            "off",
+            "error",
+            "warn",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "default": "info",
+          "scope": "window",
+          "description": "Detail recorded in the Osiris Language Server output channel. `debug` records every request, its duration, and whether it produced a result."
+        },
         "osiris.server.siteRoots": {
           "type": "array",
           "items": {

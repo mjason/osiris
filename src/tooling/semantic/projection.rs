@@ -41,11 +41,23 @@ impl SemanticDocument {
                 layers
                     .records
                     .extend(records_for_binding(&records, &binding.name.canonical));
-                let occurrences = references.get(&id).cloned().unwrap_or_default();
+                // A binding the module never wrote down — an implicit core
+                // type, for example — is located at the module form itself.
+                // That is a placeholder, not an occurrence: treating it as one
+                // lets the binding answer for every position nothing narrower
+                // covers, so hovering unrelated syntax reports a core type.
+                let whole_source = |span: &Span| *span == analysis.hir.span;
+                let occurrences = references
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|span| !whole_source(span))
+                    .collect::<Vec<_>>();
                 let definition = binding.name.span;
                 let mut all_occurrences = occurrences.clone();
                 all_occurrences.extend(binding_aliases.iter().map(|alias| alias.span));
-                if !all_occurrences.contains(&definition) {
+                if !all_occurrences.contains(&definition) && !whole_source(&definition) {
                     all_occurrences.push(definition);
                 }
                 all_occurrences.sort_by_key(|span| (span.start, span.end));

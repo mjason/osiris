@@ -2,13 +2,20 @@ impl LspState {
     pub fn hover(&self, uri: &str, position: Position, locale: Option<&str>) -> Option<Hover> {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
-        let symbol = document.semantic.symbol_at_source(offset, &document.text)?;
         let locale = effective_display_locale(
             document,
             locale,
             self.session_locale.as_deref(),
             &self.display_locale,
         );
+        let Some(symbol) = document.semantic.symbol_at_source(offset, &document.text) else {
+            // Nothing here is a binding of its own. Inside a macro call the
+            // useful answer is the macro: its clause keywords and shape are
+            // documented there, and they exist nowhere else to point at.
+            // Occurrences stay narrow so navigation and rename are unaffected;
+            // only this fallback widens.
+            return self.enclosing_macro_hover(document, offset, locale);
+        };
         if let Some(standard) = crate::stdlib::query_api(&symbol.binding_id, Some(locale))
             .into_iter()
             .next()
@@ -113,6 +120,29 @@ impl LspState {
         ))
     }
 
+    /// Describes the innermost macro call covering `offset`.
+    fn enclosing_macro_hover(
+        &self,
+        document: &OpenDocument,
+        offset: usize,
+        locale: &str,
+    ) -> Option<Hover> {
+        let trace = document
+            .analysis
+            .expansion_traces
+            .iter()
+            .filter(|trace| span_contains(trace.call_span, offset))
+            .min_by_key(|trace| trace.call_span.end.saturating_sub(trace.call_span.start))?;
+        let entry = workspace_symbol_for_binding(document, &trace.macro_binding_id)?;
+        Some(render_symbol_hover(
+            document,
+            &entry.symbol,
+            locale,
+            None,
+            Some(span_to_range(&document.text, trace.call_span)),
+        ))
+    }
+
     /// Project a workspace binding without requiring the caller to know a
     /// source position. LSC name queries use the same hover record as LSP.
     #[must_use]
@@ -176,14 +206,35 @@ impl LspState {
     ) -> Option<JsonValue> {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
-        let symbol = document.semantic.symbol_at_source(offset, &document.text)?;
+        // Same fallback as `hover`: inside a macro call with no binding of its
+        // own, the macro is the answer, and both surfaces must agree.
+        let (symbol, range) = match document.semantic.symbol_at_source(offset, &document.text) {
+            Some(symbol) => (
+                symbol,
+                occurrence_at(symbol, offset).map(|span| span_to_range(&document.text, span)),
+            ),
+            None => {
+                let trace = document
+                    .analysis
+                    .expansion_traces
+                    .iter()
+                    .filter(|trace| span_contains(trace.call_span, offset))
+                    .min_by_key(|trace| {
+                        trace.call_span.end.saturating_sub(trace.call_span.start)
+                    })?;
+                let entry = workspace_symbol_for_binding(document, &trace.macro_binding_id)?;
+                (
+                    &entry.symbol,
+                    Some(span_to_range(&document.text, trace.call_span)),
+                )
+            }
+        };
         let effective_locale = effective_display_locale(
             document,
             locale,
             self.session_locale.as_deref(),
             &self.display_locale,
         );
-        let range = occurrence_at(symbol, offset).map(|span| span_to_range(&document.text, span));
         if let Some(standard) = crate::stdlib::query_api(&symbol.binding_id, Some(effective_locale))
             .into_iter()
             .next()

@@ -101,12 +101,17 @@ function createClient(): LanguageClient {
   // environment and fall back to PATH.
   const command = explicit ?? workspaceServerPath() ?? "osr";
   const args = configuration.get<string[]>("server.arguments", ["lsp"]);
+  // The server reads its level from the environment, so the setting has to
+  // reach the process rather than the protocol; `debug` records every request
+  // and whether it found anything.
+  const log = configuration.get<string>("server.log", "info");
   const configuredLocale = configuration.get<string>("displayLocale", "").trim();
   const siteRoots = configuration.get<string[]>("server.siteRoots", []);
 
+  const options = { env: { ...process.env, OSIRIS_LSP_LOG: log } };
   const serverOptions: ServerOptions = {
-    run: { command, args },
-    debug: { command, args }
+    run: { command, args, options },
+    debug: { command, args, options }
   };
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
