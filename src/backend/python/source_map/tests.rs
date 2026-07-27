@@ -55,6 +55,8 @@ fn standard_macro_definitions_remain_navigable_from_generated_python() {
     let traces = [ExpansionTrace {
         macro_name: "when".to_owned(),
         macro_binding_id: binding.id().as_str().to_owned(),
+        definition_module: Some("osiris.core".to_owned()),
+        definition_span: Span::default(),
         call_span: Span::new(4, 16),
         expansion_span: Span::new(4, 16),
         depth: 0,

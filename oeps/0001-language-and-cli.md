@@ -12,8 +12,8 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-26
-revision: 18
+updated: 2026-07-27
+revision: 19
 requires: [0]
 replaces: []
 superseded-by: null
@@ -320,6 +320,12 @@ return Python source text, a Python AST, untyped HIR, or a backend callback.
 Intentional use of call-site names MUST require an explicit syntax operation,
 and expansion output MUST retain both definition and call-site origin chains.
 
+**OEP-0001-R017A:** Hygiene applies to every binding position a macro template
+authors directly. Where a template's binding positions cannot be identified
+before expansion, the compiler MUST leave the authored names unchanged rather
+than rename them on an assumption, and the syntax manual MUST list those
+shapes so a macro author knows when an explicit fresh name is required.
+
 **OEP-0001-R018:** A Phase-1 package interface MUST declare macro code and
 compile-time dependencies statically. Macro expansion MUST depend only on
 locked, validated interfaces selected by OEP-0002 and MUST fail closed when
@@ -410,9 +416,32 @@ must not duplicate an expression with observable effects. Target-specific
 rewrites MUST NOT silently weaken type, temporal, data, or effect diagnostics.
 
 **OEP-0001-R032:** Diagnostics MUST have a stable code, severity, primary
-source span, human message, and machine-readable related information when
-applicable. Macro diagnostics MUST carry an expansion trace, and generated
-Python failures MUST be mappable back to authored source.
+source span, human message, and an ordered list of related locations. Each
+related location MUST carry a stable machine-readable kind and a span, and MUST
+name the module that span belongs to whenever that is not the module the
+diagnostic was reported in. Identity MUST NOT depend on the human message text.
+Generated Python failures MUST be mappable back to authored source.
+
+**OEP-0001-R032A:** A diagnostic reported against syntax that macro expansion
+produced MUST carry that expansion as related locations. Every expansion in the
+chain MUST contribute both its call site and its macro definition, ordered
+outermost expansion first, and MUST identify the macro by binding ID so a
+consumer can join the diagnostic to the expansion trace without comparing
+spans. This applies to diagnostics from every pass that runs after expansion,
+not only to diagnostics the expander raises itself.
+
+**OEP-0001-R032B:** A source span is a byte range without a file identity. A
+diagnostic MUST NOT report a span belonging to one module against another
+module's text. Where expansion copies syntax out of an imported macro's
+template, the compiler MUST re-point that syntax at the call site and record
+the defining module through R032's related locations instead.
+
+**OEP-0001-R032C:** Every compiler-owned diagnostic surface — CLI rendering,
+`osr lsc` JSON, and LSP publication — MUST expose the related locations a
+diagnostic carries, and none may silently drop an entry. Machine-readable
+surfaces MUST expose each entry's kind, span, module, and macro binding ID. A
+surface that cannot resolve a foreign-module span to a line and column MUST
+still name the module.
 
 **OEP-0001-R033:** `osr lsc syntax` MUST expose the lossless syntax view,
 and `osr lsc semantic` MUST expose canonical binding IDs, types,
@@ -1266,7 +1295,10 @@ A conforming implementation provides evidence that:
   same-module metadata-reference resolution, recursive `~osiris` formatting,
   and absence of runtime reachability for documentation-only references;
 - kernel inventory and standard macro inventory are independently queryable;
-- macro tests prove hygiene, phase isolation, determinism, and origin chains;
+- macro tests prove hygiene, phase isolation, determinism, and origin chains,
+  including that a diagnostic from a pass after expansion carries the ordered
+  call-site and definition chain of every macro that produced the syntax, and
+  that no diagnostic reports another module's span against local text;
 - type and `defstruct` tests prove inference and public-boundary rules;
 - Python output parses on its selected target and maps diagnostics to source;
 - every public CLI command has one complete command definition;

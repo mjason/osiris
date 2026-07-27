@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::{
     core_forms::{is_authored_boundary, is_macro_declaration, is_phase_declaration},
-    diagnostic::Diagnostic,
+    diagnostic::{Diagnostic, Related, RelatedKind},
     name::{BindingId, BindingKind},
     source::Span,
     syntax::{
@@ -48,10 +48,110 @@ impl Default for ExpansionOptions {
 pub struct ExpansionTrace {
     pub macro_name: String,
     pub macro_binding_id: String,
+    /// Module the `defmacro` was written in, or `None` when it is the module
+    /// being compiled. Together with `definition_span` this is the definition
+    /// half of the origin chain.
+    pub definition_module: Option<String>,
+    pub definition_span: Span,
     pub call_span: Span,
     pub expansion_span: Span,
     pub depth: usize,
     pub origin: Vec<Span>,
+}
+
+impl ExpansionTrace {
+    /// Whether `span` names syntax this expansion produced.
+    ///
+    /// A local macro's template keeps its definition spans, which sit strictly
+    /// inside the `defmacro` and cannot belong to any other declaration. An
+    /// imported macro's template is re-pointed at the call, because a span from
+    /// another module's byte offsets means nothing in this one.
+    #[must_use]
+    pub fn covers(&self, span: Span) -> bool {
+        if self.definition_module.is_some() {
+            return contains(self.call_span, span);
+        }
+        (contains(self.definition_span, span) && span != self.definition_span)
+            || contains(self.call_span, span)
+    }
+
+    fn related(&self) -> [Related; 2] {
+        [
+            Related::new(
+                RelatedKind::MacroCallSite,
+                format!("expanded from macro `{}` called here", self.macro_name),
+                self.call_span,
+            )
+            .for_macro(self.macro_binding_id.clone()),
+            Related::new(
+                RelatedKind::MacroDefinition,
+                match &self.definition_module {
+                    Some(module) => {
+                        format!("macro `{}` is defined in `{module}`", self.macro_name)
+                    }
+                    None => format!("macro `{}` is defined here", self.macro_name),
+                },
+                self.definition_span,
+            )
+            .in_module(self.definition_module.clone())
+            .for_macro(self.macro_binding_id.clone()),
+        ]
+    }
+}
+
+const fn contains(outer: Span, inner: Span) -> bool {
+    outer.start <= inner.start && inner.end <= outer.end
+}
+
+/// Supporting locations for a diagnostic reported at `span` in an expanded
+/// document, outermost expansion first.
+///
+/// Passes that run after expansion see only spans, so this is how a name,
+/// type, or lowering diagnostic recovers the macro that produced the syntax it
+/// is complaining about.
+#[must_use]
+pub fn expansion_related(traces: &[ExpansionTrace], span: Span) -> Vec<Related> {
+    let mut chain = traces
+        .iter()
+        .filter(|trace| trace.covers(span))
+        .flat_map(|trace| enclosing_chain(traces, trace))
+        .collect::<Vec<_>>();
+    chain.sort_by_key(|trace| (trace.depth, trace.call_span.start, trace.call_span.end));
+    let mut seen = BTreeSet::new();
+    chain
+        .into_iter()
+        .filter(|trace| {
+            seen.insert((
+                trace.macro_binding_id.clone(),
+                trace.call_span.start,
+                trace.call_span.end,
+            ))
+        })
+        .flat_map(ExpansionTrace::related)
+        .collect()
+}
+
+/// The expansions that led to `trace`, outermost first, followed by `trace`.
+///
+/// `origin` records one call span per enclosing expansion, so each ancestor is
+/// the trace at that depth which was entered at that span.
+fn enclosing_chain<'trace>(
+    traces: &'trace [ExpansionTrace],
+    trace: &'trace ExpansionTrace,
+) -> Vec<&'trace ExpansionTrace> {
+    let mut chain = trace
+        .origin
+        .iter()
+        .take(trace.depth)
+        .enumerate()
+        .filter_map(|(depth, call_span)| {
+            traces
+                .iter()
+                .find(|candidate| candidate.depth == depth && candidate.call_span == *call_span)
+        })
+        .collect::<Vec<_>>();
+    chain.push(trace);
+    chain
 }
 
 #[derive(Clone, Debug)]
@@ -505,8 +605,24 @@ struct Expander {
     definition_names: BTreeMap<String, BTreeMap<String, String>>,
     active_phase_namespace: Option<String>,
     active_origins: Vec<Span>,
+    /// Expansions in progress, outermost first. A diagnostic raised while this
+    /// is non-empty is about macro-produced syntax and carries the chain.
+    active_macros: Vec<ExpansionTrace>,
     diagnostics: Vec<Diagnostic>,
     traces: Vec<ExpansionTrace>,
+}
+
+impl Expander {
+    /// Report a diagnostic against syntax the active expansion produced.
+    fn macro_error(&mut self, code: &'static str, message: impl Into<String>, span: Span) {
+        let related = self
+            .active_macros
+            .iter()
+            .flat_map(ExpansionTrace::related)
+            .collect::<Vec<_>>();
+        self.diagnostics
+            .push(Diagnostic::error(code, message, span).with_related(related));
+    }
 }
 
 #[derive(Clone, Copy)]

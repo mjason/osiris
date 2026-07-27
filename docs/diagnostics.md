@@ -2,22 +2,45 @@
 document-id: tooling/diagnostics
 title: Osiris Diagnostics
 language: en
-revision: 1
+revision: 2
 ---
 
 # Osiris Diagnostics
 
 Every Osiris diagnostic has a stable ASCII code, severity, primary source
-span, and message. Machine projections can also contain related spans, macro
-origin chains, binding identities, and structured facts. The diagnostic code,
-not translated prose, is the stable identity clients should use.
+span, message, and an ordered list of related locations. Each related location
+carries a machine-readable `kind`, a `span`, the `module` that span belongs to
+when it is not the reported one, and a `binding_id` when it names a macro. The
+diagnostic code and these fields, not translated prose, are the stable identity
+clients should use.
 
 ## Reading Diagnostics
 
 Text diagnostics identify the source path and one-based line and column. LSC
 JSON and LSP use structured ranges and include the analyzed document version.
-Macro errors retain the call site and expansion origin. Backend source maps
-relate generated Python spans to the packaged `.osr` source and its hash.
+Backend source maps relate generated Python spans to the packaged `.osr` source
+and its hash.
+
+A diagnostic reported against macro-generated syntax carries the whole
+expansion chain, outermost macro first, with a `macro-call-site` and a
+`macro-definition` entry per macro:
+
+```
+chain.osr:2:27: error[OSR-N0012]: unknown name `no-such-fn`
+  |
+ 2 | (defmacro inner [value] `(no-such-fn ~value))
+  |                           ^^^^^^^^^^
+  = note: expanded from macro `outer` called here (chain.osr:4:26)
+  = note: macro `outer` is defined here (chain.osr:3:1)
+  = note: expanded from macro `inner` called here (chain.osr:4:26)
+  = note: macro `inner` is defined here (chain.osr:2:1)
+```
+
+A span is a byte range with no file identity, so syntax coming from an imported
+macro's template is reported at the call site and the defining module is named
+in the related entry instead. `osr lsc diagnostics --format json` and LSP
+`publishDiagnostics` expose the same entries; LSP additionally publishes the
+same-module ones as `relatedInformation` jump targets.
 
 Use `osr check` for project diagnostics or
 `osr lsc diagnostics <path> --format json` for a stable local-tooling object.
@@ -71,9 +94,10 @@ runtime code. Phase 1 has deterministic limits for steps, depth, expansion
 count, nodes, and metadata resources. It cannot access Python, files, network,
 environment variables, clocks, randomness, subprocesses, or threads.
 
-An error in expanded code reports both the authored call and the standard or
-extension macro origin. `osr expand --once` is useful when the complete trace
-is too large.
+An error in expanded code reports both the authored call and the macro origin
+through the related locations described above, for local, standard, and package
+macros alike. `osr expand --once` is useful when the complete trace is too
+large.
 
 ## Type and Boundary Failures
 

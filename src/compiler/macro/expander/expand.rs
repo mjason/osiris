@@ -116,83 +116,104 @@ impl Expander {
                     .and_then(|target| self.macros.get(target))
             })
             .cloned();
-        if user_macro.is_none() {
+        let Some(definition) = user_macro else {
             return self.expand_list_children(form, items, depth);
-        }
+        };
         if self.expansions >= self.options.max_expansions {
-            self.diagnostics.push(Diagnostic::error(
+            self.macro_error(
                 "OSR-M0002",
                 format!(
                     "macro expansion exceeded the limit of {} calls",
                     self.options.max_expansions
                 ),
                 form.span,
-            ));
+            );
             return error_form("macro expansion limit", form.span);
         }
         self.expansions += 1;
-        let expanded = match self.evaluate_macro(
-            user_macro.as_ref().expect("macro presence checked"),
-            form,
-            &items[1..],
-        ) {
-            Ok(expanded) => Some(expanded),
+
+        let mut origin = self.active_origins.clone();
+        origin.push(form.span);
+        // The frame is live for the whole expansion, including the nested
+        // expansion of its own output, so every diagnostic raised underneath
+        // reports the chain that produced the syntax.
+        self.active_macros.push(ExpansionTrace {
+            macro_name: short_name.to_owned(),
+            macro_binding_id: definition
+                .macro_binding_id
+                .clone()
+                .expect("every collected macro has a stable binding id"),
+            definition_module: definition.namespace.clone(),
+            definition_span: definition.span,
+            call_span: form.span,
+            expansion_span: form.span,
+            depth,
+            origin,
+        });
+        let expanded = self.expand_macro_call(&definition, form, items);
+        let result = match expanded {
+            Ok(mut expanded) => {
+                let frame = self.active_macros.last().expect("frame was pushed").clone();
+                self.traces.push(ExpansionTrace {
+                    expansion_span: expanded.span,
+                    ..frame
+                });
+                if !self.options.once {
+                    // The frame stays live here so a macro produced by this one
+                    // reports the whole chain, not just itself.
+                    self.active_origins.push(form.span);
+                    expanded = self.expand_form(&expanded, depth + 1);
+                    self.active_origins.pop();
+                }
+                expanded
+            }
+            Err(recovery) => error_form(recovery, form.span),
+        };
+        self.active_macros.pop();
+        result
+    }
+
+    /// Evaluate one macro call and validate its result. The error carries the
+    /// label for the recovered syntax that replaces the call.
+    fn expand_macro_call(
+        &mut self,
+        definition: &FunctionDef,
+        form: &Form,
+        items: &[Form],
+    ) -> Result<Form, &'static str> {
+        let mut expanded = match self.evaluate_macro(definition, form, &items[1..]) {
+            Ok(expanded) => expanded,
             Err(error) => {
-                self.diagnostics
-                    .push(Diagnostic::error(error.code, error.message, error.span));
-                Some(error_form("phase-1 evaluation failed", form.span))
+                self.macro_error(error.code, error.message, error.span);
+                return Err("phase-1 evaluation failed");
             }
         };
-        let Some(mut expanded) = expanded else {
-            return self.expand_list_children(form, items, depth);
-        };
         if form_node_count(&expanded) > DEFAULT_MAX_RESULT_NODES {
-            self.diagnostics.push(Diagnostic::error(
+            self.macro_error(
                 "OSR-M0006",
                 format!(
                     "macro expansion result exceeded the limit of {DEFAULT_MAX_RESULT_NODES} forms"
                 ),
                 form.span,
-            ));
-            return error_form("macro expansion result limit", form.span);
+            );
+            return Err("macro expansion result limit");
         }
         expanded.metadata = merge_call_metadata(&form.metadata, &expanded.metadata);
         if let Err(exceeded) = check_metadata_resources(&expanded.metadata, METADATA_TARGET_LIMITS)
         {
-            self.diagnostics.push(Diagnostic::error(
+            self.macro_error(
                 "OSR-M0009",
                 format!(
                     "metadata for one syntax target exceeds the {} limit of {} (found {})",
                     exceeded.resource, exceeded.limit, exceeded.actual
                 ),
                 form.span,
-            ));
-            return error_form("macro expansion metadata limit", form.span);
+            );
+            return Err("macro expansion metadata limit");
         }
         expanded.span = form.span;
         expanded.datum_span = form.datum_span;
-        let mut origin = self.active_origins.clone();
-        origin.push(form.span);
-        self.traces.push(ExpansionTrace {
-            macro_name: short_name.to_owned(),
-            macro_binding_id: user_macro
-                .as_ref()
-                .and_then(|definition| definition.macro_binding_id.clone())
-                .expect("every collected macro has a stable binding id"),
-            call_span: form.span,
-            expansion_span: expanded.span,
-            depth,
-            origin,
-        });
-
-        if self.options.once {
-            expanded
-        } else {
-            self.active_origins.push(form.span);
-            let recursively_expanded = self.expand_form(&expanded, depth + 1);
-            self.active_origins.pop();
-            recursively_expanded
-        }
+        Ok(expanded)
     }
 
     pub(in crate::macro_expand) fn expand_list_children(

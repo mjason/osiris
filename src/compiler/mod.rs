@@ -244,6 +244,7 @@ fn analyze_document(
     let mut diagnostics = surface_result.diagnostics;
     diagnostics.extend(static_data.diagnostics.iter().cloned());
     diagnostics.extend(hir_result.diagnostics);
+    attach_expansion_origins(&mut diagnostics, &expanded, &expanded.traces);
     if diagnostics.is_empty()
         && let Err(error) = interface::build_with_static_data_for_target(
             &hir_result.module,
@@ -272,6 +273,36 @@ fn analyze_document(
         migration_advisories: hir_result.migration_advisories,
         source_hash,
         cache_key,
+    }
+}
+
+/// Points every post-expansion diagnostic at the macro that produced the
+/// syntax it reports.
+///
+/// Passes after expansion see spans, not syntax history, so without this a
+/// name or type error inside a macro template arrives with no way to reach the
+/// call that caused it. Reader and expansion diagnostics are skipped: the
+/// expander already attached the chain it was holding, and re-deriving one
+/// from spans would misread an error about a `defmacro` itself as an error in
+/// something that macro produced.
+fn attach_expansion_origins(
+    diagnostics: &mut [Diagnostic],
+    expanded: &macro_expand::ExpansionResult,
+    traces: &[ExpansionTrace],
+) {
+    if traces.is_empty() {
+        return;
+    }
+    let before_lowering = &expanded.document.diagnostics;
+    for diagnostic in diagnostics {
+        if !diagnostic.related.is_empty()
+            || before_lowering
+                .iter()
+                .any(|reported| reported == diagnostic)
+        {
+            continue;
+        }
+        diagnostic.related = macro_expand::expansion_related(traces, diagnostic.span);
     }
 }
 

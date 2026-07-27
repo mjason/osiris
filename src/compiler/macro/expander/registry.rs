@@ -16,6 +16,7 @@ impl Expander {
             definition_names: BTreeMap::new(),
             active_phase_namespace: None,
             active_origins: Vec::new(),
+            active_macros: Vec::new(),
             diagnostics: Vec::new(),
             traces: Vec::new(),
         }

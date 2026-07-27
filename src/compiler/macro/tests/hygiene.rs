@@ -279,6 +279,106 @@ fn phase_recursion_limit_is_recoverable() {
 }
 
 #[test]
+fn a_diagnostic_after_expansion_carries_the_whole_macro_chain() {
+    // OEP-0001-R032A. `no-such-fn` is written in `inner`, `inner` is written in
+    // `outer`, and only `(outer n)` appears in the authored function.
+    let source = "(module chain)\n\
+                  (defmacro inner [value] `(no-such-fn ~value))\n\
+                  (defmacro outer [value] `(inner ~value))\n\
+                  (defn ^Int demo [^Int n] (outer n))";
+    let analysis = analyze(source, &CompileOptions::new("chain", PythonVersion::default()));
+    let diagnostic = analysis
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "OSR-N0012")
+        .expect("the generated call should not resolve");
+    assert_eq!(
+        diagnostic
+            .related
+            .iter()
+            .map(|related| (related.kind, related.binding_id.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![
+            (RelatedKind::MacroCallSite, Some("chain::macro::outer")),
+            (RelatedKind::MacroDefinition, Some("chain::macro::outer")),
+            (RelatedKind::MacroCallSite, Some("chain::macro::inner")),
+            (RelatedKind::MacroDefinition, Some("chain::macro::inner")),
+        ]
+    );
+    // Every entry must join to a recorded trace without comparing spans.
+    for related in &diagnostic.related {
+        assert!(
+            analysis.expansion_traces.iter().any(|trace| {
+                Some(trace.macro_binding_id.as_str()) == related.binding_id.as_deref()
+            }),
+            "{related:?}"
+        );
+    }
+    let call_site = &diagnostic.related[0];
+    assert_eq!(call_site.module, None);
+    assert!(source[call_site.span.start..call_site.span.end].starts_with("(outer"));
+}
+
+#[test]
+fn a_phase_one_failure_carries_the_chain_that_was_expanding() {
+    let source = "(module reject)\n\
+                  (defmacro inner [value] (syntax-error value \"inner rejects this\"))\n\
+                  (defmacro outer [value] `(inner ~value))\n\
+                  (defn ^Int demo [^Int n] (outer n))";
+    let analysis = analyze(source, &CompileOptions::new("reject", PythonVersion::default()));
+    let diagnostic = analysis
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "OSR-M0007")
+        .expect("the macro should reject its argument");
+    assert_eq!(
+        diagnostic
+            .related
+            .iter()
+            .map(|related| related.binding_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![
+            Some("reject::macro::outer"),
+            Some("reject::macro::outer"),
+            Some("reject::macro::inner"),
+            Some("reject::macro::inner"),
+        ]
+    );
+}
+
+#[test]
+fn an_imported_macro_reports_the_call_site_and_names_its_module() {
+    // OEP-0001-R032B: a span from `dep.broken` means nothing in this module, so
+    // the primary span must be the call and the module must be named instead.
+    let module = imported_module(
+        "dep.broken",
+        "(defmacro emit [value] `(no-such-function ~value))",
+        &[("emit", "emit")],
+    );
+    let source = "(module caller)\n(defn ^Int demo [^Int n] (emit n))";
+    let expanded =
+        expand_with_imported_phase_modules(&read(source), &[module], ExpansionOptions::default());
+    let trace = &expanded.traces[0];
+    assert_eq!(trace.definition_module.as_deref(), Some("dep.broken"));
+
+    let related = super::expansion_related(&expanded.traces, trace.call_span);
+    let definition = related
+        .iter()
+        .find(|related| related.kind == RelatedKind::MacroDefinition)
+        .expect("the definition half of the chain is required");
+    assert_eq!(definition.module.as_deref(), Some("dep.broken"));
+    assert!(definition.message.contains("dep.broken"), "{definition:?}");
+
+    // Nothing the caller sees may point outside its own text.
+    let call_site = related
+        .iter()
+        .find(|related| related.kind == RelatedKind::MacroCallSite)
+        .expect("the call-site half of the chain is required");
+    assert_eq!(call_site.module, None);
+    assert!(call_site.span.end <= source.len());
+}
+
+#[test]
 fn nested_macro_trace_preserves_the_origin_chain() {
     let source = "(defmacro inner [] `(+ 1 2))\n(defmacro outer [] `(inner))\n(outer)";
     let result = expand(&read(source), ExpansionOptions::default());

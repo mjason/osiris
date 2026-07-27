@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Bumped when the JSON shape of SemanticDocument changes incompatibly.
-pub const SEMANTIC_DOCUMENT_VERSION: u32 = 2;
+pub const SEMANTIC_DOCUMENT_VERSION: u32 = 3;
 
 /// Resolved embedded content with enough provenance for editors and agents to
 /// render or navigate it without reopening the provider declaration.
@@ -326,6 +326,11 @@ pub struct SemanticDiagnostic {
     pub severity: String,
     pub message: String,
     pub span: Span,
+    /// Supporting locations, outermost cause first. A macro diagnostic carries
+    /// its expansion chain here; `binding_id` joins each entry to a trace in
+    /// `macro_traces` without matching spans.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<crate::diagnostic::Related>,
 }
 
 impl From<&Diagnostic> for SemanticDiagnostic {
@@ -335,6 +340,7 @@ impl From<&Diagnostic> for SemanticDiagnostic {
             severity: format!("{:?}", diagnostic.severity).to_lowercase(),
             message: diagnostic.message.clone(),
             span: diagnostic.span,
+            related: diagnostic.related.clone(),
         }
     }
 }

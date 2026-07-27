@@ -48,12 +48,23 @@ pub struct WorkspaceEdit {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiagnosticRelatedInformation {
+    pub location: Location,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LspDiagnostic {
     pub range: Range,
     pub severity: u8,
     pub code: String,
     pub source: String,
     pub message: String,
+    /// Supporting locations, outermost cause first. Editors render these as
+    /// jump targets, which is how a macro-produced error reaches its call site.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_information: Vec<DiagnosticRelatedInformation>,
     pub data: JsonValue,
 }
 
