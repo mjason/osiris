@@ -104,3 +104,36 @@ fn static_payload_tampering_is_rejected() {
     );
     assert_ne!(changed.hashes.semantic_body, original.hashes.semantic_body);
 }
+
+/// Moving a name from the `(export [...])` manifest to the per-item marker
+/// changes no public surface, so it must not invalidate a dependent. The
+/// marker's whole effect is the binding's visibility, which the semantic body
+/// already carries; recording `:export` there too would double-count it and
+/// turn a no-op migration into a project-wide recompile.
+#[test]
+fn the_export_marker_is_not_part_of_the_semantic_body() {
+    fn interface(source: &str) -> crate::interface::Interface {
+        let surface = ast::lower_document(&source_reader::read(source));
+        assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
+        let typed = hir::lower_module(&surface.module, "sample.publish");
+        read(&emit(&typed.module, &surface.module).expect("interface should emit")).unwrap()
+    }
+    let manifest = interface(
+        r#"(module sample.publish)
+           (export [step])
+           ^{:doc "Advance."} (defn ^Int step [^Int value] value)"#,
+    );
+    let marker = interface(
+        r#"(module sample.publish)
+           ^{:doc "Advance." :export true} (defn ^Int step [^Int value] value)"#,
+    );
+    let private = interface(
+        r#"(module sample.publish)
+           ^{:doc "Advance."} (defn ^Int step [^Int value] value)"#,
+    );
+    assert_eq!(manifest.hashes.semantic_body, marker.hashes.semantic_body);
+    // The authored text still differs, so the tooling hash must move.
+    assert_ne!(manifest.hashes.tooling_body, marker.hashes.tooling_body);
+    // Actually withdrawing the name is a real semantic change.
+    assert_ne!(manifest.hashes.semantic_body, private.hashes.semantic_body);
+}

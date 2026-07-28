@@ -17,7 +17,14 @@ pub(in crate::interface) fn project_metadata(
                 let key = form_name(&entry.key)
                     .unwrap_or_default()
                     .trim_start_matches(':');
+                // `:export` is consumed entirely at compile time and its whole
+                // effect is already carried by the binding's `visibility`.
+                // Leaving it in the semantic body would double-record one fact
+                // and make migrating a name from the `(export [...])` manifest
+                // to the marker — which changes no public surface — invalidate
+                // every dependent.
                 !(key == "doc"
+                    || key == "export"
                     || key == "osiris/content-references"
                     || key == "since"
                     || key == "deprecated"

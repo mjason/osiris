@@ -345,6 +345,14 @@ pub fn analyze_module_with_interfaces(
             _ => {}
         }
     }
+    // A record owner published by the per-item marker is as public as one named
+    // in the manifest. Reading only the manifest here would silently drop the
+    // owned record from the interface while every binding still looked right.
+    exports.extend(
+        crate::ast::export_markers(&module.items)
+            .into_iter()
+            .map(|name| name.canonical.clone()),
+    );
     for schema in &result.schemas {
         declarations.insert(schema.name.clone(), BindingKind::Type);
     }

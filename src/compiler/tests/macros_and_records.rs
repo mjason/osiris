@@ -136,3 +136,46 @@ fn workspace_isolates_same_named_macros_and_private_helpers() {
         2
     );
 }
+
+/// A record's owner may be published by the per-item marker instead of the
+/// manifest. Static-data analysis resolves owner publicity separately from
+/// binding lowering, so reading only the manifest there drops the owned record
+/// from the interface while every binding still looks correct — a regression
+/// invisible to a public-binding comparison and to the generated Python.
+#[test]
+fn a_record_owner_published_by_the_export_marker_stays_public() {
+    let producer = r#"
+            (module sample.producer)
+            (import sample.schema :as schema)
+            ^{:doc "Record owner." :export true}
+            (def ^Any owner none)
+            (static-record schema/Descriptor owner {:id "example.normalize"})
+        "#;
+    let schema = r#"
+            (module sample.schema)
+            (export [Descriptor])
+            ^{:doc "Descriptor schema."}
+            (defstatic-schema Descriptor
+              :schema-id "sample/descriptor"
+              :version 1
+              :fields {:id {:type Str :required true}})
+        "#;
+    let producer_options = CompileOptions::new("sample.producer", PythonVersion::MINIMUM);
+    let schema_options = CompileOptions::new("sample.schema", PythonVersion::MINIMUM);
+    let result = compile_workspace(
+        &[
+            CompileInput::new(producer, &producer_options),
+            CompileInput::new(schema, &schema_options),
+        ],
+        &BTreeMap::new(),
+    );
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let interface = result.units[0]
+        .interface
+        .as_ref()
+        .expect("producer publishes an interface");
+    assert!(
+        !interface.contains(":owned-records []"),
+        "the owned record should reach the interface: {interface}"
+    );
+}
