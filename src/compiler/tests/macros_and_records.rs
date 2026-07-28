@@ -179,3 +179,37 @@ fn a_record_owner_published_by_the_export_marker_stays_public() {
         "the owned record should reach the interface: {interface}"
     );
 }
+
+/// A macro is published through the phase-1 interface rather than the binding
+/// table, so that path resolves publicity separately. Reading only the manifest
+/// there left `^:export` on a `defmacro` silently inert: the macro compiled,
+/// the interface omitted it, and the importing module failed with OSR-H0011
+/// pointing at the consumer rather than the declaration.
+#[test]
+fn an_export_marker_publishes_a_macro() {
+    let provider = r#"
+            (module sample.macros)
+            ^{:doc "Emit a generated value." :export true}
+            (defmacro emit [] `(def ^{:type Int :doc "Generated."} generated 1))
+        "#;
+    let consumer = r#"
+            (module sample.app)
+            (import-for-syntax sample.macros :refer [emit])
+            (emit)
+        "#;
+    let provider_options = CompileOptions::new("sample.macros", PythonVersion::MINIMUM);
+    let consumer_options = CompileOptions::new("sample.app", PythonVersion::MINIMUM);
+    let result = compile_workspace(
+        &[
+            CompileInput::new(provider, &provider_options),
+            CompileInput::new(consumer, &consumer_options),
+        ],
+        &BTreeMap::new(),
+    );
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    let interface = result.units[0]
+        .interface
+        .as_ref()
+        .expect("the provider publishes an interface");
+    assert!(interface.contains("sample.macros::macro::emit"), "{interface}");
+}

@@ -310,6 +310,10 @@ pub(crate) fn collect_phase_interface(
     surface: &ast::Module,
     module: &str,
 ) -> InterfaceResult<(Vec<MacroInterface>, Vec<PhaseHelperInterface>)> {
+    // Phase-1 names are published the same two ways runtime names are. A macro
+    // resolves through this path rather than through the binding table, so
+    // reading only the manifest here would leave `^:export` on a `defmacro`
+    // silently inert.
     let exports = surface
         .items
         .iter()
@@ -318,6 +322,7 @@ pub(crate) fn collect_phase_interface(
             _ => None,
         })
         .flatten()
+        .chain(ast::export_markers(&surface.items))
         .map(|name| name.canonical.clone())
         .collect::<BTreeSet<_>>();
 
