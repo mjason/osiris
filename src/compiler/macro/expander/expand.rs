@@ -73,6 +73,22 @@ impl Expander {
                     form.span,
                 )];
             }
+            if let Some(label) = generated_embedded_provider_label(&expanded) {
+                // Embedded providers are collected from the authored document
+                // before expansion, so a generated block never joins the
+                // provider table: `extern python <label>` would later fail with
+                // an unknown provider, and a block nothing references would
+                // simply vanish without a word. Say so where it is written.
+                self.diagnostics.push(Diagnostic::error(
+                    "OSR-M0008",
+                    format!(
+                        "macro expansion cannot generate embedded provider `{label}`; \
+                         embedded blocks are authored declarations fixed before expansion"
+                    ),
+                    form.span,
+                ));
+                return vec![error_form("macro-generated embedded provider", form.span)];
+            }
             if let Some(declarations) = generated_declaration_sequence(&expanded) {
                 return declarations;
             }

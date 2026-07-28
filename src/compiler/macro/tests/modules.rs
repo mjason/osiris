@@ -369,3 +369,31 @@ fn declaration_sequences_cannot_hide_module_graph_declarations() {
             if message == "macro-generated top-level declaration"
     ));
 }
+
+/// Embedded providers are collected from the authored document before
+/// expansion, so a macro-generated block never joins the provider table. Left
+/// undetected it is a silent no-op: a block nothing references simply vanishes,
+/// and `extern python <label>` later fails with an unrelated unknown-provider
+/// error pointing away from the macro.
+#[test]
+fn a_macro_cannot_generate_an_embedded_python_provider() {
+    let result = expand_core(
+        r#"(module demo.u)
+           (defmacro emit-block []
+             `~python<gen-backend>
+def gen_fn(value: int) -> int:
+    return value + 1
+</gen-backend>)
+           (emit-block)"#,
+    );
+    assert!(
+        result
+            .document
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-M0008"
+                && diagnostic.message.contains("gen-backend")),
+        "{:?}",
+        result.document.diagnostics
+    );
+}

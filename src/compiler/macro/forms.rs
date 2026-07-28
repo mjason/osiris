@@ -235,3 +235,24 @@ pub(super) fn merge_call_metadata(
     }
     metadata
 }
+
+/// The label of an embedded-language block a macro produced, if any.
+///
+/// Embedded providers are gathered from the authored document, so one that
+/// appears only after expansion is never registered. Detecting it here turns a
+/// silent no-op into a diagnostic at the call site.
+pub(super) fn generated_embedded_provider_label(form: &Form) -> Option<&str> {
+    if let FormKind::EmbeddedLanguage { label, .. } = &form.kind {
+        return Some(label.canonical.as_str());
+    }
+    let FormKind::List(items) = &form.kind else {
+        return None;
+    };
+    if items.first().and_then(symbol_canonical) != Some("do") {
+        return None;
+    }
+    items
+        .iter()
+        .skip(1)
+        .find_map(generated_embedded_provider_label)
+}
