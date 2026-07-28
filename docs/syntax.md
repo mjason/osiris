@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 11
+revision: 12
 ---
 
 # Osiris Syntax
@@ -243,6 +243,23 @@ should write it in English, but any language is valid. Other keys must be
 standard BCP 47 language tags such as `"en"`, `"zh-CN"`, or `"ja"`. Tooling
 uses RFC 4647 lookup and falls back to `:default` without pretending that the
 fallback has a language tag.
+
+Metadata holds inert data only: no reader forms, embedded blocks, non-finite
+numbers, or metadata on metadata.
+
+A macro template is the one place `^{...}` may contain unquote, because a
+template's metadata is complete only after substitution. Syntax quoting
+substitutes inside metadata exactly as it does inside the datum, and the inert
+rule is applied to what expansion produces:
+
+```clojure
+(defmacro documented [name text]
+  `^{:doc {:default ~text}} (defn ~name [value] value))
+```
+
+This is how a declaration macro attaches documentation it computes. Nothing is
+relaxed about the result — expanded metadata that is not inert data is still
+rejected.
 
 Documentation examples use named `~osiris` blocks. `:examples` is a vector of
 unquoted, same-module block names:

@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 25
+revision: 26
 requires: [0]
 replaces: []
 superseded-by: null
@@ -360,6 +360,17 @@ required macro code is absent or incompatible.
 `^{:key value}`, `^:flag`, `^TypeTag`, `^"tag"`, and `^[Tag ...]` on supported
 syntax nodes. The reader MUST normalize these forms to immutable metadata maps
 without executing their contents.
+
+**OEP-0001-R019A:** Metadata MUST hold only inert, serializable data — no
+reader forms, embedded blocks, error nodes, non-finite floats, odd maps, or
+metadata attached to metadata. Inside a macro template, `^{...}` MAY contain
+unquote and unquote-splicing, because a template's metadata is complete only
+after substitution; syntax quoting MUST substitute inside metadata as it does
+inside the datum. The rule above MUST be enforced on the result of expansion,
+which every top-level form reaches whether or not a macro produced it. A macro
+interface publishing a template MUST accept the template's unsubstituted form.
+This fixes when the rule applies, and relaxes nothing about what metadata may
+finally contain.
 
 **OEP-0001-R020:** Phase 1 MUST provide readable `meta`, `with-meta`, and
 `vary-meta` behavior over supported immutable syntax data. Updating metadata
@@ -1287,6 +1298,12 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 26, 2026-07-28: Fixed when the inert-metadata rule is applied
+  (OEP-0001-R019A). A macro template's `^{...}` may contain unquote, syntax
+  quoting substitutes inside metadata, and the rule is enforced on the expansion
+  result rather than at read time; a published macro template is accepted
+  unsubstituted. Attaching computed documentation to a generated declaration was
+  previously impossible without hand-building the map through `with-meta`.
 - Revision 25, 2026-07-27: Added the conformance evidence criteria omitted when
   OEP-0001-R009A and OEP-0001-R009B were introduced, and corrected RFC 2119
   keywords in OEP-0001-R031 and OEP-0001-R032C that were written in lowercase

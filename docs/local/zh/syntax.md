@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 11
+revision: 12
 source: ../../syntax.md
-source-revision: 11
+source-revision: 12
 translation-status: Current
 ---
 
@@ -223,6 +223,21 @@ node：
 但任何语言都合法。其他 key 必须是标准 BCP 47 language tag，例如 `"en"`、
 `"zh-CN"` 或 `"ja"`。工具按 RFC 4647 lookup，最后回退到 `:default`，且不能伪称
 这个无标签回退属于某个 locale。
+
+Metadata 只容纳惰性数据：不含 reader form、嵌入块、非有限数值，也不含挂在 metadata
+上的 metadata。
+
+宏 template 是唯一允许 `^{...}` 内出现 unquote 的地方——template 的 metadata 只有在
+替换之后才完整。syntax quote 会像对待 datum 一样在 metadata 内部执行替换，惰性规则则
+施加于展开产生的结果：
+
+```clojure
+(defmacro documented [name text]
+  `^{:doc {:default ~text}} (defn ~name [value] value))
+```
+
+声明宏就是这样给生成的声明挂上它算出来的文档。对结果没有任何放宽——展开后不是惰性
+数据的 metadata 仍会被拒绝。
 
 文档示例使用具名 `~osiris` block；`:examples` 是由同模块、未加引号的 block name
 组成的 vector：

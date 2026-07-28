@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 25
+revision: 26
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 25
+source-revision: 26
 translation-status: Current
 requires: [0]
 replaces: []
@@ -297,6 +297,14 @@ code 缺失或不兼容时必须 fail closed。
 **OEP-0001-R019：** Rich Metadata 必须在支持的 syntax node 上使用与 Clojure 兼容
 的 `^{:key value}`、`^:flag`、`^TypeTag`、`^"tag"` 和 `^[Tag ...]` prefix。Reader
 必须把它们规范化为不可变 metadata map，且不得执行内容。
+
+**OEP-0001-R019A：** Metadata 只能容纳惰性的、可序列化的数据——不得含 reader form、
+嵌入块、error node、非有限浮点、奇数长度 map，或挂在 metadata 上的 metadata。在宏
+template 内部，`^{...}` 可以包含 unquote 与 unquote-splicing，因为 template 的
+metadata 只有在替换之后才完整；syntax quote 必须像对待 datum 一样在 metadata 内部
+执行替换。上述规则必须在**展开结果**上强制执行——每个顶层形式都会到达该处，无论是否
+经由宏产生。发布 template 的 macro interface 必须接受其未替换的形态。本条只固定规则
+的**执行时机**，对 metadata 最终可以包含什么不作任何放宽。
 
 **OEP-0001-R020：** Phase 1 必须为支持的不可变 syntax data 提供可读取的 `meta`、
 `with-meta` 和 `vary-meta` 行为。更新 metadata 必须返回新值；除非 syntax API 显式
@@ -1068,6 +1076,10 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 26，2026-07-28：固定惰性 metadata 规则的执行时机（OEP-0001-R019A）。宏
+  template 的 `^{...}` 可以包含 unquote，syntax quote 会在 metadata 内部执行替换，
+  规则改为在展开结果上强制；已发布的 macro template 按未替换形态接受。此前给生成的
+  声明挂上算出来的文档，只能靠 `with-meta` 手工构造 map。
 - Revision 25，2026-07-27：为 OEP-0001-R009A 与 OEP-0001-R009B 补上 conformance 证据
   条目（此前新增规范时遗漏）；把 OEP-0001-R031 与 OEP-0001-R032C 中本意规范却写成
   小写的 RFC 2119 关键词改为大写，按 OEP-0000-R017 它们此前不具约束力。
