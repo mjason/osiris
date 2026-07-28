@@ -193,9 +193,9 @@ pub(super) fn normalize_metadata_descriptor(
     };
 
     for entry in &entries {
-        if !metadata_datum_is_serializable(&entry.key)
-            || !metadata_datum_is_serializable(&entry.value)
-        {
+        // Unquote is allowed here and judged again after expansion, so a macro
+        // template can write metadata whose values it computes.
+        if !metadata_datum_is_readable(&entry.key) || !metadata_datum_is_readable(&entry.value) {
             diagnostics.push(Diagnostic::error(
                 "OSR-R0011",
                 "metadata must contain only serializable phase-1 data",

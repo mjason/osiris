@@ -1,7 +1,37 @@
 use super::*;
 
 impl Expander {
+    /// Substitute a template's metadata before its datum.
+    ///
+    /// `with_kind` carries `original.metadata` through verbatim, so an unquote
+    /// written inside `^{...}` would otherwise survive expansion unsubstituted
+    /// and be rejected as non-serializable. Metadata is ordinary template
+    /// content — `^{:doc {:default ~text}}` is the common case — so it is
+    /// quoted first and the datum is then processed against the result.
     pub(in crate::macro_expand) fn syntax_quote(
+        &mut self,
+        form: &Form,
+        environment: &mut Environment,
+        budget: &mut EvalBudget,
+        depth: usize,
+        context: &mut QuoteContext,
+    ) -> Result<Form, EvalError> {
+        if form.metadata.is_empty() {
+            return self.syntax_quote_datum(form, environment, budget, depth, context);
+        }
+        let mut entries = Vec::with_capacity(form.metadata.len());
+        for entry in &form.metadata {
+            entries.push(MetadataEntry {
+                key: self.syntax_quote(&entry.key, environment, budget, depth + 1, context)?,
+                value: self.syntax_quote(&entry.value, environment, budget, depth + 1, context)?,
+            });
+        }
+        let mut substituted = form.clone();
+        substituted.metadata = entries;
+        self.syntax_quote_datum(&substituted, environment, budget, depth, context)
+    }
+
+    fn syntax_quote_datum(
         &mut self,
         form: &Form,
         environment: &mut Environment,

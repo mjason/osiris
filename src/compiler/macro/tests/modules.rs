@@ -397,3 +397,38 @@ def gen_fn(value: int) -> int:
         result.document.diagnostics
     );
 }
+
+/// A declaration macro's most common job is attaching computed documentation,
+/// so a template's `^{...}` must accept unquote. The reader defers judgment,
+/// quasiquote substitutes inside metadata, and the serializable rule is applied
+/// to what expansion finally produces.
+#[test]
+fn a_template_may_compute_its_metadata() {
+    let output = expanded(
+        r#"(defmacro documented [name text]
+             `^{:doc {:default ~text}} (defn ~name [value] value))
+           (documented step "Advance one step.")"#,
+    );
+    assert!(output.contains(r#":default "Advance one step.""#), "{output}");
+    assert!(output.contains("(defn step [value] value)"), "{output}");
+}
+
+/// The relaxation is only about when the rule is applied, never about what it
+/// permits: metadata must still be inert data after expansion.
+#[test]
+fn expanded_metadata_must_still_be_serializable() {
+    let result = expand_core(
+        r#"(defmacro bad [name]
+             `^{:doc ~(with-meta (list 'inner) {:nested true})} (defn ~name [value] value))
+           (bad step)"#,
+    );
+    assert!(
+        result
+            .document
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-R0011"),
+        "{:?}",
+        result.document.diagnostics
+    );
+}

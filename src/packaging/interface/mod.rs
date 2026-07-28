@@ -20,7 +20,7 @@ use crate::{
         METADATA_TARGET_LIMITS, MetadataAliasRole, MetadataEntry, MetadataLimitExceeded,
         MetadataResourceUsage, Name, ReaderMacroKind, check_metadata_resources,
         check_metadata_usage, metadata_alias_spellings, metadata_aliases,
-        metadata_datum_is_serializable,
+        metadata_datum_is_readable, metadata_datum_is_serializable,
     },
     types::{
         Alignment, Availability, CallSummaries, DataProperties, Effect, EffectRow, FunctionType,

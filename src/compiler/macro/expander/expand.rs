@@ -90,10 +90,45 @@ impl Expander {
                 return vec![error_form("macro-generated embedded provider", form.span)];
             }
             if let Some(declarations) = generated_declaration_sequence(&expanded) {
+                self.validate_expanded_metadata(&declarations);
                 return declarations;
             }
         }
+        self.validate_expanded_metadata(std::slice::from_ref(&expanded));
         vec![expanded]
+    }
+
+    /// The reader lets a metadata datum contain unquote so a macro template can
+    /// compute its values. Expansion is where that becomes a final datum, so it
+    /// is also where the serializable-metadata rule is enforced. Every
+    /// top-level form passes through here, expanded or not, which keeps
+    /// `^{:doc ~x}` written outside a template from slipping past both checks.
+    fn validate_expanded_metadata(&mut self, forms: &[Form]) {
+        let mut pending = forms.iter().collect::<Vec<_>>();
+        while let Some(form) = pending.pop() {
+            for entry in &form.metadata {
+                if !metadata_datum_is_serializable(&entry.key)
+                    || !metadata_datum_is_serializable(&entry.value)
+                {
+                    self.diagnostics.push(Diagnostic::error(
+                        "OSR-R0011",
+                        "metadata must contain only serializable phase-1 data",
+                        form.span,
+                    ));
+                    return;
+                }
+                pending.push(&entry.key);
+                pending.push(&entry.value);
+            }
+            match &form.kind {
+                FormKind::List(items)
+                | FormKind::Vector(items)
+                | FormKind::Map(items)
+                | FormKind::Set(items) => pending.extend(items),
+                FormKind::ReaderMacro { form, .. } => pending.push(form),
+                _ => {}
+            }
+        }
     }
 
     pub(in crate::macro_expand) fn expand_list(

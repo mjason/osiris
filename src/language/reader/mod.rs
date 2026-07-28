@@ -21,7 +21,7 @@ use crate::{
     syntax::{
         Document, Form, FormKind, METADATA_TARGET_LIMITS, MetadataEntry, Name, NodeId,
         NodeIdentity, NodePath, NodePathSegment, ReaderMacroKind, SyntaxNodeKind, Token, TokenKind,
-        check_metadata_resources, datum_eq, metadata_datum_is_serializable, source_form_eq,
+        check_metadata_resources, datum_eq, metadata_datum_is_readable, source_form_eq,
     },
 };
 

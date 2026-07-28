@@ -84,22 +84,24 @@ pub(in crate::interface) fn validate_interface_metadata_resources(
             &mut declaration,
             &mut interface_usage,
         )?;
-        include_form_metadata(
+        include_form_metadata_as(
             &macro_.phase_ir,
             &context,
             &mut declaration,
             &mut interface_usage,
+            MetadataForm::Template,
         )?;
     }
 
     for helper in &interface.phase_helpers {
         let context = format!("phase-1 declaration `{}`", helper.canonical);
         let mut declaration = MetadataResourceUsage::default();
-        include_form_metadata(
+        include_form_metadata_as(
             &helper.phase_ir,
             &context,
             &mut declaration,
             &mut interface_usage,
+            MetadataForm::Template,
         )?;
     }
     Ok(())
@@ -111,9 +113,19 @@ pub(super) fn include_form_metadata(
     declaration: &mut MetadataResourceUsage,
     interface: &mut MetadataResourceUsage,
 ) -> InterfaceResult<()> {
+    include_form_metadata_as(root, context, declaration, interface, MetadataForm::Final)
+}
+
+pub(super) fn include_form_metadata_as(
+    root: &Form,
+    context: &str,
+    declaration: &mut MetadataResourceUsage,
+    interface: &mut MetadataResourceUsage,
+    form_kind: MetadataForm,
+) -> InterfaceResult<()> {
     let mut pending = vec![root];
     while let Some(form) = pending.pop() {
-        include_metadata_target(&form.metadata, context, declaration, interface)?;
+        include_metadata_target_as(&form.metadata, context, declaration, interface, form_kind)?;
         match &form.kind {
             FormKind::List(items)
             | FormKind::Vector(items)
@@ -132,10 +144,20 @@ pub(super) fn include_metadata_target(
     declaration: &mut MetadataResourceUsage,
     interface: &mut MetadataResourceUsage,
 ) -> InterfaceResult<()> {
+    include_metadata_target_as(metadata, context, declaration, interface, MetadataForm::Final)
+}
+
+pub(super) fn include_metadata_target_as(
+    metadata: &[MetadataEntry],
+    context: &str,
+    declaration: &mut MetadataResourceUsage,
+    interface: &mut MetadataResourceUsage,
+    form_kind: MetadataForm,
+) -> InterfaceResult<()> {
     if metadata.is_empty() {
         return Ok(());
     }
-    let usage = validate_metadata_target(metadata, context)?;
+    let usage = validate_metadata_target_as(metadata, context, form_kind)?;
     *declaration = declaration.saturating_add(usage);
     check_metadata_usage(*declaration, METADATA_DECLARATION_LIMITS)
         .map_err(|exceeded| metadata_resource_error(context, "declaration", exceeded))?;
@@ -145,13 +167,39 @@ pub(super) fn include_metadata_target(
     Ok(())
 }
 
+/// Whether the metadata being validated is final data or a macro template.
+///
+/// A published macro carries its template as Phase-1 IR, and a template's
+/// metadata may contain unquote — that is what makes the template a template.
+/// The serializable rule applies to what expansion finally produces, which the
+/// expander enforces; requiring it of the template itself would forbid
+/// `^{:doc {:default ~text}}` outright.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(in crate::interface) enum MetadataForm {
+    Final,
+    Template,
+}
+
 pub(in crate::interface) fn validate_metadata_target(
     metadata: &[MetadataEntry],
     context: &str,
 ) -> InterfaceResult<MetadataResourceUsage> {
-    if metadata.iter().any(|entry| {
-        !metadata_datum_is_serializable(&entry.key) || !metadata_datum_is_serializable(&entry.value)
-    }) {
+    validate_metadata_target_as(metadata, context, MetadataForm::Final)
+}
+
+pub(in crate::interface) fn validate_metadata_target_as(
+    metadata: &[MetadataEntry],
+    context: &str,
+    form: MetadataForm,
+) -> InterfaceResult<MetadataResourceUsage> {
+    let acceptable = match form {
+        MetadataForm::Final => metadata_datum_is_serializable,
+        MetadataForm::Template => metadata_datum_is_readable,
+    };
+    if metadata
+        .iter()
+        .any(|entry| !acceptable(&entry.key) || !acceptable(&entry.value))
+    {
         return Err(InterfaceError::new(
             "OSR-I0083",
             format!("{context} contains non-serializable metadata data"),

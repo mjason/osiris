@@ -153,6 +153,54 @@ pub(crate) fn check_metadata_usage(
 /// Metadata data cannot contain reader forms, errors, non-finite floats, odd
 /// maps, or another metadata attachment. The latter keeps metadata a plain
 /// immutable datum rather than a recursively annotated syntax graph.
+/// The reader's provisional form of the rule above.
+///
+/// A macro template writes metadata that is only complete after expansion —
+/// `^{:doc {:default ~text}}` is ordinary and useful — so unquote is allowed
+/// while reading and judged again once expansion has produced the final datum.
+/// Nothing else is relaxed: the final metadata must still satisfy
+/// `metadata_datum_is_serializable`, which macro expansion enforces.
+pub(crate) fn metadata_datum_is_readable(form: &Form) -> bool {
+    let mut pending = vec![form];
+    while let Some(form) = pending.pop() {
+        if !form.metadata.is_empty() {
+            return false;
+        }
+        match &form.kind {
+            FormKind::None
+            | FormKind::Bool(_)
+            | FormKind::Integer(_)
+            | FormKind::String(_)
+            | FormKind::Keyword(_)
+            | FormKind::Symbol(_) => {}
+            FormKind::Float(value) => {
+                if !value.parse::<f64>().is_ok_and(f64::is_finite) {
+                    return false;
+                }
+            }
+            FormKind::List(items) | FormKind::Vector(items) | FormKind::Set(items) => {
+                pending.extend(items);
+            }
+            FormKind::Map(items) => {
+                if items.len() % 2 != 0 {
+                    return false;
+                }
+                pending.extend(items);
+            }
+            // The only relaxation: whatever an unquote produces is judged after
+            // expansion, so its body may be any syntax the template needs.
+            FormKind::ReaderMacro {
+                macro_kind: ReaderMacroKind::Unquote | ReaderMacroKind::UnquoteSplicing,
+                ..
+            } => {}
+            FormKind::ReaderMacro { .. }
+            | FormKind::EmbeddedLanguage { .. }
+            | FormKind::Error(_) => return false,
+        }
+    }
+    true
+}
+
 pub(crate) fn metadata_datum_is_serializable(form: &Form) -> bool {
     let mut pending = vec![form];
     while let Some(form) = pending.pop() {
