@@ -162,7 +162,13 @@ fn body_form(interface: &Interface, projection: MetadataProjection) -> Form {
         ),
         (
             "macros",
-            vector(interface.macros.iter().map(macro_interface_form).collect()),
+            vector(
+                interface
+                    .macros
+                    .iter()
+                    .map(|macro_| macro_interface_form(macro_, projection))
+                    .collect(),
+            ),
         ),
         (
             "phase-helpers",
@@ -170,7 +176,7 @@ fn body_form(interface: &Interface, projection: MetadataProjection) -> Form {
                 interface
                     .phase_helpers
                     .iter()
-                    .map(phase_helper_form)
+                    .map(|helper| phase_helper_form(helper, projection))
                     .collect(),
             ),
         ),

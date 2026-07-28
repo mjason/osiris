@@ -130,7 +130,10 @@ pub(super) fn field_form(field: &FieldInterface, projection: MetadataProjection)
     ])
 }
 
-pub(super) fn macro_interface_form(macro_: &MacroInterface) -> Form {
+pub(super) fn macro_interface_form(
+    macro_: &MacroInterface,
+    projection: MetadataProjection,
+) -> Form {
     map(vec![
         ("id", string(&macro_.id)),
         ("canonical", string(&macro_.canonical)),
@@ -140,16 +143,19 @@ pub(super) fn macro_interface_form(macro_: &MacroInterface) -> Form {
         ("minimum-arity", integer_usize(macro_.minimum_arity)),
         ("variadic", boolean(macro_.variadic)),
         ("helper-bindings", strings_form(&macro_.helper_bindings)),
-        ("phase-1-ir", macro_.phase_ir.clone()),
+        ("phase-1-ir", project_form_metadata(&macro_.phase_ir, projection)),
     ])
 }
 
-pub(super) fn phase_helper_form(helper: &PhaseHelperInterface) -> Form {
+pub(super) fn phase_helper_form(
+    helper: &PhaseHelperInterface,
+    projection: MetadataProjection,
+) -> Form {
     map(vec![
         ("id", string(&helper.id)),
         ("canonical", string(&helper.canonical)),
         ("phase", keyword("syntax")),
         ("visibility", keyword("private")),
-        ("phase-1-ir", helper.phase_ir.clone()),
+        ("phase-1-ir", project_form_metadata(&helper.phase_ir, projection)),
     ])
 }

@@ -137,3 +137,51 @@ fn the_export_marker_is_not_part_of_the_semantic_body() {
     // Actually withdrawing the name is a real semantic change.
     assert_ne!(manifest.hashes.semantic_body, private.hashes.semantic_body);
 }
+
+/// A macro publishes its template as Phase-1 IR, and that form carries the
+/// macro's authored metadata. Hashing it unprojected put documentation into the
+/// semantic body, so editing a macro's docstring forced every dependent to
+/// re-expand — the firewall ordinary declarations have always had.
+#[test]
+fn macro_documentation_stays_out_of_the_semantic_body() {
+    fn interface(source: &str) -> crate::interface::Interface {
+        let surface = ast::lower_document(&source_reader::read(source));
+        assert!(surface.diagnostics.is_empty(), "{:?}", surface.diagnostics);
+        let typed = hir::lower_module(&surface.module, "sample.macro");
+        read(&emit(&typed.module, &surface.module).expect("interface should emit")).unwrap()
+    }
+    let original = interface(
+        r#"(module sample.macro)
+           (export [mk])
+           ^{:doc "Make."}
+           (defmacro mk [] `(def ^Int gen 1))"#,
+    );
+    let redocumented = interface(
+        r#"(module sample.macro)
+           (export [mk])
+           ^{:doc "Make a generated value, described at much greater length."}
+           (defmacro mk [] `(def ^Int gen 1))"#,
+    );
+    let retemplated = interface(
+        r#"(module sample.macro)
+           (export [mk])
+           ^{:doc "Make."}
+           (defmacro mk [] `(def ^Int gen 2))"#,
+    );
+    assert_eq!(
+        original.hashes.semantic_body,
+        redocumented.hashes.semantic_body
+    );
+    assert_ne!(
+        original.hashes.tooling_body,
+        redocumented.hashes.tooling_body
+    );
+    // Changing what the macro expands to is a real semantic change.
+    assert_ne!(
+        original.hashes.semantic_body,
+        retemplated.hashes.semantic_body
+    );
+    // The published text keeps the complete template, including its metadata.
+    let rendered = crate::interface::render(&original).expect("render");
+    assert!(rendered.contains(r#""Make.""#), "{rendered}");
+}

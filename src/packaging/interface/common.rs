@@ -37,6 +37,56 @@ pub(in crate::interface) fn project_metadata(
     }
 }
 
+/// Apply `project_metadata` to every node of a form tree.
+///
+/// A macro publishes its template as replayable Phase-1 IR, and the template is
+/// a form that carries the macro's authored metadata. Hashing that form as-is
+/// puts documentation and content-reference spans into the semantic body, so
+/// editing a macro's docstring — or merely moving the `~osiris` block its
+/// `:examples` points at — invalidates every dependent. Ordinary declarations
+/// never had this problem because their metadata is projected before hashing.
+///
+/// Only the Semantic projection filters anything; the Full projection used for
+/// the published `.osri` text is returned unchanged, so replay still sees the
+/// complete template.
+pub(in crate::interface) fn project_form_metadata(
+    form: &Form,
+    projection: MetadataProjection,
+) -> Form {
+    if matches!(projection, MetadataProjection::Full) {
+        return form.clone();
+    }
+    fn project_all(items: &[Form], projection: MetadataProjection) -> Vec<Form> {
+        items
+            .iter()
+            .map(|item| project_form_metadata(item, projection))
+            .collect()
+    }
+    let kind = match &form.kind {
+        FormKind::List(items) => FormKind::List(project_all(items, projection)),
+        FormKind::Vector(items) => FormKind::Vector(project_all(items, projection)),
+        FormKind::Map(items) => FormKind::Map(project_all(items, projection)),
+        FormKind::Set(items) => FormKind::Set(project_all(items, projection)),
+        FormKind::ReaderMacro { macro_kind, form } => FormKind::ReaderMacro {
+            macro_kind: *macro_kind,
+            form: Box::new(project_form_metadata(form, projection)),
+        },
+        other => other.clone(),
+    };
+    Form {
+        span: form.span,
+        datum_span: form.datum_span,
+        metadata: project_metadata(&form.metadata, projection)
+            .iter()
+            .map(|entry| MetadataEntry {
+                key: project_form_metadata(&entry.key, projection),
+                value: project_form_metadata(&entry.value, projection),
+            })
+            .collect(),
+        kind,
+    }
+}
+
 pub(crate) fn normalize_metadata(
     metadata: &[MetadataEntry],
 ) -> InterfaceResult<Vec<MetadataEntry>> {
