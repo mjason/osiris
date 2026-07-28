@@ -219,6 +219,43 @@ fn marker_parser_handles_boolean_python_constraints() {
     assert!(!marker_applies("python_version < '3.11'", PythonVersion::new(3, 11)).unwrap());
 }
 
+/// A platform marker cannot be decided at compile time, so it must stay
+/// satisfiable rather than reject the lock file. uv writes these routinely —
+/// adding an ordinary dependency produced `sys_platform` resolution markers
+/// that made the whole `uv.lock` unreadable.
+#[test]
+fn platform_markers_stay_satisfiable_and_leave_python_constraints_deciding() {
+    let target = PythonVersion::new(3, 12);
+    for marker in [
+        "sys_platform == 'win32'",
+        "sys_platform != 'emscripten'",
+        "os_name == 'posix'",
+        "platform_machine == 'aarch64'",
+        "platform_python_implementation == 'CPython'",
+        "implementation_name == 'cpython'",
+        "extra == 'dev'",
+    ] {
+        assert!(marker_applies(marker, target).unwrap(), "{marker}");
+    }
+    // The Python constraint still decides a conjunction that mixes the two.
+    assert!(
+        marker_applies(
+            "python_full_version >= '3.12' and sys_platform == 'win32'",
+            target
+        )
+        .unwrap()
+    );
+    assert!(
+        !marker_applies(
+            "python_full_version >= '3.14' and sys_platform == 'win32'",
+            target
+        )
+        .unwrap()
+    );
+    // An unknown variable is still rejected rather than silently accepted.
+    assert!(marker_applies("nonsense_variable == '1'", target).is_err());
+}
+
 #[test]
 fn resolves_locked_marker_and_static_interface() {
     let id = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);

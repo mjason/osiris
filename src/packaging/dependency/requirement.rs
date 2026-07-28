@@ -249,6 +249,22 @@ pub(super) fn marker_applies(marker: &str, target: PythonVersion) -> Result<bool
     let actual = match left.as_str() {
         "python_version" => format!("{}.{}", target.major, target.minor),
         "python_full_version" => format!("{}.{}.0", target.major, target.minor),
+        // The compiler knows its target Python version and nothing about the
+        // machine the output will run on, so a platform marker cannot be
+        // decided here. Treating it as satisfiable keeps a platform-conditional
+        // dependency declared rather than silently dropping it; the install-time
+        // evaluator resolves it against the real environment. Rejecting these
+        // outright made an ordinary `uv.lock` unreadable.
+        "os_name"
+        | "sys_platform"
+        | "platform_machine"
+        | "platform_release"
+        | "platform_system"
+        | "platform_version"
+        | "platform_python_implementation"
+        | "implementation_name"
+        | "implementation_version"
+        | "extra" => return Ok(true),
         other => return Err(format!("marker variable `{other}` is not supported")),
     };
     let right = unquote_marker_value(&right)?;
