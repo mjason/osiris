@@ -25,10 +25,12 @@ pub fn run_watch_stdio(arguments: &[String]) -> Result<(), String> {
     let arguments = parse_watch_arguments(arguments)?;
     let mut project =
         ProjectConfig::discover(&arguments.path).map_err(|error| error.to_string())?;
-    if !build_and_render(&arguments.path, &arguments.site_roots)? {
-        return Err("initial build failed".to_owned());
-    }
-
+    // Register before the first build, not after. An edit saved while that
+    // build is running would otherwise land in the gap between "sources read"
+    // and "watcher registered", and nothing would rebuild it — the change is
+    // simply lost until something else happens to touch the tree. The initial
+    // build is the slowest step, so that gap is exactly when a person is most
+    // likely to still be typing.
     let (sender, receiver) = mpsc::channel();
     let mut watcher = notify::recommended_watcher(move |event| {
         let _ = sender.send(event);
@@ -36,6 +38,13 @@ pub fn run_watch_stdio(arguments: &[String]) -> Result<(), String> {
     .map_err(|error| format!("could not create file watcher: {error}"))?;
     let mut watched = BTreeMap::new();
     sync_watch_inputs(&mut watcher, &project, &arguments.site_roots, &mut watched)?;
+
+    if !build_and_render(&arguments.path, &arguments.site_roots)? {
+        return Err("initial build failed".to_owned());
+    }
+    // Events queued during that build are deliberately left queued. Discarding
+    // them would drop an edit the build had already read past, and the loop
+    // below turns them into at most one extra rebuild.
     writeln!(
         io::stdout().lock(),
         "Watching {}",

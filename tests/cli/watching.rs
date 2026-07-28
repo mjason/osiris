@@ -70,6 +70,52 @@ fn watch_builds_initially_and_rebuilds_changed_sources() {
     assert!(rebuilt, "watch did not rebuild the changed source");
 }
 
+/// An edit saved right after `watch` starts must reach the output.
+///
+/// This does not isolate the registration race it was written for: the write
+/// usually lands before the first build reads the source, so the build itself
+/// picks it up and the test passes either way. The race window — after the
+/// build reads a source, before the watcher is registered — is not reachable
+/// from outside the process. What this does lock down is the user-visible
+/// behavior, which is worth keeping regardless of which mechanism satisfies it.
+#[test]
+fn watch_sees_an_edit_made_during_the_initial_build() {
+    let fixture = SourceFixture::new("none\n");
+    let source = fixture.write("src/main.osr", "(module main)\n(def value 1)\n");
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"watch-during\"\nversion = \"1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"],"outDir":"dist","targetPython":"3.11"}"#,
+    )
+    .unwrap();
+    let generated = fixture.directory.join("dist/main.py");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_osr"))
+        .args(["watch", path_argument(&fixture.directory)])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    // Write immediately, without waiting for the first build to finish.
+    fs::write(&source, "(module main)\n(def value 2)\n").unwrap();
+    let rebuilt = wait_for(|| {
+        fs::read_to_string(&generated).is_ok_and(|generated| generated.contains('2'))
+    });
+
+    let _ = child.kill();
+    let output = child.wait_with_output().expect("watch process should stop");
+    assert!(
+        rebuilt,
+        "watch lost an edit made during its initial build: stdout={:?}, stderr={:?}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[test]
 fn watch_refreshes_source_roots_after_configuration_changes() {
     let fixture = SourceFixture::new("none\n");
