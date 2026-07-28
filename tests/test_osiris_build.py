@@ -551,6 +551,17 @@ print('standalone-ok')
             self.assertEqual(constraints.read(), b"NumPy==2.1.0\n")
             self.assertIn("demo-osiris-1.2.3/osiris-build-inputs.sha256", names)
 
+    def test_sdist_carries_pkg_info(self):
+        """PEP 517 requires it, and an index rejects an sdist without it."""
+        sdist_dir = self.root / "sdist-metadata"
+        filename = osiris_build.build_sdist(str(sdist_dir))
+        with tarfile.open(sdist_dir / filename, "r:gz") as archive:
+            self.assertIn("demo-osiris-1.2.3/PKG-INFO", archive.getnames())
+            metadata = archive.extractfile("demo-osiris-1.2.3/PKG-INFO").read().decode()
+        self.assertIn("Metadata-Version: ", metadata)
+        self.assertIn("Name: demo-osiris", metadata)
+        self.assertIn("Version: 1.2.3", metadata)
+
 
 if __name__ == "__main__":
     unittest.main()

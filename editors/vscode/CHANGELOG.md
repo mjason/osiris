@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.13
+
+- Write `PKG-INFO` into the source distribution, which PEP 517 requires and an index rejects an upload without.
+
 ## 0.3.12
 
 - Align diagnostic carets and formatter line budgets to display columns, so CJK and mixed-width source is laid out and pointed at correctly.

@@ -230,6 +230,10 @@ def _sdist_bytes(project: _Project, files: Mapping[str, bytes]) -> Tuple[str, by
     _, normalized_name = _distribution_name(project)
     _, normalized_version = _distribution_version(project)
     root_name = "%s-%s" % (normalized_name, normalized_version)
+    # PEP 517 requires an sdist to carry PKG-INFO with the same core metadata
+    # the wheel declares; without it an index rejects the upload outright.
+    files = dict(files)
+    files["PKG-INFO"] = _metadata_bytes(project)
     output = io.BytesIO()
     with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0) as compressed:
         with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
