@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.14
+
+- Fix a crash in the build backend when a lock file uses a `~=` compatible-release specifier.
+
 ## 0.3.13
 
 - Write `PKG-INFO` into the source distribution, which PEP 517 requires and an index rejects an upload without.
