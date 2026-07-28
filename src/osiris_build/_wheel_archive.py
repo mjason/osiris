@@ -229,7 +229,10 @@ def _sdist_inputs(project: _Project) -> Dict[str, bytes]:
 def _sdist_bytes(project: _Project, files: Mapping[str, bytes]) -> Tuple[str, bytes]:
     _, normalized_name = _distribution_name(project)
     _, normalized_version = _distribution_version(project)
-    root_name = "%s-%s" % (normalized_name, normalized_version)
+    # PEP 625: an sdist filename and its root directory escape the distribution
+    # name with underscores, exactly as the wheel filename already does. PyPI
+    # rejects the hyphenated spelling outright.
+    root_name = "%s-%s" % (_dist_info_name(normalized_name), normalized_version)
     # PEP 517 requires an sdist to carry PKG-INFO with the same core metadata
     # the wheel declares; without it an index rejects the upload outright.
     files = dict(files)

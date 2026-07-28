@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.15
+
+- Name the source distribution with PEP 625 escaping, which an index requires.
+
 ## 0.3.14
 
 - Fix a crash in the build backend when a lock file uses a `~=` compatible-release specifier.
