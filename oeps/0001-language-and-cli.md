@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 27
+revision: 28
 requires: [0]
 replaces: []
 superseded-by: null
@@ -140,6 +140,50 @@ macros unless a later accepted OEP changes the fixed reader.
 canonical spelling while diagnostics and source maps preserve authored
 spelling. Generated Python name collision checks MUST also account for the
 target Python identifier normalization rules.
+
+**OEP-0001-R005A:** The mapping from an Osiris identifier to a Python
+identifier MUST be total, deterministic, and injective, and it is a stable part
+of the compiler's public interface: generated Python is code a person imports
+and calls, so a change to this mapping breaks callers and MUST be treated as a
+compatibility break rather than an implementation detail. The rules are:
+
+| Osiris | Python |
+| --- | --- |
+| `-` | `_` |
+| `?` | `_p` |
+| `!` | `_bang` |
+| letter or digit, including non-ASCII | kept as written, NFC normalized |
+| any other character | `_u<lowercase hex code point>_` |
+
+A result that would begin with a digit MUST gain a leading `_`; a result equal
+to a Python keyword MUST gain a trailing `_`; an empty result MUST become
+`_osiris_empty`. A compiler-internal name MUST be prefixed `_osr_` so it cannot
+collide with an authored one. Because the mapping is not surjective, two
+distinct Osiris names MAY still produce one Python name only if the language
+forbids them in the same scope; where it does not, the collision MUST be
+diagnosed under OEP-0001-R005.
+
+**OEP-0001-R005B:** A module path MUST map to a Python import path by applying
+OEP-0001-R005A to each component and rejoining with `.`. Where a module path is
+used as a single identifier, such as an import alias, OEP-0001-R005A MUST be
+applied to the whole dotted string, so the separators become `_u2e_`.
+
+**OEP-0001-R005C:** A distribution name MUST be validated before it is
+normalized: it MUST be non-empty, MUST begin and end with an ASCII letter or
+digit, and MUST otherwise contain only ASCII letters, digits, `-`, `_`, and `.`.
+A valid name MUST then be normalized per PEP 503 by replacing each run of
+`-`, `_`, or `.` with a single `-` and lower-casing, and escaped per PEP 427 and
+PEP 625 by replacing `-` with `_` wherever a filename or directory name carries
+it — the wheel filename, the `.dist-info` directory, the sdist filename, and the
+sdist root directory alike. Validation is required before normalization because
+the two are only equivalent on valid input; skipping it lets a name through that
+one component accepts and another rejects.
+
+**OEP-0001-R005D:** Every one of these mappings MUST have exactly one
+authoritative implementation per component that derives them, and components
+that must agree MUST be held to that agreement by a test rather than by
+convention. A second, independently written copy of one of these rules is the
+defect this requirement exists to prevent.
 
 **OEP-0001-R006:** Each fixed prefix and collection form MUST have an explicit,
 independently testable grammar and recovery contract. A malformed fixed form
@@ -1304,6 +1348,15 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 28, 2026-07-28: Defined the name mappings the compiler already
+  performs and never wrote down: Osiris identifier to Python identifier, module
+  path to import path and to alias, and distribution name to its PEP 503
+  normalization and PEP 427/625 escaping (OEP-0001-R005A through
+  OEP-0001-R005C). Required one authoritative implementation per mapping, held
+  to agreement by test (OEP-0001-R005D). Two independently written copies of the
+  distribution-name rules had already shipped a source distribution PyPI
+  rejected, and disagreed with each other on names one side validated and the
+  other did not.
 - Revision 27, 2026-07-28: Defined when aligning a call's arguments with its
   first argument is feasible, and required every width decision to be evaluated
   from the display column the form actually starts at (OEP-0001-R073). A wide

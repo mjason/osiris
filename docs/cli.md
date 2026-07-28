@@ -2,7 +2,7 @@
 document-id: tooling/cli
 title: Osiris Command-Line Interface
 language: en
-revision: 4
+revision: 5
 ---
 
 # Osiris Command-Line Interface
@@ -136,9 +136,16 @@ osr lsc workspace-search <concept-or-api-name>
 osr lsc symbol-context <api-name-or-binding-id>
 osr lsc symbol-context --at <path>:<line>:<column>
 osr lsc source-context --at <path>:<line>:<column>
+osr lsc name <osiris-name>
 osr lsc cache status
 osr lsc cache rebuild
 ```
+
+`osr lsc name` answers what a name becomes in generated Python — the mapping is
+fixed by OEP-0001-R005A, so it needs no workspace and works anywhere. It reports
+the identifier spelling and, for a dotted name, the module-path spelling too,
+which differ: `dm.dsl.pandas` is `dm_u2e_dsl_u2e_pandas` as one identifier and
+`dm.dsl.pandas` as an import path.
 
 Text is the default. `--format json` returns one versioned object. With no
 `--locale`, LSC selects authored `:default` documentation and the canonical

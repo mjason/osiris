@@ -132,3 +132,45 @@ fn lsc_uses_authored_default_and_reports_the_embedded_source_location() {
     let line = location["range"]["start"]["line"].as_u64().unwrap() as usize;
     assert!(source.lines().nth(line).unwrap().contains("pmap"));
 }
+
+/// The Osiris-to-Python name mapping is fixed by OEP-0001-R005A and is what a
+/// Python caller has to type, so it is worth being able to ask for directly
+/// rather than reading it out of generated output.
+#[test]
+fn lsc_name_reports_the_python_spelling() {
+    for (osiris, python) in [
+        ("rolling-mean", "rolling_mean"),
+        ("missing?", "missing_p"),
+        ("reset!", "reset_bang"),
+        ("column*", "column_u2a_"),
+        ("均线", "均线"),
+        ("class", "class_"),
+        ("2value", "_2value"),
+    ] {
+        let outcome = run_cli(&arguments(&["lsc", "name", osiris]));
+        assert_eq!(outcome.exit_code, 0, "{osiris}: {}", outcome.stderr);
+        assert_eq!(outcome.stdout.trim(), python, "{osiris}");
+    }
+}
+
+#[test]
+fn lsc_name_distinguishes_a_module_path_from_an_identifier() {
+    let outcome = run_cli(&arguments(&[
+        "lsc",
+        "name",
+        "dm.dsl.pandas",
+        "--format",
+        "json",
+    ]));
+    assert_eq!(outcome.exit_code, 0, "{}", outcome.stderr);
+    let value: serde_json::Value = serde_json::from_str(&outcome.stdout).unwrap();
+    assert_eq!(value["result"]["pythonIdentifier"], "dm_u2e_dsl_u2e_pandas");
+    assert_eq!(value["result"]["pythonModulePath"], "dm.dsl.pandas");
+}
+
+#[test]
+fn lsc_name_requires_a_name() {
+    let outcome = run_cli(&arguments(&["lsc", "name"]));
+    assert_eq!(outcome.exit_code, 1);
+    assert!(outcome.stderr.contains("requires an Osiris NAME"));
+}

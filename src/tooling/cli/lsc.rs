@@ -88,8 +88,34 @@ fn parse_request(arguments: &[String]) -> Result<LscRequest, String> {
     })
 }
 
+/// Report the Python spelling of an Osiris name.
+///
+/// The mapping is fixed by OEP-0001-R005A and is what a Python caller has to
+/// type, so it is worth being able to ask rather than digging through generated
+/// output. It is a pure function of the name, so this needs no workspace and
+/// works anywhere.
+fn python_name(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
+    let Some(name) = request.arguments.first() else {
+        return Err("name requires an Osiris NAME".to_owned());
+    };
+    let identifier = crate::name::python_identifier(name);
+    let module_path = crate::name::python_module_identifier(name);
+    let value = serde_json::json!({
+        "osiris": name,
+        "pythonIdentifier": identifier,
+        "pythonModulePath": module_path,
+    });
+    let text = if module_path == identifier {
+        format!("{identifier}\n")
+    } else {
+        format!("{identifier}\t(as a module path: {module_path})\n")
+    };
+    Ok((value, text, false))
+}
+
 fn execute(request: &LscRequest) -> Result<(JsonValue, String, bool), String> {
     match request.operation.as_str() {
+        "name" => python_name(request),
         "diagnostics" => diagnostics(request),
         "hover" => hover(request),
         "completion" => positioned(request, |state, uri, position, locale| {

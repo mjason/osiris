@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 27
+revision: 28
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 27
+source-revision: 28
 translation-status: Current
 requires: [0]
 replaces: []
@@ -116,6 +116,38 @@ OEP 修改固定 reader，否则新增用户语法必须使用普通 data form �
 **OEP-0001-R005：** Symbol 比较和 binding lookup 必须使用 Unicode NFC canonical
 spelling，诊断和 source map 则保留 authored spelling。生成 Python 的名称碰撞检查
 还必须考虑目标 Python 的 identifier normalization 规则。
+
+**OEP-0001-R005A：** 从 Osiris 标识符到 Python 标识符的映射必须是全函数、确定的、
+单射的，并且它是编译器公开接口的稳定组成部分：生成的 Python 是别人会 import 和调用的
+代码，改动该映射会破坏调用方，必须按兼容性破坏处理，而不是实现细节。规则如下：
+
+| Osiris | Python |
+| --- | --- |
+| `-` | `_` |
+| `?` | `_p` |
+| `!` | `_bang` |
+| 字母或数字（含非 ASCII） | 原样保留，按 NFC 规范化 |
+| 其他任何字符 | `_u<小写十六进制码位>_` |
+
+结果若以数字开头，必须加前导 `_`；结果若等于 Python 关键字，必须加尾随 `_`；结果为空
+必须变为 `_osiris_empty`。编译器内部名字必须以 `_osr_` 为前缀，以免与作者写下的名字
+相撞。由于该映射不是满射，两个不同的 Osiris 名字只有在语言禁止它们出现在同一作用域时
+才可以映射到同一个 Python 名字；语言不禁止的情形必须按 OEP-0001-R005 报告碰撞。
+
+**OEP-0001-R005B：** 模块路径必须逐段套用 OEP-0001-R005A、再以 `.` 重新连接，得到
+Python 导入路径。当模块路径被当作单个标识符使用（例如 import alias）时，必须对整个带点
+字符串套用 OEP-0001-R005A，因此分隔符会变成 `_u2e_`。
+
+**OEP-0001-R005C：** 发行名必须先校验再规范化：不得为空，必须以 ASCII 字母或数字开头
+和结尾，其余字符只能是 ASCII 字母、数字、`-`、`_`、`.`。合法名字随后必须按 PEP 503
+规范化——把每一段连续的 `-`/`_`/`.` 替换为单个 `-` 并转小写——并按 PEP 427 与 PEP 625
+转义：凡是文件名或目录名承载它的地方，一律把 `-` 换成 `_`，包括 wheel 文件名、
+`.dist-info` 目录、sdist 文件名与 sdist 根目录。之所以必须先校验，是因为两者只有在合法
+输入上才等价；跳过校验会让一个组件接受、另一个组件拒绝的名字流过去。
+
+**OEP-0001-R005D：** 上述每一种映射，在推导它的每个组件中必须只有一份权威实现；必须
+互相一致的组件之间，必须由测试而非约定来保证一致。本条要防的缺陷，正是同一规则被独立
+写了第二份。
 
 **OEP-0001-R006：** 每个固定 prefix 与 collection form 必须有显式、可独立测试的
 grammar/recovery contract。Malformed fixed form 不得静默 fallback 成含义不同的 atom，
@@ -1079,6 +1111,11 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 28，2026-07-28：定义了编译器一直在做、却从未写下的名字映射：Osiris 标识符
+  到 Python 标识符、模块路径到导入路径与 alias、发行名到其 PEP 503 规范化与 PEP 427/625
+  转义（OEP-0001-R005A 到 OEP-0001-R005C）。要求每种映射只有一份权威实现，并由测试
+  保证一致（OEP-0001-R005D）。发行名规则此前被独立写了两份，已经导致一个 sdist 被 PyPI
+  拒绝，且两份在「一方校验、另一方不校验」的名字上互不一致。
 - Revision 27，2026-07-28：定义了「把调用的参数与首参对齐」在什么条件下才算可行，
   并要求每一处宽度判定都以 form 实际起始的显示列为基准（OEP-0001-R073）。宽 head
   ——在中文源码里任何四字名都是——此前会强制对齐并撑破行宽；formatter 也可能在还

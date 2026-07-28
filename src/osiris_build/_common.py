@@ -12,7 +12,30 @@ def _error(message: str) -> BackendError:
     return BackendError("osiris-build: " + message)
 
 
+def _is_valid_distribution_name(name: str) -> bool:
+    """The same rule the Rust side applies before it normalizes.
+
+    Without it this backend would happily package a name the compiler later
+    refuses, and the two normalizers disagree on exactly those names: the Rust
+    side drops a leading or trailing separator, this one keeps it.
+    """
+
+    return (
+        bool(name)
+        and name[0].isascii()
+        and name[0].isalnum()
+        and name[-1].isascii()
+        and name[-1].isalnum()
+        and all(c.isascii() and (c.isalnum() or c in "-_.") for c in name)
+    )
+
+
 def _normalise_name(name: str) -> str:
+    if not _is_valid_distribution_name(name):
+        raise _error(
+            "distribution name `%s` must start and end with an ASCII letter or digit "
+            "and contain only letters, digits, `-`, `_`, or `.`" % name
+        )
     return re.sub(r"[-_.]+", "-", name).lower()
 
 

@@ -74,6 +74,7 @@ pub(super) const LSC_OPERATIONS: &[&str] = &[
     "workspace-search",
     "symbol-context",
     "source-context",
+    "name",
     "cache",
 ];
 

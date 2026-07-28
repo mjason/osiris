@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 12
+revision: 13
 ---
 
 # Osiris Syntax
@@ -111,6 +111,41 @@ row.value             ; statically resolved field or Python attribute
 
 Localized names are aliases of one canonical binding, not independent
 definitions. Locale never changes name resolution.
+
+### Names in generated Python
+
+An Osiris name is spelled Lisp-style; Python is not. The compiler maps between
+them deterministically, and the result is what a Python caller imports, so the
+mapping is a stable part of the interface rather than an internal detail.
+
+| Osiris | Python |
+| --- | --- |
+| `-` | `_` |
+| `?` | `_p` |
+| `!` | `_bang` |
+| letter or digit, including non-ASCII | unchanged |
+| anything else | `_u<hex>_` |
+
+```text
+rolling-mean   ->  rolling_mean
+missing?       ->  missing_p
+reset!         ->  reset_bang
+column*        ->  column_u2a_
+均线            ->  均线
+```
+
+A name that would start with a digit gains a leading `_`, one that collides
+with a Python keyword gains a trailing `_`, and compiler-internal names carry an
+`_osr_` prefix so they cannot collide with yours. Two Osiris names that would
+produce one Python name are a diagnostic, not a silent merge.
+
+Module paths map component by component — `dm.dsl.pandas` stays
+`dm.dsl.pandas` — except where the whole path is used as one identifier, such as
+an import alias, where the dots map too: `dm_u2e_dsl_u2e_pandas`.
+
+Distribution names follow Python packaging instead: PEP 503 normalizes
+`Osiris_Pandas` to `osiris-pandas`, and PEP 427/625 escape that to
+`osiris_pandas` wherever a filename or directory carries it.
 
 ## Modules and Imports
 

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import osiris_build  # noqa: E402
 from osiris_build._interface import _is_supported_python_target  # noqa: E402
 from osiris_build._wheel import _compiler_command  # noqa: E402
+from osiris_build import _common, _wheel_archive  # noqa: E402
 
 
 class OsirisBuildTests(unittest.TestCase):
@@ -574,3 +575,61 @@ print('standalone-ok')
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NameTranslationParityTests(unittest.TestCase):
+    """The backend and the compiler must agree on every name they both derive.
+
+    Two implementations of the same mapping is the arrangement that produced a
+    released sdist PyPI rejected, so the agreement is asserted rather than
+    assumed. The Rust spellings below are transcribed from
+    `normalize_distribution_name` and `_dist_info_name`.
+    """
+
+    VALID = [
+        "osiris-pandas",
+        "Osiris_Pandas",
+        "osiris.pandas",
+        "a--b",
+        "A.B_C-D",
+        "x",
+        "UPPER",
+        "pkg1.sub_2-3",
+    ]
+    INVALID = ["-lead", "trail-", "_under_", "..a..", "", "bad name", "a/b"]
+
+    @staticmethod
+    def _rust_normalize(name):
+        result, separator = "", False
+        for character in name:
+            if character in "-_.":
+                separator = True
+            else:
+                if separator and result:
+                    result += "-"
+                result += character.lower()
+                separator = False
+        return result
+
+    def test_normalisation_matches_the_compiler_for_every_valid_name(self):
+        for name in self.VALID:
+            with self.subTest(name=name):
+                self.assertEqual(
+                    _common._normalise_name(name), self._rust_normalize(name)
+                )
+
+    def test_invalid_names_are_refused_rather_than_normalised(self):
+        for name in self.INVALID:
+            with self.subTest(name=name):
+                with self.assertRaises(osiris_build.BackendError):
+                    _common._normalise_name(name)
+
+    def test_wheel_and_sdist_escape_the_name_the_same_way(self):
+        for name in self.VALID:
+            with self.subTest(name=name):
+                normalized = _common._normalise_name(name)
+                self.assertEqual(
+                    _wheel_archive._dist_info_name(normalized),
+                    normalized.replace("-", "_"),
+                )
+                self.assertNotIn("-", _wheel_archive._dist_info_name(normalized))

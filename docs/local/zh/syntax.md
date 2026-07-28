@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 12
+revision: 13
 source: ../../syntax.md
-source-revision: 12
+source-revision: 13
 translation-status: Current
 ---
 
@@ -104,6 +104,37 @@ row.value             ; 静态字段或 Python 属性
 ```
 
 本地化名称是同一个 canonical binding 的别名，不是独立定义。Locale 不会改变名称解析。
+
+### 生成 Python 中的名字
+
+Osiris 的名字是 Lisp 风格的，Python 不是。编译器在两者之间做确定的映射，而映射结果正是
+Python 调用方会 import 的东西——所以它是接口的稳定组成部分，不是内部细节。
+
+| Osiris | Python |
+| --- | --- |
+| `-` | `_` |
+| `?` | `_p` |
+| `!` | `_bang` |
+| 字母或数字（含非 ASCII） | 保持不变 |
+| 其他任何字符 | `_u<十六进制>_` |
+
+```text
+rolling-mean   ->  rolling_mean
+missing?       ->  missing_p
+reset!         ->  reset_bang
+column*        ->  column_u2a_
+均线            ->  均线
+```
+
+以数字开头的名字会加前导 `_`，与 Python 关键字相同的会加尾随 `_`，编译器内部名字带
+`_osr_` 前缀，因此不会与你的名字相撞。两个 Osiris 名字若会产生同一个 Python 名字，那是
+一条诊断，不会被静默合并。
+
+模块路径逐段映射——`dm.dsl.pandas` 仍是 `dm.dsl.pandas`——但当整条路径被当作单个标识符
+使用时（例如 import alias），点号也会被映射：`dm_u2e_dsl_u2e_pandas`。
+
+发行名走的是 Python 打包那一套：PEP 503 把 `Osiris_Pandas` 规范化为 `osiris-pandas`，
+PEP 427/625 再在文件名或目录名承载它的地方转义为 `osiris_pandas`。
 
 ## 模块与导入
 
