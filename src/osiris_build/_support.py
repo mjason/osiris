@@ -65,8 +65,13 @@ def _validate_hashes(value: Dict[str, Any], path: str, produced: Mapping[str, by
         raise _error("linked support manifest `%s` binding IDs must be sorted and unique" % path)
     for field in ("helperHashes", "fileHashes"):
         hashes = value[field]
-        if not isinstance(hashes, dict) or not hashes:
-            raise _error("linked support manifest `%s` %s must be a non-empty object" % (path, field))
+        # An empty helper set is a legitimate package: one whose declarations
+        # all delegate to its own `~python` provider reaches no standard
+        # linkable helper at all. `fileHashes` is separately cross-checked
+        # against the emitted runtime files below, which is what actually
+        # constrains it.
+        if not isinstance(hashes, dict):
+            raise _error("linked support manifest `%s` %s must be an object" % (path, field))
         for name, digest in hashes.items():
             if not isinstance(name, str) or not name:
                 raise _error("linked support manifest `%s` contains an invalid hash key" % path)
@@ -91,8 +96,10 @@ def _rewrite_identities(
     packaged: Mapping[str, bytes],
 ) -> None:
     identities = value["sourceMaps"]
-    if not isinstance(identities, list) or not identities:
-        raise _error("linked support manifest `%s` sourceMaps must be a non-empty array" % path)
+    # Source maps describe linked standard helpers, so a package that reaches
+    # none has none. Emptiness is checked against the helper set, not asserted.
+    if not isinstance(identities, list):
+        raise _error("linked support manifest `%s` sourceMaps must be an array" % path)
     rewritten = []
     seen = set()
     for identity in identities:

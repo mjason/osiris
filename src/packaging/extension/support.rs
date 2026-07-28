@@ -79,10 +79,13 @@ fn validate_support_hashes(
     helper_hashes: &BTreeMap<String, String>,
     file_hashes: &BTreeMap<String, String>,
 ) -> Result<(), ExtensionError> {
-    if helper_hashes.is_empty() || file_hashes.is_empty() {
+    // A package whose declarations all delegate to its own `~python` provider
+    // reaches no standard linkable helper, so an empty helper set is ordinary.
+    // The file hashes are checked against the support tree below.
+    if file_hashes.is_empty() {
         return Err(invalid_support(
             marker_path,
-            "linked support helper and file hashes must be non-empty",
+            "linked support file hashes must be non-empty",
         ));
     }
     for (name, hash) in helper_hashes {
@@ -166,10 +169,12 @@ fn validate_support_source_maps(
     marker_target: Option<&str>,
     identities: &[LinkedSourceMapIdentity],
 ) -> Result<(), ExtensionError> {
-    if identities.is_empty() || identities.windows(2).any(|pair| pair[0] >= pair[1]) {
+    // Source maps describe linked standard helpers; a package that reaches none
+    // legitimately has none. Ordering is still required.
+    if identities.windows(2).any(|pair| pair[0] >= pair[1]) {
         return Err(invalid_support(
             marker_path,
-            "linked support source-map identities must be sorted, unique, and non-empty",
+            "linked support source-map identities must be sorted and unique",
         ));
     }
     for identity in identities {
