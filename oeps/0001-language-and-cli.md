@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 23
+revision: 24
 requires: [0]
 replaces: []
 superseded-by: null
@@ -167,9 +167,9 @@ body bytes, and the byte/line mapping of every embedded position.
 **OEP-0001-R006B:** A generic embedded-language sigil is a top-level named
 declaration. Its label MUST be a valid Osiris binding name and declares a `Str`
 whose value is the normalized raw body. The binding has ordinary module
-visibility: it is private by default and crosses a module boundary only through
-explicit `export` and `import`. Interfaces and tooling MUST retain its language
-and source map:
+visibility: it is private by default and crosses a module boundary only when
+published under OEP-0001-R009A, by either explicit form. Interfaces and tooling
+MUST retain its language and source map:
 
 ```clojure
 ~markdown<usage>
@@ -283,6 +283,12 @@ than `true` under the `:export` key MUST remain ordinary authored metadata and
 MUST NOT publish. A declaration published by neither form MUST remain module
 private; no other spelling, namespace component, or authored key MUST imply
 visibility.
+
+A marker MUST be accepted wherever the manifest can publish the same
+declaration, including declarations an `extern` block nests. Where a marker
+cannot publish — a form with no public name, or an embedded Python provider
+handle, which is not a binding — the compiler MUST report it rather than ignore
+it, as the manifest already reports a name it cannot publish.
 
 **OEP-0001-R009B:** Because a marker rides on the declaration it publishes
 rather than on an authored boundary form, a declaration macro MAY generate one.
@@ -1272,6 +1278,11 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 24, 2026-07-27: Required the `^:export` marker to be accepted
+  wherever the manifest can publish the same declaration, including embedded
+  data blocks and declarations an `extern` block nests, and required a marker
+  that publishes nothing to be reported rather than ignored; aligned
+  OEP-0001-R006B with OEP-0001-R009A accordingly.
 - Revision 23, 2026-07-27: Added the per-item `^:export` marker as the second
   explicit way to publish a declaration (OEP-0001-R009A), allowed a declaration
   macro to generate one while leaving the authored boundary intact

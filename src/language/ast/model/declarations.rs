@@ -168,20 +168,69 @@ impl Item {
     /// a declaration macro can generate one.
     #[must_use]
     pub fn export_marker(&self) -> Option<&Name> {
-        let (metadata, name) = match &self.kind {
-            ItemKind::Def(definition) => (&definition.metadata, Some(&definition.name)),
-            ItemKind::Defn(function) | ItemKind::DefnForSyntax(function) => {
-                (&function.metadata, function.name.as_ref())
-            }
-            ItemKind::Defstruct(structure) => (&structure.metadata, Some(&structure.name)),
-            ItemKind::DefstaticSchema(schema) => (&schema.metadata, Some(&schema.name)),
-            ItemKind::Defmacro(declaration) => (&declaration.metadata, Some(&declaration.name)),
-            _ => return None,
-        };
-        (declares_export(metadata) || declares_export(&self.metadata))
-            .then_some(name)
-            .flatten()
+        if !self.carries_export_marker() {
+            return None;
+        }
+        match &self.kind {
+            ItemKind::Def(definition) => Some(&definition.name),
+            ItemKind::Defn(function) | ItemKind::DefnForSyntax(function) => function.name.as_ref(),
+            ItemKind::Defstruct(structure) => Some(&structure.name),
+            ItemKind::DefstaticSchema(schema) => Some(&schema.name),
+            ItemKind::Defmacro(declaration) => Some(&declaration.name),
+            // A generic embedded block declares an ordinary `Str` binding with
+            // ordinary module visibility. Embedded Python is deliberately
+            // absent: its label is a private provider handle, not a binding a
+            // module can publish.
+            ItemKind::EmbeddedText(text) => Some(&text.label),
+            _ => None,
+        }
     }
+
+    /// Whether the `:export` key is present and true anywhere on this item,
+    /// regardless of whether this kind of item can be published.
+    ///
+    /// A marker that publishes nothing is a mistake worth reporting rather than
+    /// ignoring, so the two questions are asked separately.
+    #[must_use]
+    pub fn carries_export_marker(&self) -> bool {
+        let declaration: &[MetadataEntry] = match &self.kind {
+            ItemKind::Def(definition) => &definition.metadata,
+            ItemKind::Defn(function) | ItemKind::DefnForSyntax(function) => &function.metadata,
+            ItemKind::Defstruct(structure) => &structure.metadata,
+            ItemKind::DefstaticSchema(schema) => &schema.metadata,
+            ItemKind::Defmacro(declaration) => &declaration.metadata,
+            ItemKind::Extern(external) => &external.metadata,
+            _ => &[],
+        };
+        declares_export(declaration) || declares_export(&self.metadata)
+    }
+}
+
+/// Every item a module declares, descending into the declarations an `extern`
+/// block nests so that both publication paths see the same set.
+#[must_use]
+pub fn declared_items(items: &[Item]) -> Vec<&Item> {
+    let mut flattened = Vec::new();
+    collect_declared_items(items, &mut flattened);
+    flattened
+}
+
+fn collect_declared_items<'a>(items: &'a [Item], flattened: &mut Vec<&'a Item>) {
+    for item in items {
+        flattened.push(item);
+        if let ItemKind::Extern(external) = &item.kind {
+            collect_declared_items(&external.items, flattened);
+        }
+    }
+}
+
+/// The names a module publishes through per-item `^:export` markers.
+#[must_use]
+pub fn export_markers(items: &[Item]) -> Vec<&Name> {
+    declared_items(items)
+        .into_iter()
+        .filter_map(Item::export_marker)
+        .collect()
 }
 
 /// The metadata key that publishes one declaration, standardized by the

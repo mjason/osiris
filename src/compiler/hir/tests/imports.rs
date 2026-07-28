@@ -513,3 +513,54 @@ fn only_a_true_export_marker_publishes() {
     assert!(result.module.bindings.iter().all(|binding| !binding.public));
     assert!(result.module.exports.is_empty());
 }
+
+/// A generic embedded block declares an ordinary `Str` binding with ordinary
+/// module visibility, and `extern` nests ordinary declarations, so both must
+/// accept the marker the manifest already accepts for them.
+#[test]
+fn an_export_marker_reaches_embedded_blocks_and_extern_declarations() {
+    let result = lower(
+        r#"(module example)
+               ^{:export true}
+               ~json<default-config>
+               {"theme": "dark"}
+               </default-config>
+               (extern python "math"
+                 ^{:doc "Square root." :export true}
+                 (defn ^Float sqrt [^Float value]
+                   :contract {:id "math/sqrt-v1" :effects :pure}))"#,
+    );
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let public = result
+        .module
+        .bindings
+        .iter()
+        .filter(|binding| binding.public)
+        .map(|binding| binding.source_spelling.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(public.contains("default-config"), "{public:?}");
+    assert!(public.contains("sqrt"), "{public:?}");
+}
+
+/// The manifest reports a name it cannot publish, so a marker must too. An
+/// embedded Python label is a private provider handle rather than a binding, so
+/// marking one publishes nothing and must say so.
+#[test]
+fn an_export_marker_that_publishes_nothing_is_reported() {
+    let result = lower(
+        r#"(module example)
+               ^{:export true}
+               ~python<helpers>
+               def scale(value):
+                   return value * 2
+               </helpers>"#,
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-N0016"),
+        "{:?}",
+        result.diagnostics
+    );
+}

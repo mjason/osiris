@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 10
+revision: 11
 source: ../../syntax.md
-source-revision: 10
+source-revision: 11
 translation-status: Current
 ---
 
@@ -147,6 +147,10 @@ row.value             ; 静态字段或 Python 属性
 
 公开面是二者的并集，两种方式都写的名字只公开一次。两种都没写的声明就是模块私有——
 没有单独的私有形式，也没有任何元数据键能断言私有。
+
+清单能用的位置标记都能用，包括嵌入数据块和 `extern` 内嵌的声明。给没有公开名的东西
+加标记——裸表达式、import、嵌入 Python 的 provider handle——是错误（`OSR-N0016`），
+而不是一个悄无声息不起作用的标记。
 
 两者之中只有标记是宏能产出的。`export` 是固定在展开之前的作者边界形式，宏不得生成；
 而标记只是普通声明上的普通元数据，因此声明宏可以直接公开它生成的东西，不必要求每个

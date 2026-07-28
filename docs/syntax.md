@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 10
+revision: 11
 ---
 
 # Osiris Syntax
@@ -161,6 +161,11 @@ value stays ordinary authored metadata.
 The public surface is the union of the two, and a name written both ways is
 published once. A declaration published by neither is module private — there is
 no separate private form, and no metadata key asserts privacy.
+
+A marker works wherever the manifest does, including an embedded data block and
+a declaration nested inside `extern`. Marking something with no public name — a
+bare expression, an import, an embedded Python provider handle — is an error
+(`OSR-N0016`) rather than a marker that quietly does nothing.
 
 The marker is the one of the two a macro can produce. `export` is an authored
 boundary form fixed before expansion, so a macro cannot generate one; a marker

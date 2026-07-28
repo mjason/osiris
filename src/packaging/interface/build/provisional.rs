@@ -24,7 +24,7 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
             _ => None,
         })
         .flatten()
-        .chain(surface.items.iter().filter_map(ast::Item::export_marker))
+        .chain(ast::export_markers(&surface.items))
         .map(|name| name.canonical.clone())
         .collect::<BTreeSet<_>>();
 

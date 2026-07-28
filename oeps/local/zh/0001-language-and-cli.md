@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 23
+revision: 24
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 23
+source-revision: 24
 translation-status: Current
 requires: [0]
 replaces: []
@@ -138,8 +138,8 @@ position 的 byte/line mapping。
 
 **OEP-0001-R006B：** Generic embedded-language sigil 是 top-level named declaration。
 Label 必须是合法 Osiris binding name，并声明一个 value 为 normalized raw body 的 `Str`。
-该 binding 使用普通 module visibility：默认 private，只有显式 `export`/`import` 才能跨
-module。Interface/tooling 必须保留 language/source map：
+该 binding 使用普通 module visibility：默认 private，只有按 OEP-0001-R009A 以两种显式
+形式之一公开后才能跨 module。Interface/tooling 必须保留 language/source map：
 
 ```clojure
 ~markdown<usage>
@@ -236,6 +236,10 @@ identity。文件到模块的映射由 OEP-0002 规定；源码存在 `(module .
 同时以两种方式公开的名字必须只公开一次。`:export` 键上 `true` 以外的任何值必须
 仍是普通 authored metadata，不得公开任何名字。两种形式都未采用的声明必须保持模块
 私有；其他任何拼写、namespace 组成部分或 authored key 都不得隐含可见性。
+
+凡是清单能公开的声明，标记都必须同样被接受，包括 `extern` 块内嵌的声明。若标记无法
+公开——形式本身没有公开名，或是嵌入 Python 的 provider handle（它不是 binding）——
+编译器必须报告而不是忽略，正如清单已经会报告它无法公开的名字。
 
 **OEP-0001-R009B：** 由于标记随它所公开的声明本身走，而不是挂在 authored boundary
 form 上，声明宏可以生成标记。因此宏贡献的公开面只会出现在由展开后 surface 构建的
@@ -1058,6 +1062,9 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 24，2026-07-27：要求凡是清单能公开同一声明的位置都必须接受 `^:export`
+  标记，包括嵌入数据块与 `extern` 块内嵌的声明；并要求公开不了任何东西的标记必须
+  被报告而不是忽略；OEP-0001-R006B 随之与 OEP-0001-R009A 对齐。
 - Revision 23，2026-07-27：新增逐项 `^:export` 标记，作为公开一个声明的第二种显式
   方式（OEP-0001-R009A）；允许声明宏生成该标记，同时保持 authored boundary 不变
   （OEP-0001-R009B）；并把 `:export` 纳入 OEP-0001-R022 的标准化 metadata key。

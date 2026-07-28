@@ -13,7 +13,7 @@ impl<'a> Lowerer<'a> {
                 _ => None,
             })
             .flatten()
-            .chain(module.items.iter().filter_map(ast::Item::export_marker))
+            .chain(ast::export_markers(&module.items))
             .filter(|name| {
                 !self
                     .aliases
@@ -72,7 +72,7 @@ impl<'a> Lowerer<'a> {
         // A marker names the declaration it rides on, so it cannot name
         // something unknown and never reaches the OSR-N0011 path above. A name
         // that is both listed and marked lands in `exports` once.
-        for name in module.items.iter().filter_map(ast::Item::export_marker) {
+        for name in ast::export_markers(&module.items) {
             let Some(id) = self.resolve_global_name(&name.canonical) else {
                 continue;
             };
@@ -80,6 +80,20 @@ impl<'a> Lowerer<'a> {
                 binding.public = true;
             }
             self.exports.insert(id);
+        }
+        // The manifest reports a name it cannot publish; a marker must too,
+        // otherwise a marker on a form that has no public surface — an import,
+        // a bare expression, an embedded Python provider handle — would be
+        // silently inert, which is the one failure the explicit model exists to
+        // prevent.
+        for item in ast::declared_items(&module.items) {
+            if item.carries_export_marker() && item.export_marker().is_none() {
+                self.error(
+                    "OSR-N0016",
+                    "`:export` marks a declaration that has no public name".to_owned(),
+                    item.span,
+                );
+            }
         }
         for alias in &mut self.aliases {
             if self.exports.contains(&alias.target)
