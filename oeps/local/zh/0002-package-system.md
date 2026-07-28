@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-27
-revision: 18
+revision: 19
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 18
+source-revision: 19
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -550,6 +550,8 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 19，2026-07-27：修正 OEP-0002-R033D 中本意规范却写成小写的 RFC 2119
+  关键词，按 OEP-0000-R017 它此前不具约束力。
 - Revision 18，2026-07-27：在 OEP-0003-R005G 从标准宏面移除 `defn-` 之后，改用「未公开的
   declaration」重述 OEP-0002-R033E；package 可见性从来不由声明形式决定，因此 package
   行为不变。

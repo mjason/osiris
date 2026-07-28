@@ -12,10 +12,10 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-27
-revision: 13
+revision: 14
 language: zh-CN
 source: ../../0003-standard-library.md
-source-revision: 13
+source-revision: 14
 translation-status: Current
 requires: [0, 1, 2]
 replaces: []
@@ -876,6 +876,8 @@ Name-based solver 会破坏 alias、import、extension replacement 和 stable id
 
 ## 修订历史 (Change History)
 
+- Revision 14，2026-07-27：修正 OEP-0003-R042、OEP-0003-R048 与 OEP-0003-R059 中
+  本意规范却写成小写的 RFC 2119 关键词，按 OEP-0000-R017 它们此前不具约束力。
 - Revision 13，2026-07-27：从标准宏面移除 `defn-`，并改写 OEP-0003-R005G，使 privacy
   成为「未被公开」而非一条 authored 断言。`defn-` 只把 `:private true` 记为 authored
   metadata，不产生任何强制力：写进 `(export [...])` 的名字即使标了私有仍然公开，因此

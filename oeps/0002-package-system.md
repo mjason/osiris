@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-27
-revision: 18
+revision: 19
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -326,7 +326,7 @@ the provider package's generated Osiris Python module, `osiris-lang`, source
 an embedded `python` module governed by OEP-0001. Such a module is compiler
 input carried by the linkable artifact, not an import from the provider's
 installed Python namespace. Its private provider handle MUST NOT appear in a
-public interface; only validated `extern` bindings may create downstream
+public interface; only validated `extern` bindings MAY create downstream
 reachability into it. It MAY import explicitly declared ordinary Python
 dependencies such as `pandas`; those providers remain normal `Requires-Dist`
 dependencies and are never copied into `__osiris_runtime__`. A large, native,
@@ -688,6 +688,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 19, 2026-07-27: Corrected an RFC 2119 keyword in OEP-0002-R033D
+  that was written in lowercase and therefore carried no obligation under
+  OEP-0000-R017.
 - Revision 18, 2026-07-27: Restated OEP-0002-R033E in terms of unpublished
   declarations after `defn-` was removed from the standard macro surface under
   OEP-0003-R005G; package visibility was never determined by the declaration

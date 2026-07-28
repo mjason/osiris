@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 24
+revision: 25
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 24
+source-revision: 25
 translation-status: Current
 requires: [0]
 replaces: []
@@ -1035,6 +1035,12 @@ format/validate。
 - embedded-content fixture 证明普通 `Str` export/import、same-module metadata reference
   resolution、递归 `~osiris` formatting，以及 documentation-only reference 不产生 runtime
   reachability；
+- 公开面 fixture 证明清单与逐项 `^:export` 标记产出同一个并集面、两种方式都写的名字
+  只公开一次、只有 `true` 生效、凡清单能公开同一声明的位置标记都被接受（含嵌入数据块
+  与 `extern` 内嵌声明），以及没有公开名的标记会被报告；
+- 宏公开面 fixture 证明生成标记的声明宏在「由未展开 header 构建的接口」与「由展开后
+  surface 构建的接口」之间收敛，包括消费者在同一运行时 SCC 内从 provisional 接口解析
+  该生成名字的情形；
 - kernel inventory 与 standard macro inventory 可以独立查询；
 - 宏测试证明 hygiene、phase isolation、determinism 和 origin chain，包括：
   展开之后的 pass 所产生的诊断携带每一个产生该语法的宏的有序 call-site 与
@@ -1062,6 +1068,9 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 25，2026-07-27：为 OEP-0001-R009A 与 OEP-0001-R009B 补上 conformance 证据
+  条目（此前新增规范时遗漏）；把 OEP-0001-R031 与 OEP-0001-R032C 中本意规范却写成
+  小写的 RFC 2119 关键词改为大写，按 OEP-0000-R017 它们此前不具约束力。
 - Revision 24，2026-07-27：要求凡是清单能公开同一声明的位置都必须接受 `^:export`
   标记，包括嵌入数据块与 `extern` 块内嵌的声明；并要求公开不了任何东西的标记必须
   被报告而不是忽略；OEP-0001-R006B 随之与 OEP-0001-R009A 对齐。

@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-07-23
 updated: 2026-07-27
-revision: 13
+revision: 14
 requires: [0, 1, 2]
 replaces: []
 superseded-by: null
@@ -516,7 +516,7 @@ Metadata in its authored `.osr` declaration with an English `:default`, a
 category, first `since` version, deprecation state, and stable source location.
 Callable bindings MUST also provide public argument information. Documentation
 and localized names MUST use the OEP-0001-R057 through OEP-0001-R065 metadata
-contract; additional BCP 47 translations are encouraged and must not alter
+contract; additional BCP 47 translations are encouraged and MUST NOT alter
 binding identity.
 
 **OEP-0003-R044:** Standard metadata MAY provide localized names and examples.
@@ -552,7 +552,7 @@ Phase-1 Bootstrap
 -> project modules
 ```
 
-No later layer may mutate an earlier interface or core export manifest.
+A later layer MUST NOT mutate an earlier interface or core export manifest.
 The packaged-source step MUST use the validated standard-resource provider from
 R005CA. Compiler subsystems MUST NOT maintain independent standard-source
 loaders or storage fallbacks.
@@ -730,8 +730,8 @@ Destructuring MUST not change those rules.
 | `string?`, `list?`, `vector?`, `map?`, `set?` | `A -> Bool` | Test the corresponding logical runtime type. |
 | `sequence?`, `seq?`, `coll?`, `sequential?` | `A -> Bool` | Test the documented logical sequence/collection families without inspecting private Python implementations. |
 
-Phase-1 `keyword?` and `symbol?` MUST test distinct syntax data. No Phase-0 API
-may claim that distinction until Keyword and Symbol have distinct runtime
+Phase-1 `keyword?` and `symbol?` MUST test distinct syntax data. A Phase-0 API
+MUST NOT claim that distinction until Keyword and Symbol have distinct runtime
 representations.
 
 ### Associative collections
@@ -1037,6 +1037,9 @@ This OEP cannot become Final while any required initial namespace is missing.
 
 ## Change History
 
+- Revision 14, 2026-07-27: Corrected RFC 2119 keywords in OEP-0003-R042,
+  OEP-0003-R048, and OEP-0003-R059 that were written in lowercase and therefore
+  carried no obligation under OEP-0000-R017.
 - Revision 13, 2026-07-27: Removed `defn-` from the standard macro surface and
   restated OEP-0003-R005G so privacy is the absence of publication rather than
   an authored assertion. `defn-` recorded `:private true` as authored metadata

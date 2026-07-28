@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-27
-revision: 24
+revision: 25
 requires: [0]
 replaces: []
 superseded-by: null
@@ -435,7 +435,7 @@ This restriction does not prohibit runtime I/O explicitly performed by a
 declared function; it keeps linkage static and reproducible.
 
 **OEP-0001-R031:** Generated Python MUST preserve Osiris evaluation order and
-must not duplicate an expression with observable effects. Target-specific
+MUST NOT duplicate an expression with observable effects. Target-specific
 rewrites MUST NOT silently weaken type, temporal, data, or effect diagnostics.
 
 **OEP-0001-R032:** Diagnostics MUST have a stable code, severity, primary
@@ -461,7 +461,7 @@ the defining module through R032's related locations instead.
 
 **OEP-0001-R032C:** Every compiler-owned diagnostic surface — CLI rendering,
 `osr lsc` JSON, and LSP publication — MUST expose the related locations a
-diagnostic carries, and none may silently drop an entry. Machine-readable
+diagnostic carries, and MUST NOT silently drop an entry. Machine-readable
 surfaces MUST expose each entry's kind, span, module, and macro binding ID. A
 surface that cannot resolve a foreign-module span to a line and column MUST
 still name the module.
@@ -1245,6 +1245,15 @@ A conforming implementation provides evidence that:
 - embedded-content fixtures prove ordinary `Str` export/import behavior,
   same-module metadata-reference resolution, recursive `~osiris` formatting,
   and absence of runtime reachability for documentation-only references;
+- publication fixtures prove the manifest and the per-item `^:export` marker
+  produce one union surface, that a name published both ways is published once,
+  that only `true` publishes, that a marker is accepted wherever the manifest
+  publishes the same declaration including embedded data blocks and `extern`
+  nested declarations, and that a marker with no public name is reported;
+- macro publication fixtures prove that a declaration macro generating a marker
+  converges between the interface built from the unexpanded header and the one
+  built from the expanded surface, including where the consumer resolves the
+  generated name from a provisional interface inside the same runtime SCC;
 - kernel inventory and standard macro inventory are independently queryable;
 - macro tests prove hygiene, phase isolation, determinism, and origin chains,
   including that a diagnostic from a pass after expansion carries the ordered
@@ -1278,6 +1287,10 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 25, 2026-07-27: Added the conformance evidence criteria omitted when
+  OEP-0001-R009A and OEP-0001-R009B were introduced, and corrected RFC 2119
+  keywords in OEP-0001-R031 and OEP-0001-R032C that were written in lowercase
+  and therefore carried no obligation under OEP-0000-R017.
 - Revision 24, 2026-07-27: Required the `^:export` marker to be accepted
   wherever the manifest can publish the same declaration, including embedded
   data blocks and declarations an `extern` block nests, and required a marker
