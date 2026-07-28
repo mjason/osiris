@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.12
+
+- Align diagnostic carets and formatter line budgets to display columns, so CJK and mixed-width source is laid out and pointed at correctly.
+- Keep macro documentation and example spans out of the semantic interface hash, so editing a macro's docs no longer forces dependents to recompile.
+- Publish a declaration with the per-item `^:export` marker, including macros, embedded data blocks, `extern` members, and static-record owners.
+
 ## 0.3.11
 
 - Avoid initializing project language services for generic requests while retaining project-symbol preflight for project API questions.
