@@ -3,7 +3,7 @@ document-id: tooling/agents
 title: 以 Agent 身份使用 Osiris
 language: zh-CN
 source: ../../agents.md
-source-revision: 3
+source-revision: 4
 translation-status: Current
 ---
 
@@ -101,6 +101,11 @@ Clojure 里这样做通常不会。
 互操作面向 Python 而非 JVM。生成的代码是普通 Python，运行时不需要任何 Osiris
 包。
 
+`extern python` 接受两种 provider，选哪种决定了产物是否自包含。字符串指的是已安装
+的依赖，编译器绝不拷贝它——`(extern python "pandas" ...)`。符号指的是同模块内用
+`~python<label>` 写下的块，编译器会把它重定位进发行私有的 `__osiris_runtime__` 包，
+随生成代码一起分发。已安装的依赖用字符串；包自己拥有的后端用块。
+
 ## 动手前先定位
 
 首次接触一个项目时按顺序执行。每条都是本地只读操作。
@@ -195,6 +200,11 @@ Osiris 有意把它们分开，你也必须分开：
   `"result": null`。这个区别重要时，一律用 `--format json`。
 - **展开不是执行。** `osr expand` 从不 import 或运行生成的 Python。看到展开结果不
   等于程序能跑。
+- **字符串 provider 指向未安装的模块时，构建干净、产物却是坏的。**
+  `(extern python "my_backend" ...)` 指向项目旁边一个散落的 `.py`，生成的是裸的
+  `from my_backend import ...`，而且什么都不会被拷贝。`check` 与 `build` 都会通过，
+  因为两者都不解析 Python import；只有当产物在那个文件不在 `sys.path` 的地方运行时
+  才会失败。若该模块不是 uv 能装上的东西，就改用 `~python<label>` 块来写。
 
 ## 声称符合规范之前
 

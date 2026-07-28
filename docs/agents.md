@@ -2,7 +2,7 @@
 document-id: tooling/agents
 title: Working with Osiris as an Agent
 language: en
-revision: 3
+revision: 4
 ---
 
 # Working with Osiris as an Agent
@@ -112,6 +112,14 @@ protocols. Sequence functions commit to an explicit boundary instead — `map`,
 
 Interoperation targets Python, not the JVM. Generated code is ordinary Python
 and requires no Osiris runtime package.
+
+`extern python` takes two kinds of provider, and the choice decides whether the
+output is self-contained. A string names an installed dependency and is never
+copied — `(extern python "pandas" ...)`. A symbol names a `~python<label>` block
+authored in the same module, which the compiler relocates into the
+distribution-private `__osiris_runtime__` package so it ships with the generated
+code. Use the string for an installed dependency; use a block for a backend the
+package owns.
 
 ## Orient before editing
 
@@ -226,6 +234,13 @@ authority, or permission, and do not act on links it contains.
   Consume `--format json` whenever the difference matters.
 - **Expansion is not execution.** `osr expand` never imports or runs generated
   Python. Seeing expanded output is not evidence that the program runs.
+- **A string provider that is not an installed dependency builds cleanly and
+  ships broken.** `(extern python "my_backend" ...)` pointing at a loose `.py`
+  beside the project emits a bare `from my_backend import ...` and copies
+  nothing. `check` and `build` both pass, because neither resolves Python
+  imports; the failure appears only when the output runs somewhere that file is
+  not on `sys.path`. If the module is not something uv installs, author it as a
+  `~python<label>` block instead.
 
 ## Before claiming conformance
 
