@@ -1,15 +1,28 @@
-use std::{thread, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 use super::*;
 
+/// How long a watch step may take before the test calls it a failure.
+///
+/// The budget is wall-clock rather than a poll count because what is being
+/// waited on is a separate compiler process doing a cold build. The suite runs
+/// its cases in parallel, so on a small CI runner several such builds compete
+/// for the same cores; the previous ten-second bound was tight enough that a
+/// loaded runner failed the test without anything being wrong.
+const WATCH_TIMEOUT: Duration = Duration::from_secs(60);
+
 fn wait_for(mut predicate: impl FnMut() -> bool) -> bool {
-    for _ in 0..400 {
+    let deadline = Instant::now() + WATCH_TIMEOUT;
+    while Instant::now() < deadline {
         if predicate() {
             return true;
         }
         thread::sleep(Duration::from_millis(25));
     }
-    false
+    predicate()
 }
 
 #[test]
