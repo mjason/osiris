@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.16
+
+- Add `osr lsc name`, which reports what an Osiris name becomes in generated Python.
+- Validate a distribution name in the build backend before normalizing it, matching the compiler.
+
 ## 0.3.15
 
 - Name the source distribution with PEP 625 escaping, which an index requires.
