@@ -324,6 +324,9 @@ def _satisfies(specifier: str, version: str) -> bool:
             if operator == "!=" and matches:
                 return False
             continue
+        # `~=` additionally constrains the release prefix, so it needs the
+        # release tuple as well as the ordering comparison.
+        expected = _version_key(expected_text)
         comparison = _compare_versions(version, expected_text)
         if operator == "==" and comparison != 0:
             return False
