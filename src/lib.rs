@@ -65,6 +65,8 @@ pub mod source_map;
 pub mod stdlib;
 #[path = "language/syntax/mod.rs"]
 pub mod syntax;
+#[path = "language/text.rs"]
+pub mod text;
 #[path = "language/types/mod.rs"]
 pub mod types;
 

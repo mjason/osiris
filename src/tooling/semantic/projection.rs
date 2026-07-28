@@ -285,9 +285,10 @@ fn macro_name_span(forms: &[Form], call: Span) -> Option<Span> {
             FormKind::Map(items) => items.as_slice(),
             _ => &[],
         };
-        let nested = children.iter().filter_map(|child| search(child, call)).min_by_key(
-            |span| span.end.saturating_sub(span.start),
-        );
+        let nested = children
+            .iter()
+            .filter_map(|child| search(child, call))
+            .min_by_key(|span| span.end.saturating_sub(span.start));
         if nested.is_some() {
             return nested;
         }
@@ -300,9 +301,10 @@ fn macro_name_span(forms: &[Form], call: Span) -> Option<Span> {
         let head = items.first()?;
         matches!(head.kind, FormKind::Symbol(_)).then_some(head.span)
     }
-    forms.iter().filter_map(|form| search(form, call)).min_by_key(
-        |span| span.end.saturating_sub(span.start),
-    )
+    forms
+        .iter()
+        .filter_map(|form| search(form, call))
+        .min_by_key(|span| span.end.saturating_sub(span.start))
 }
 
 /// The span of the declared name inside a `defmacro` form covering `item`.
@@ -372,8 +374,8 @@ fn macro_symbols(analysis: &Analysis) -> Vec<SemanticSymbol> {
         // author typed so an occurrence means the same thing it does for every
         // other symbol, and so a wide call does not answer for every position
         // inside it.
-        let span = macro_name_span(&analysis.document.forms, trace.call_span)
-            .unwrap_or(trace.call_span);
+        let span =
+            macro_name_span(&analysis.document.forms, trace.call_span).unwrap_or(trace.call_span);
         call_sites
             .entry(trace.macro_binding_id.clone())
             .or_default()

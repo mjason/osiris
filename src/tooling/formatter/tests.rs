@@ -27,7 +27,7 @@ fn long_forms_wrap_deterministically_without_changing_reader_meaning() {
         formatted
             .lines()
             .filter(|line| !line.contains("first_operation"))
-            .all(|line| display_width(line) <= MAX_LINE_WIDTH),
+            .all(|line| crate::text::canonical_width(line) <= MAX_LINE_WIDTH),
         "{formatted}"
     );
 }
@@ -63,9 +63,13 @@ fn aligns_long_calls_and_osiris_metadata_extensions() {
         ":category \"example\" :since \"0.3.0\"} ",
         "(defn ^{:type A} identity [^{:type A} value] value)\n",
     );
+    // Aligning under `even?` would put the `(range ...)` argument at column 82.
+    // The Clojure style guide's second shape — no argument on the function name
+    // line, one space of indent — is what fits, and is the guide's own example.
     let expected = concat!(
-        "(filter even?\n",
-        "        (range 1 1000000000000000000000000000000000000000000000000000000000000000))\n\n",
+        "(filter\n",
+        " even?\n",
+        " (range 1 1000000000000000000000000000000000000000000000000000000000000000))\n\n",
         "^{:doc\n  {:default \"Return the value.\" \"zh-CN\" \"返回该值。\"}\n",
         "  :category \"example\"\n  :since \"0.3.0\"}\n",
         "(defn ^{:type A} identity [^{:type A} value]\n  value)\n",
@@ -73,6 +77,27 @@ fn aligns_long_calls_and_osiris_metadata_extensions() {
     let formatted = format_source(source).expect("valid source");
     assert_eq!(formatted, expected);
     assert_eq!(format_source(&formatted).unwrap(), formatted);
+    assert!(
+        formatted
+            .lines()
+            .all(|line| crate::text::canonical_width(line) <= MAX_LINE_WIDTH),
+        "{formatted}"
+    );
+}
+
+#[test]
+fn alignment_under_the_first_argument_is_preferred_while_it_fits() {
+    let source = concat!(
+        "(filter-out-values even-predicate (range-values 1 10) ",
+        "(range-values 20 30) (range-values 40 50))\n",
+    );
+    let expected = concat!(
+        "(filter-out-values even-predicate\n",
+        "                   (range-values 1 10)\n",
+        "                   (range-values 20 30)\n",
+        "                   (range-values 40 50))\n",
+    );
+    assert_eq!(format_source(source).unwrap(), expected);
 }
 
 #[test]
@@ -103,17 +128,24 @@ fn aligns_wide_unicode_callees_by_display_column() {
     );
     let formatted = format_source(source).expect("valid source");
     assert_eq!(format_source(&formatted).unwrap(), formatted);
-    assert_eq!(display_width("界"), 2);
-    assert_eq!(display_width("e\u{301}"), 1);
-    assert_eq!(display_width("·"), 1);
+    assert_eq!(crate::text::canonical_width("界"), 2);
+    assert_eq!(crate::text::canonical_width("e\u{301}"), 1);
+    assert_eq!(crate::text::canonical_width("·"), 1);
 
     let lines = formatted.lines().collect::<Vec<_>>();
-    let first_argument_column = display_column(lines[0], "FormatText");
+    // `规则定义` is eight columns wide, so aligning its arguments under the
+    // first one would indent every following line by ten and push the widest
+    // argument past 80. The guide's one-space shape is what fits, and the head
+    // line therefore carries no argument at all.
+    assert_eq!(lines[0], "(规则定义", "{formatted}");
     for line in lines.iter().skip(1).filter(|line| {
         let trimmed = line.trim_start();
-        trimmed.starts_with("(参数") || trimmed.starts_with("(节点") || trimmed.starts_with("(输出")
+        trimmed.starts_with("FormatText")
+            || trimmed.starts_with("(参数")
+            || trimmed.starts_with("(节点")
+            || trimmed.starts_with("(输出")
     }) {
-        assert_eq!(line.len() - line.trim_start().len(), first_argument_column);
+        assert_eq!(line.len() - line.trim_start().len(), 1, "{formatted}");
     }
 
     let threaded_value_column = lines
@@ -130,8 +162,43 @@ fn aligns_wide_unicode_callees_by_display_column() {
     assert!(
         lines
             .iter()
-            .all(|line| display_width(line) <= MAX_LINE_WIDTH)
+            .all(|line| crate::text::canonical_width(line) <= MAX_LINE_WIDTH)
     );
+}
+
+#[test]
+fn nested_collections_are_packed_against_the_column_they_start_at() {
+    // A vector nested this deep starts near column 20. Packing it against
+    // column zero, as a plan made before anything was emitted must, overflows
+    // the line; CJK items make the gap large enough to see plainly.
+    let source = concat!(
+        "(defn ^Int 计算 [^Int x]\n",
+        "  (选择 账户\n",
+        "    [[\"机构\" 机构资金买入额] [\"大户\" 大户资金买入额] [\"中户\" 中户资金买入额] ",
+        "[\"散户\" 散户资金买入额] [\"主力\" 主力资金买入额]]))\n",
+    );
+    let formatted = format_source(source).expect("valid source");
+    assert_eq!(format_source(&formatted).unwrap(), formatted);
+    assert!(
+        formatted
+            .lines()
+            .all(|line| crate::text::canonical_width(line) <= MAX_LINE_WIDTH),
+        "{formatted}"
+    );
+}
+
+#[test]
+fn an_embedded_block_keeps_its_own_language_width() {
+    // Ruff's canonical width is 88 columns. Counting those lines against the
+    // Osiris budget would make the layout loop chase a target it cannot reach,
+    // and re-breaking them is not this formatter's business.
+    let long_call = format!("value_{}", "x".repeat(60));
+    let source = format!(
+        "~python<backend>\ndef normalize({long_call}: str) -> str:\n    return {long_call}\n</backend>\n"
+    );
+    let formatted = format_source(&source).expect("valid embedded source");
+    assert_eq!(format_source(&formatted).unwrap(), formatted);
+    assert!(formatted.contains(&long_call), "{formatted}");
 }
 
 #[test]
@@ -158,5 +225,5 @@ fn preserves_generic_embedded_body_content() {
 
 fn display_column(line: &str, needle: &str) -> usize {
     let byte_offset = line.find(needle).expect("text on formatted line");
-    display_width(&line[..byte_offset])
+    crate::text::canonical_width(&line[..byte_offset])
 }

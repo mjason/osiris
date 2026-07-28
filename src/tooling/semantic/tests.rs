@@ -92,7 +92,11 @@ fn macros_are_projected_as_symbols_with_their_call_sites() {
 (def b (twice 4))
 "#;
     let analysis = analyze(source, &CompileOptions::new("demo", PythonVersion::MINIMUM));
-    assert!(analysis.diagnostics.is_empty(), "{:#?}", analysis.diagnostics);
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:#?}",
+        analysis.diagnostics
+    );
 
     let document = SemanticDocument::from_analysis(&analysis, "demo.osr");
     let macro_symbol = document

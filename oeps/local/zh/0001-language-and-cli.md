@@ -12,11 +12,11 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-27
-revision: 25
+updated: 2026-07-28
+revision: 26
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 25
+source-revision: 26
 translation-status: Current
 requires: [0]
 replaces: []
@@ -828,8 +828,11 @@ Canonical layout 以 [Clojure Style Guide](https://guide.clojure.style/) 的 sou
 - 缩进必须使用 space，禁止 tab。带 body parameter 的 form 必须从 opening parenthesis
   向内缩进两个 space。Closing delimiter 必须收拢在最后一个 content line，禁止单独占行。
 - Function/macro call 无法放入一行时，应尽量把第一个 argument 留在 callee 同一行，后续
-  argument 必须与第一个 argument 纵向对齐。如果 callee 同行没有 argument，argument
-  必须从 opening parenthesis 后一个 space 的位置开始。
+  argument 必须与第一个 argument 纵向对齐。仅当每个 argument 在对齐所置的列上仍能满足
+  行宽时，该对齐才算可行；callee 宽到使其不可行时，同行必须不留任何 argument。如果
+  callee 同行没有 argument，argument 必须从 opening parenthesis 后一个 space 的位置开始。
+- 每一次宽度判定都必须以该 form 实际起始的显示列为基准，而不是以行首为基准。若
+  formatter 在得知该列之前就规划了换行，则必须在得知之后重新判定。
 - Binding pair 必须与 opening bracket 后的第一个 binding 对齐。Map key 必须从 opening
   brace 后一个 space的位置对齐。Sequential collection 每行必须保留尽可能多的完整
   element，continuation element 从 opening delimiter 后一个 space 的位置对齐。

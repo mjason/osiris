@@ -12,8 +12,8 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-27
-revision: 25
+updated: 2026-07-28
+revision: 26
 requires: [0]
 replaces: []
 superseded-by: null
@@ -994,8 +994,14 @@ complete Osiris contract, and this OEP controls wherever the languages differ.
   themselves.
 - A function or macro call that does not fit on one line MUST retain its first
   argument beside the callee when feasible and vertically align subsequent
-  arguments with that first argument. If no argument remains beside the callee,
-  arguments MUST begin one space after the opening parenthesis.
+  arguments with that first argument. Alignment is feasible only when every
+  argument then fits the line width from the column that alignment places it in;
+  a callee wide enough to make that impossible MUST keep no argument beside it.
+  If no argument remains beside the callee, arguments MUST begin one space after
+  the opening parenthesis.
+- Every width decision MUST be evaluated from the display column the form
+  actually starts at, not from the start of a line. A formatter that plans line
+  breaks before it knows that column MUST re-evaluate them once it does.
 - Binding pairs MUST align to the first binding after the opening bracket. Map
   keys MUST align one space after the opening brace. Sequential collections
   MUST retain as many complete elements per line as fit and align continuation
