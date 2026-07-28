@@ -45,7 +45,19 @@ fn discover_filtered(
         return Ok(ExtensionGraph::default());
     }
     let mut candidates = Vec::new();
+    // A virtual environment on Linux normally has `lib64` symlinked to `lib`,
+    // so the same site directory arrives twice and every installed extension
+    // would be reported as a duplicate of itself. Resolve each root and keep
+    // the first spelling of each distinct directory.
+    let mut seen_roots = BTreeSet::new();
+    let mut roots = Vec::new();
     for root in site_roots {
+        let identity = fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        if seen_roots.insert(identity) {
+            roots.push(root.clone());
+        }
+    }
+    for root in &roots {
         let entries =
             fs::read_dir(root).map_err(|error| ExtensionError::Io(root.clone(), error))?;
         for entry in entries {

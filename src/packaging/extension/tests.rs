@@ -269,3 +269,28 @@ fn linked_support_manifest_accepts_nested_standard_source_provenance() {
     validate_linked_support_manifest(&root, &manifest, &marker, Some("3.11"), value).unwrap();
     fs::remove_dir_all(root).unwrap();
 }
+
+/// A virtual environment on Linux has `lib64` symlinked to `lib`, so the same
+/// site directory reaches discovery under two spellings. Counting it twice
+/// reported every installed extension as a duplicate of itself, which made any
+/// Osiris extension package unusable on such a machine.
+#[test]
+fn a_site_root_reached_through_a_symlink_is_visited_once() {
+    let records = b"{}";
+    let root = fixture(&marker(Some(records)), Some(records));
+    let linked = root.with_extension("link");
+    let _ = fs::remove_file(&linked);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&root, &linked).unwrap();
+    #[cfg(not(unix))]
+    return;
+
+    let graph = discover(
+        &[root.clone(), linked.clone()],
+        &["sample".to_owned()],
+    )
+    .unwrap();
+    assert!(graph.extension("sample").is_some());
+    fs::remove_file(&linked).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}

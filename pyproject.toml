@@ -34,7 +34,17 @@ include = [
 ]
 
 [tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "stdlib/**/*.osr" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+# The PEP 517 backend ships as Python inside this wheel, so its sources must
+# invalidate the build cache too; without them an edit to osiris_build is
+# invisible to every dependent project.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "src/**/*.rs" },
+    { file = "src/osiris_build/**/*.py" },
+    { file = "stdlib/**/*.osr" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+]
 
 [build-system]
 requires = ["maturin>=1.9,<2.0"]

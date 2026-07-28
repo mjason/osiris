@@ -19,6 +19,14 @@ _MARKER_ATOM_RE = re.compile(
     re.IGNORECASE,
 )
 _NUMERIC_RELEASE_RE = re.compile(r"^\d+(?:\.\d+)*$")
+_PEP440_RE = re.compile(
+    r"^\s*v?(?:(?P<epoch>\d+)!)?(?P<release>\d+(?:\.\d+)*)"
+    r"(?:[-_.]?(?P<pre_l>alpha|beta|preview|pre|a|b|c|rc)[-_.]?(?P<pre_n>\d+)?)?"
+    r"(?:(?:-(?P<post_n1>\d+))|(?:[-_.]?(?P<post_l>post|rev|r)[-_.]?(?P<post_n2>\d+)?))?"
+    r"(?:[-_.]?(?P<dev_l>dev)[-_.]?(?P<dev_n>\d+)?)?"
+    r"(?:\+(?P<local>[a-z0-9]+(?:[-_.][a-z0-9]+)*))?\s*$",
+    re.IGNORECASE,
+)
 def _parse_requirement(raw: Any) -> _Requirement:
     if not isinstance(raw, str) or not raw.strip():
         raise _error("dependency requirement must be a non-empty string")
@@ -199,10 +207,58 @@ def _marker_applies(marker: str, target: Tuple[int, int], validate_only: bool = 
 
 
 def _version_key(value: str) -> Tuple[int, ...]:
+    """The release segment, for prefix matching and python_version markers."""
+
+    return _parse_version(value)[0]
+
+
+def _version_order(value: str) -> Tuple[Any, ...]:
+    """A totally ordered PEP 440 key for the subset this backend accepts."""
+
+    release, pre, post, dev = _parse_version(value)
+    # dev sorts before pre, pre before the plain release, plain before post.
+    dev_key = (0, dev) if dev is not None else (1, 0)
+    pre_key = (0,) + pre if pre is not None else (1, "", 0)
+    post_key = (1, post) if post is not None else (0, 0)
+    return (release, dev_key, pre_key, post_key)
+
+
+def _parse_version(value: str):
+    """Split a PEP 440 version this backend is willing to order.
+
+    A locked graph routinely contains post releases — `python-dateutil` ships
+    `2.9.0.post0`, so anything depending on pandas hits one. Rejecting them made
+    the backend unusable for such a graph, and truncating them to the release
+    would make `2.9.0.post0` compare equal to `2.9.0`. Both are wrong, so the
+    suffixes are parsed and ordered instead. Anything this parser does not
+    recognize still fails closed rather than being guessed at.
+    """
+
     text = value.strip()
-    if not _NUMERIC_RELEASE_RE.fullmatch(text):
-        raise _error("unsupported non-numeric PEP 440 release `%s`" % value)
-    return tuple(int(part) for part in text.split("."))
+    match = _PEP440_RE.fullmatch(text)
+    if match is None:
+        raise _error("unsupported PEP 440 version `%s`" % value)
+    if match.group("epoch") and int(match.group("epoch")) != 0:
+        # A non-zero epoch reorders everything before it; no locked graph the
+        # backend has to project uses one, so refuse rather than half-support it.
+        raise _error("unsupported PEP 440 epoch in `%s`" % value)
+    release = tuple(int(part) for part in match.group("release").split("."))
+    pre = None
+    if match.group("pre_l"):
+        letter = {"alpha": "a", "beta": "b", "c": "rc", "pre": "rc", "preview": "rc"}.get(
+            match.group("pre_l").lower(), match.group("pre_l").lower()
+        )
+        pre = (letter, int(match.group("pre_n") or 0))
+    post = None
+    if match.group("post_l") or match.group("post_n1"):
+        post = int(match.group("post_n1") or match.group("post_n2") or 0)
+    dev = int(match.group("dev_n") or 0) if match.group("dev_l") else None
+    if post is not None and dev is not None:
+        # `1.0.post1.dev0` orders inside the post release rather than before the
+        # plain one. It does not occur in practice, and guessing is what this
+        # backend exists to avoid.
+        raise _error("unsupported combined post and dev release `%s`" % value)
+    return release, pre, post, dev
 
 
 def _compare_releases(left: Tuple[int, ...], right: Tuple[int, ...]) -> int:
@@ -210,6 +266,13 @@ def _compare_releases(left: Tuple[int, ...], right: Tuple[int, ...]) -> int:
     padded_left = left + (0,) * (width - len(left))
     padded_right = right + (0,) * (width - len(right))
     return (padded_left > padded_right) - (padded_left < padded_right)
+
+
+def _compare_versions(left: str, right: str) -> int:
+    left_key, right_key = _version_order(left), _version_order(right)
+    if _compare_releases(left_key[0], right_key[0]) != 0:
+        return _compare_releases(left_key[0], right_key[0])
+    return (left_key[1:] > right_key[1:]) - (left_key[1:] < right_key[1:])
 
 
 def _release_has_prefix(release: Tuple[int, ...], prefix: Tuple[int, ...]) -> bool:
@@ -220,9 +283,10 @@ def _release_has_prefix(release: Tuple[int, ...], prefix: Tuple[int, ...]) -> bo
 def _satisfies(specifier: str, version: str) -> bool:
     """Check a conservative numeric-release subset of PEP 440.
 
-    Pre/dev/post/local releases are rejected instead of being truncated.  The
-    backend is a lock projector, not a resolver, so an unsupported version must
-    fail closed rather than select a potentially different lock fork.
+    Pre, post and dev releases are ordered rather than truncated; a version the
+    parser does not recognize still fails closed, because the backend is a lock
+    projector rather than a resolver and must not select a different lock fork
+    by guessing.
     """
 
     if not specifier:
@@ -260,8 +324,7 @@ def _satisfies(specifier: str, version: str) -> bool:
             if operator == "!=" and matches:
                 return False
             continue
-        expected = _version_key(expected_text)
-        comparison = _compare_releases(actual, expected)
+        comparison = _compare_versions(version, expected_text)
         if operator == "==" and comparison != 0:
             return False
         if operator == "!=" and comparison == 0:
