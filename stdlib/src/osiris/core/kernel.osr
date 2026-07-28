@@ -4,32 +4,29 @@
 
 (export
   [kernel-leaf-apply kernel-leaf-identity kernel-leaf-constantly
-   kernel-leaf-comp kernel-leaf-partial kernel-leaf-juxt
-   kernel-leaf-complement kernel-leaf-map kernel-leaf-mapv
-   kernel-leaf-mapcat kernel-leaf-mapcatv kernel-leaf-filter
-   kernel-leaf-filterv kernel-leaf-remove kernel-leaf-removev
+   kernel-leaf-comp kernel-leaf-partial kernel-leaf-juxt kernel-leaf-complement
+   kernel-leaf-map kernel-leaf-mapv kernel-leaf-mapcat kernel-leaf-mapcatv
+   kernel-leaf-filter kernel-leaf-filterv kernel-leaf-remove kernel-leaf-removev
    kernel-leaf-reduce kernel-leaf-fold kernel-leaf-reductions
    kernel-leaf-reduced kernel-leaf-reduced? kernel-leaf-unreduced
    kernel-leaf-first kernel-leaf-rest kernel-leaf-next kernel-leaf-nth
    kernel-leaf-count kernel-leaf-empty kernel-leaf-empty? kernel-leaf-seq
-   kernel-leaf-seq? kernel-leaf-coll? kernel-leaf-sequential?
-   kernel-leaf-cons kernel-leaf-concat kernel-leaf-range
-   kernel-leaf-repeat kernel-leaf-repeatedly kernel-leaf-iterate
-   kernel-leaf-cycle kernel-leaf-sequence kernel-leaf-take
-   kernel-leaf-drop kernel-leaf-take-while kernel-leaf-drop-while
-   kernel-leaf-take-last kernel-leaf-drop-last kernel-leaf-partition
-   kernel-leaf-partition-all kernel-leaf-partition-by
+   kernel-leaf-seq? kernel-leaf-coll? kernel-leaf-sequential? kernel-leaf-cons
+   kernel-leaf-concat kernel-leaf-range kernel-leaf-repeat
+   kernel-leaf-repeatedly kernel-leaf-iterate kernel-leaf-cycle
+   kernel-leaf-sequence kernel-leaf-take kernel-leaf-drop kernel-leaf-take-while
+   kernel-leaf-drop-while kernel-leaf-take-last kernel-leaf-drop-last
+   kernel-leaf-partition kernel-leaf-partition-all kernel-leaf-partition-by
    kernel-leaf-interleave kernel-leaf-interpose kernel-leaf-distinct
    kernel-leaf-dedupe kernel-leaf-flatten kernel-leaf-keep
    kernel-leaf-keep-indexed kernel-leaf-map-indexed kernel-leaf-run!
    kernel-leaf-doall kernel-leaf-dorun kernel-leaf-some kernel-leaf-every?
-   kernel-leaf-not-every? kernel-leaf-not-any? kernel-leaf-get
-   kernel-leaf-assoc kernel-leaf-dissoc kernel-leaf-update
-   kernel-leaf-get-in kernel-leaf-assoc-in kernel-leaf-update-in
-   kernel-leaf-select-keys kernel-leaf-nil? kernel-leaf-some?
-   kernel-leaf-true? kernel-leaf-false? kernel-leaf-number?
-   kernel-leaf-string? kernel-leaf-list? kernel-leaf-vector?
-   kernel-leaf-map? kernel-leaf-set? kernel-leaf-sequence?])
+   kernel-leaf-not-every? kernel-leaf-not-any? kernel-leaf-get kernel-leaf-assoc
+   kernel-leaf-dissoc kernel-leaf-update kernel-leaf-get-in kernel-leaf-assoc-in
+   kernel-leaf-update-in kernel-leaf-select-keys kernel-leaf-nil?
+   kernel-leaf-some? kernel-leaf-true? kernel-leaf-false? kernel-leaf-number?
+   kernel-leaf-string? kernel-leaf-list? kernel-leaf-vector? kernel-leaf-map?
+   kernel-leaf-set? kernel-leaf-sequence?])
 
 (extern python "osiris.kernel"
   ^{:python/name "apply" :type-params [A F P R]}
@@ -211,7 +208,8 @@
   (defn ^{:type R} kernel-leaf-get
     [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]])
   ^{:python/name "assoc" :type-params [A C]}
-  (defn ^{:type C} kernel-leaf-assoc [^{:type C} collection & ^{:type A} entries])
+  (defn ^{:type C} kernel-leaf-assoc
+    [^{:type C} collection & ^{:type A} entries])
   ^{:python/name "dissoc" :type-params [C K]}
   (defn ^{:type C} kernel-leaf-dissoc [^{:type C} collection & ^{:type K} keys])
   ^{:python/name "update" :type-params [A B C K]}

@@ -133,6 +133,13 @@ pub fn render_warning(
     render_message(source_name, source, span, "warning", code, message)
 }
 
+/// Columns available for the quoted source line before a terminal folds it.
+///
+/// A folded line puts the caret under the wrong visual row, so the line is
+/// windowed instead. CJK source reaches this point at half the character count
+/// of Latin source.
+const QUOTED_LINE_BUDGET: usize = 100;
+
 fn render_message(
     source_name: &str,
     source: &str,
@@ -146,14 +153,32 @@ fn render_message(
     let (line, column) = index.line_column(source, start);
     let bounds = index.line_bounds(source, line);
     let text = &source[bounds.start..bounds.end];
-    let marker_offset = source[bounds.start..start].chars().count();
-    let marker_end = span.end.min(bounds.end).max(start);
-    let marker_width = source[start..marker_end].chars().count().max(1);
+
+    // The caret is placed in terminal columns, not characters: one CJK name
+    // ahead of the span would otherwise shift it a column to the left for every
+    // character it contains.
+    let end = span.end.min(bounds.end).max(start);
+    let focus_start =
+        crate::text::terminal_width(&crate::text::expand_tabs(&source[bounds.start..start]));
+    let focus_end = focus_start
+        + crate::text::terminal_width(&crate::text::expand_tabs(&source[start..end])).max(1);
+    let window = crate::text::line_window(text, focus_start, focus_end, QUOTED_LINE_BUDGET);
+
+    // The gutter grows with the line number, and the caret row has to grow with
+    // it or every diagnostic past line 99 is indented one column short.
+    let gutter = line.to_string().chars().count().max(2);
+    let marker_offset = focus_start.saturating_sub(window.start_column);
+    let marker_width = focus_end.saturating_sub(focus_start).max(1);
 
     format!(
-        "{source_name}:{line}:{column}: {severity}[{code}]: {message}\n  |\n{line:>2} | {text}\n  | {}{}\n",
-        " ".repeat(marker_offset),
-        "^".repeat(marker_width)
+        "{source_name}:{line}:{column}: {severity}[{code}]: {message}\n\
+         {blank:>gutter$} |\n\
+         {line:>gutter$} | {text}\n\
+         {blank:>gutter$} | {offset}{caret}\n",
+        blank = "",
+        text = window.text,
+        offset = " ".repeat(marker_offset),
+        caret = "^".repeat(marker_width),
     )
 }
 
@@ -165,3 +190,7 @@ pub fn render_all(source_name: &str, source: &str, diagnostics: &[Diagnostic]) -
         .collect::<Vec<_>>()
         .join("")
 }
+
+#[cfg(test)]
+#[path = "diagnostic/tests.rs"]
+mod tests;

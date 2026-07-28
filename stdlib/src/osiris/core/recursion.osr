@@ -132,12 +132,18 @@
           (syntax-error entry "letfn function binding cannot be empty")
           (cons (first entry)
                 (cons (cons 'fn
-                            (cons (with-meta (first (rest entry)) (meta (first entry))) (rest (rest entry))))
+                            (cons (with-meta (first (rest entry))
+                                             (meta
+                                              (first
+                                               entry)))
+                                  (rest (rest entry))))
                       (osiris.kernel/letfn-normalize remaining))))
         (if (empty? remaining)
           (syntax-error entry "letfn requires name/function pairs")
           (cons entry
-                (cons (first remaining) (osiris.kernel/letfn-normalize (rest remaining)))))))))
+                (cons (first remaining)
+                      (osiris.kernel/letfn-normalize
+                       (rest remaining)))))))))
 
 ^{:doc
   {:default "Define mutually visible local functions."
@@ -150,9 +156,12 @@
     (syntax-error bindings "letfn requires a binding vector")
     (if (empty? body)
       (syntax-error &form "letfn requires a body")
-      `(osiris.kernel/letfn* ~(apply vector (osiris.kernel/letfn-normalize bindings))
-                             (do
-                               ~@body)))))
+      `(osiris.kernel/letfn*
+        ~(apply vector
+                (osiris.kernel/letfn-normalize
+                 bindings))
+        (do
+          ~@body)))))
 
 ^{:doc
   {:default "Invoke returned zero-argument callables until a value is produced."

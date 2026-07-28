@@ -6,9 +6,9 @@
   [kernel-leaf-apply kernel-leaf-merge kernel-leaf-merge-with
    kernel-leaf-group-by kernel-leaf-frequencies kernel-leaf-index-by
    kernel-leaf-select-keys kernel-leaf-rename-keys kernel-leaf-update-keys
-   kernel-leaf-update-vals kernel-leaf-zipmap kernel-leaf-invert
-   kernel-leaf-get kernel-leaf-assoc kernel-leaf-dissoc kernel-leaf-update
-   kernel-leaf-get-in kernel-leaf-assoc-in kernel-leaf-update-in])
+   kernel-leaf-update-vals kernel-leaf-zipmap kernel-leaf-invert kernel-leaf-get
+   kernel-leaf-assoc kernel-leaf-dissoc kernel-leaf-update kernel-leaf-get-in
+   kernel-leaf-assoc-in kernel-leaf-update-in])
 
 (extern python "osiris.kernel"
   ^{:python/name "apply" :type-params [A F P R]}
@@ -40,14 +40,16 @@
   (defn ^{:type (Map K B)} kernel-leaf-update-vals
     [^{:type (Fn [V] -> B)} function ^{:type (Map K V)} collection])
   ^{:python/name "zipmap" :type-params [A B K V]}
-  (defn ^{:type (Map K V)} kernel-leaf-zipmap [^{:type A} keys ^{:type B} values])
+  (defn ^{:type (Map K V)} kernel-leaf-zipmap
+    [^{:type A} keys ^{:type B} values])
   ^{:python/name "invert" :type-params [K V]}
   (defn ^{:type (Map V K)} kernel-leaf-invert [^{:type (Map K V)} collection])
   ^{:python/name "get" :type-params [B C K R]}
   (defn ^{:type R} kernel-leaf-get
     [^{:type C} collection ^{:type K} key [^{:type (Option B)} not-found = none]])
   ^{:python/name "assoc" :type-params [A C]}
-  (defn ^{:type C} kernel-leaf-assoc [^{:type C} collection & ^{:type A} entries])
+  (defn ^{:type C} kernel-leaf-assoc
+    [^{:type C} collection & ^{:type A} entries])
   ^{:python/name "dissoc" :type-params [C K]}
   (defn ^{:type C} kernel-leaf-dissoc [^{:type C} collection & ^{:type K} keys])
   ^{:python/name "update" :type-params [A B C K]}

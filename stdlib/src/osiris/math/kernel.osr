@@ -7,9 +7,8 @@
    kernel-leaf-sqrt kernel-leaf-exp kernel-leaf-log10 kernel-leaf-sin
    kernel-leaf-cos kernel-leaf-tan kernel-leaf-asin kernel-leaf-acos
    kernel-leaf-atan kernel-leaf-round kernel-leaf-log kernel-leaf-pow
-   kernel-leaf-atan2 kernel-leaf-finite? kernel-leaf-infinite?
-   kernel-leaf-nan? kernel-leaf-pi kernel-leaf-e kernel-leaf-tau
-   kernel-leaf-inf kernel-leaf-nan])
+   kernel-leaf-atan2 kernel-leaf-finite? kernel-leaf-infinite? kernel-leaf-nan?
+   kernel-leaf-pi kernel-leaf-e kernel-leaf-tau kernel-leaf-inf kernel-leaf-nan])
 
 (extern python "osiris.kernel"
   ^{:python/name "abs"}

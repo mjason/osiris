@@ -18,7 +18,9 @@
   (defn ^{:type Str} kernel-leaf-trim-right [^{:type Str} text])
   ^{:python/name "split"}
   (defn ^{:type (Vector Str)} kernel-leaf-split
-    [^{:type Str} text ^{:type Str} separator [^{:type (Option Int)} limit = none]])
+    [^{:type Str} text ^{:type Str} separator
+     [^{:type (Option Int)} limit =
+      none]])
   ^{:python/name "split_lines"}
   (defn ^{:type (Vector Str)} kernel-leaf-split-lines
     [^{:type Str} text [^{:type (Option Bool)} keep-ends? = none]])

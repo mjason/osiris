@@ -3,8 +3,8 @@
 (module osiris.core.control)
 
 (export
-  [-> ->> cond-> cond->> as-> doto and or when if-not when-not cond
-   if-let when-let if-some when-some some-> some->> condp case])
+  [-> ->> cond-> cond->> as-> doto and or when if-not when-not cond if-let
+   when-let if-some when-some some-> some->> condp case])
 
 (defn-for-syntax osiris.kernel/thread-first-step [value step]
   (if (list? step)
@@ -28,7 +28,8 @@
   (if (empty? clauses)
     value
     (if (empty? (rest clauses))
-      (syntax-error call "conditional threading requires condition and step pairs")
+      (syntax-error call
+                    "conditional threading requires condition and step pairs")
       (let [condition (first clauses)
             step (nth clauses 1)
             temporary
@@ -67,7 +68,10 @@
   :since "0.3.0"
   :deprecated false}
 (defmacro cond-> [value & clauses]
-  (osiris.kernel/cond-thread &form osiris.kernel/thread-first-step value clauses))
+  (osiris.kernel/cond-thread &form
+                             osiris.kernel/thread-first-step
+                             value
+                             clauses))
 
 ^{:doc
   {:default "Conditionally apply thread-last steps while evaluating the initial value once."
@@ -242,7 +246,8 @@
     (syntax-error bindings "if-let requires exactly one binding pair")
     (let [pattern (first bindings)]
       (if (not (osiris.kernel/control-binding-pattern? pattern))
-        (syntax-error pattern "if-let binding pattern must be a symbol, vector, or map")
+        (syntax-error pattern
+                      "if-let binding pattern must be a symbol, vector, or map")
         (let [temporary (gensym "if-let")]
           `(let [~temporary ~(nth bindings 1)]
              (if (osiris.kernel/truthy* ~temporary)
@@ -384,14 +389,14 @@
         (syntax-error (first clauses) "condp test requires a result expression")
         (let [test (first clauses)
               result (nth clauses 1)
-              remaining (rest (rest clauses))]
+              remaining
+              (rest (rest clauses))]
           (if (= result :>>)
             (if (empty? remaining)
               (syntax-error result "condp :>> requires a function expression")
               (let [function (first remaining)
                     tail (rest remaining)
-                    predicate-result
-                    (gensym "condp-result")]
+                    predicate-result (gensym "condp-result")]
                 `(let [~predicate-result (~predicate ~test ~value)]
                    (if (osiris.kernel/truthy* ~predicate-result)
                      (~function (osiris.kernel/present* ~predicate-result))
@@ -430,8 +435,9 @@
       (syntax-error test "case test group cannot be empty")
       (osiris.kernel/case-register-tests call seen test))
     (if (symbol? test)
-      (syntax-error test
-                    "case symbol constants are not runtime values; use a keyword or string")
+      (syntax-error
+       test
+       "case symbol constants are not runtime values; use a keyword or string")
       (if (vector? test)
         (syntax-error test "case vector constants are not supported in v0")
         (if (map? test)
@@ -441,9 +447,10 @@
 (defn-for-syntax osiris.kernel/validate-case-clauses [call clauses seen]
   (if (< (count clauses) 2)
     seen
-    (osiris.kernel/validate-case-clauses call
-                                         (rest (rest clauses))
-                                         (osiris.kernel/case-register-test call seen (first clauses)))))
+    (osiris.kernel/validate-case-clauses
+     call
+     (rest (rest clauses))
+     (osiris.kernel/case-register-test call seen (first clauses)))))
 
 (defn-for-syntax osiris.kernel/case-group-condition [value tests]
   (if (empty? (rest tests))

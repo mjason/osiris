@@ -2,7 +2,7 @@
 document-id: tooling/diagnostics
 title: Osiris Diagnostics
 language: en
-revision: 2
+revision: 3
 ---
 
 # Osiris Diagnostics
@@ -21,15 +21,30 @@ JSON and LSP use structured ranges and include the analyzed document version.
 Backend source maps relate generated Python spans to the packaged `.osr` source
 and its hash.
 
+The reported column counts characters, which is what an editor expects, while
+the caret is placed in terminal columns so that it lands under the span in
+mixed-script source. A CJK or full-width character occupies two columns, a
+combining mark none, and a tab advances to the next eight-column stop. A quoted
+line longer than 100 columns is windowed around the span with `...`, because a
+line the terminal folds puts the caret under the wrong row.
+
+Ambiguous-width characters — `→`, `※`, `±`, the box-drawing set — are one column
+beside Latin text and two beside CJK text, and a terminal resolves this by its
+font rather than by locale. They are measured as one column by default. Set
+`OSIRIS_EAST_ASIAN_WIDTH=wide` when reading Osiris output in a terminal
+configured for CJK. This affects presentation only: the canonical source format
+always measures them as one column so `osr fmt --check` gives the same answer
+everywhere.
+
 A diagnostic reported against macro-generated syntax carries the whole
 expansion chain, outermost macro first, with a `macro-call-site` and a
 `macro-definition` entry per macro:
 
 ```
 chain.osr:2:27: error[OSR-N0012]: unknown name `no-such-fn`
-  |
+   |
  2 | (defmacro inner [value] `(no-such-fn ~value))
-  |                           ^^^^^^^^^^
+   |                           ^^^^^^^^^^
   = note: expanded from macro `outer` called here (chain.osr:4:26)
   = note: macro `outer` is defined here (chain.osr:3:1)
   = note: expanded from macro `inner` called here (chain.osr:4:26)

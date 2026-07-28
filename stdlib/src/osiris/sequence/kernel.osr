@@ -3,20 +3,19 @@
 (module osiris.sequence.kernel)
 
 (export
-  [kernel-leaf-apply kernel-leaf-range kernel-leaf-repeat
-   kernel-leaf-repeatedly kernel-leaf-iterate kernel-leaf-cycle
-   kernel-leaf-sequence kernel-leaf-take kernel-leaf-drop
-   kernel-leaf-take-while kernel-leaf-drop-while kernel-leaf-take-last
-   kernel-leaf-drop-last kernel-leaf-partition kernel-leaf-partition-all
-   kernel-leaf-partition-by kernel-leaf-interleave kernel-leaf-interpose
-   kernel-leaf-distinct kernel-leaf-dedupe kernel-leaf-flatten
-   kernel-leaf-mapcat kernel-leaf-keep kernel-leaf-keep-indexed
-   kernel-leaf-map-indexed kernel-leaf-first kernel-leaf-rest
-   kernel-leaf-next kernel-leaf-nth kernel-leaf-count kernel-leaf-empty
-   kernel-leaf-empty? kernel-leaf-seq kernel-leaf-reduce kernel-leaf-fold
-   kernel-leaf-reductions kernel-leaf-run! kernel-leaf-doall
-   kernel-leaf-dorun kernel-leaf-some kernel-leaf-every?
-   kernel-leaf-not-every? kernel-leaf-not-any?])
+  [kernel-leaf-apply kernel-leaf-range kernel-leaf-repeat kernel-leaf-repeatedly
+   kernel-leaf-iterate kernel-leaf-cycle kernel-leaf-sequence kernel-leaf-take
+   kernel-leaf-drop kernel-leaf-take-while kernel-leaf-drop-while
+   kernel-leaf-take-last kernel-leaf-drop-last kernel-leaf-partition
+   kernel-leaf-partition-all kernel-leaf-partition-by kernel-leaf-interleave
+   kernel-leaf-interpose kernel-leaf-distinct kernel-leaf-dedupe
+   kernel-leaf-flatten kernel-leaf-mapcat kernel-leaf-keep
+   kernel-leaf-keep-indexed kernel-leaf-map-indexed kernel-leaf-first
+   kernel-leaf-rest kernel-leaf-next kernel-leaf-nth kernel-leaf-count
+   kernel-leaf-empty kernel-leaf-empty? kernel-leaf-seq kernel-leaf-reduce
+   kernel-leaf-fold kernel-leaf-reductions kernel-leaf-run! kernel-leaf-doall
+   kernel-leaf-dorun kernel-leaf-some kernel-leaf-every? kernel-leaf-not-every?
+   kernel-leaf-not-any?])
 
 (extern python "osiris.kernel"
   ^{:python/name "apply" :type-params [A F P R]}

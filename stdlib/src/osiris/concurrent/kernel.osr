@@ -4,9 +4,8 @@
 
 (export
   [kernel-leaf-apply kernel-leaf-future-call kernel-leaf-future-done?
-   kernel-leaf-future-cancelled? kernel-leaf-future-cancel
-   kernel-leaf-pmap kernel-leaf-promise kernel-leaf-deliver
-   kernel-leaf-deref kernel-leaf-lock])
+   kernel-leaf-future-cancelled? kernel-leaf-future-cancel kernel-leaf-pmap
+   kernel-leaf-promise kernel-leaf-deliver kernel-leaf-deref kernel-leaf-lock])
 
 (import osiris.core :refer [Future Promise Delay Lock])
 

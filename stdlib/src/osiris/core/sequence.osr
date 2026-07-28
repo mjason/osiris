@@ -3,12 +3,11 @@
 (module osiris.core.sequence)
 
 (export
-  [first rest next nth count empty empty? seq seq? coll? sequential? cons
-   concat range repeat repeatedly iterate cycle sequence take drop
-   take-while drop-while take-last drop-last partition partition-all
-   partition-by interleave interpose distinct dedupe flatten keep
-   keep-indexed map-indexed run! doall dorun some every? not-every?
-   not-any?])
+  [first rest next nth count empty empty? seq seq? coll? sequential? cons concat
+   range repeat repeatedly iterate cycle sequence take drop take-while
+   drop-while take-last drop-last partition partition-all partition-by
+   interleave interpose distinct dedupe flatten keep keep-indexed map-indexed
+   run! doall dorun some every? not-every? not-any?])
 
 (import osiris.core.kernel :refer :all)
 

@@ -3,8 +3,8 @@
 
 (export
   [merge merge-with group-by frequencies index-by select-keys rename-keys
-   update-keys update-vals zipmap invert get assoc dissoc update get-in
-   assoc-in update-in])
+   update-keys update-vals zipmap invert get assoc dissoc update get-in assoc-in
+   update-in])
 
 (import osiris.collection.kernel :refer :all)
 

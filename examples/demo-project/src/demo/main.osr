@@ -1,11 +1,12 @@
 (module demo.main)
 
 (import demo.core :refer [increment-all sum-values])
+
 (import demo.text :refer [normalize])
+
 (py/import builtins :as py)
 
 (let [^{:type (Vector Int)} values (increment-all [1 2 3 4])]
-  (py.print
-    {"values" values
-     "total" (sum-values values)
-     "message" (normalize "  Hello, Osiris  ")}))
+  (py.print {"values" values
+             "total" (sum-values values)
+             "message" (normalize "  Hello, Osiris  ")}))

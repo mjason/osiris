@@ -2,16 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use unicode_width::UnicodeWidthStr;
-
 use crate::{
     diagnostic::Diagnostic,
     reader,
-    syntax::{Form, FormKind, Token, TokenKind, source_form_eq},
+    syntax::{Document, Form, FormKind, Token, TokenKind, source_form_eq},
 };
 
 /// Version of the byte-level canonical formatting contract.
-pub const FORMAT_VERSION: u32 = 6;
+pub const FORMAT_VERSION: u32 = 7;
 
 const MAX_LINE_WIDTH: usize = 80;
 const METADATA_LINE_WIDTH: usize = 72;
@@ -27,6 +25,23 @@ pub struct FormatError {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Rounds of plan-then-emit before the layout is taken as it stands.
+///
+/// Each round's plan is a pure function of the form structure and the columns
+/// the previous round measured, so the sequence is deterministic. It normally
+/// settles on the second round; the cap only bounds a pathological oscillation.
+const LAYOUT_ROUNDS: usize = 3;
+
+/// One emitted layout, with the column every form's opening delimiter landed
+/// in, keyed by that form's `datum_span.start`.
+struct Emitted {
+    text: String,
+    anchors: BTreeMap<usize, usize>,
+    /// Byte ranges of `text` holding an embedded language's own canonical
+    /// layout. Those lines answer to that language's formatter, not this one.
+    foreign: Vec<std::ops::Range<usize>>,
+}
+
 /// Format one source snapshot without changing literal or comment contents.
 pub fn format_source(source: &str) -> Result<String, FormatError> {
     let document = reader::read(source);
@@ -36,7 +51,66 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
         });
     }
 
-    let layout = LayoutPlan::new(&document.forms, &document.tokens);
+    // The planner chooses breaks from form structure and flat widths, but the
+    // column a break lands in is only known once the text is emitted. Feeding
+    // the measured columns back and re-planning applies the line-width budget
+    // where the text actually sits. The gap between the two matters most for
+    // CJK source: head-aligned indents are deeper and every identifier
+    // character costs two columns, so a plan made from column zero overflows.
+    let mut anchors = BTreeMap::new();
+    let mut output = String::new();
+    for round in 0..LAYOUT_ROUNDS {
+        let layout = LayoutPlan::new(&document.forms, &document.tokens, &anchors);
+        let emitted = emit(&document, &layout)?;
+        let settled = round > 0 && emitted.text == output;
+        output = emitted.text;
+        anchors = emitted.anchors;
+        // Planning from column zero can only under-break, never over-break, so
+        // a first round whose every line fits is already the minimal layout and
+        // needs no second pass. Only source that overflows pays for more.
+        if settled || fits_line_width(&output, &emitted.foreign) {
+            break;
+        }
+    }
+
+    let formatted = reader::read(&output);
+    let equivalent = formatted.diagnostics.is_empty()
+        && documents_equivalent_after_embedded_formatting(&document.forms, &formatted.forms);
+    if !equivalent {
+        return Err(FormatError {
+            diagnostics: vec![Diagnostic::error(
+                "OSR-F0001",
+                "formatter could not prove that the formatted source preserves reader meaning",
+                Default::default(),
+            )],
+        });
+    }
+    Ok(output)
+}
+
+/// Whether every line this formatter owns already fits the canonical width.
+///
+/// An embedded block carries a foreign language's own canonical layout at that
+/// language's own width — Ruff's default is 88 columns — so counting its lines
+/// would make the layout loop chase a target it can never reach.
+fn fits_line_width(text: &str, foreign: &[std::ops::Range<usize>]) -> bool {
+    let mut offset = 0;
+    for line in text.split('\n') {
+        let range = offset..offset + line.len();
+        offset = range.end + 1;
+        let embedded = foreign
+            .iter()
+            .any(|block| block.start < range.end && range.start < block.end);
+        if !embedded && crate::text::canonical_width(line) > MAX_LINE_WIDTH {
+            return false;
+        }
+    }
+    true
+}
+
+fn emit(document: &Document, layout: &LayoutPlan) -> Result<Emitted, FormatError> {
+    let mut anchors = BTreeMap::new();
+    let mut foreign = Vec::new();
     let mut output = String::new();
     let mut depth = 0_usize;
     let mut line_start = true;
@@ -138,18 +212,23 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
         } else {
             token.text.clone()
         };
+        let rendered_start = output.len();
         output.push_str(&rendered);
+        if token.kind == TokenKind::EmbeddedLanguage {
+            foreign.push(rendered_start..output.len());
+        }
         if let Some(last_line) = rendered.rsplit('\n').next()
             && rendered.contains('\n')
         {
-            column = display_width(last_line);
+            column = crate::text::canonical_width(last_line);
         } else {
-            column += display_width(&rendered);
+            column += crate::text::canonical_width(&rendered);
         }
         line_start = false;
         if is_opening(token.kind) {
             depth += 1;
             delimiters.push((token.span.start, token_column));
+            anchors.insert(token.span.start, token_column);
         }
         previous = Some(token.kind);
 
@@ -172,20 +251,11 @@ pub fn format_source(source: &str) -> Result<String, FormatError> {
         output.pop();
     }
     output.push('\n');
-
-    let formatted = reader::read(&output);
-    let equivalent = formatted.diagnostics.is_empty()
-        && documents_equivalent_after_embedded_formatting(&document.forms, &formatted.forms);
-    if !equivalent {
-        return Err(FormatError {
-            diagnostics: vec![Diagnostic::error(
-                "OSR-F0001",
-                "formatter could not prove that the formatted source preserves reader meaning",
-                Default::default(),
-            )],
-        });
-    }
-    Ok(output)
+    Ok(Emitted {
+        text: output,
+        anchors,
+        foreign,
+    })
 }
 
 fn find_embedded_form(forms: &[Form], start: usize) -> Option<&Form> {
@@ -329,18 +399,41 @@ fn format_error(message: impl Into<String>, span: crate::source::Span) -> Format
     }
 }
 
-#[derive(Default)]
-struct LayoutPlan {
+struct LayoutPlan<'anchors> {
     breaks_before: BTreeMap<usize, BreakSpec>,
+    /// Columns measured by the previous emit round, empty on the first round.
+    anchors: &'anchors BTreeMap<usize, usize>,
 }
 
-impl LayoutPlan {
-    fn new(forms: &[Form], tokens: &[Token]) -> Self {
-        let mut plan = Self::default();
+impl<'anchors> LayoutPlan<'anchors> {
+    fn new(forms: &[Form], tokens: &[Token], anchors: &'anchors BTreeMap<usize, usize>) -> Self {
+        let mut plan = Self {
+            breaks_before: BTreeMap::new(),
+            anchors,
+        };
         for form in forms {
             plan.visit(form, tokens);
         }
         plan
+    }
+
+    /// Column this form's opening delimiter occupied last round.
+    ///
+    /// Zero on the first round, which reproduces the original plan; the second
+    /// round is the one that sees where the text really sits.
+    fn anchor_column(&self, form: &Form) -> usize {
+        self.anchors
+            .get(&form.datum_span.start)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Whether the form, laid out flat, would pass `budget` from the column it
+    /// actually starts at.
+    fn overflows(&self, form: &Form, tokens: &[Token], budget: usize) -> bool {
+        self.anchor_column(form)
+            .saturating_add(flat_form_width(form, tokens))
+            > budget
     }
 
     fn visit(&mut self, form: &Form, tokens: &[Token]) {
@@ -400,7 +493,7 @@ impl LayoutPlan {
         if items.len() < 4 {
             return;
         }
-        if items.len() > 4 || flat_form_width(form, tokens) > METADATA_LINE_WIDTH {
+        if items.len() > 4 || self.overflows(form, tokens, METADATA_LINE_WIDTH) {
             for key in items.iter().step_by(2).skip(1) {
                 self.add_break(key.span.start, form.datum_span.start, 1);
             }
@@ -411,7 +504,7 @@ impl LayoutPlan {
         let Some(head) = items.first().and_then(form_symbol) else {
             return;
         };
-        let width = flat_form_width(form, tokens);
+        let overflows = self.overflows(form, tokens, MAX_LINE_WIDTH);
         match head {
             "extern" => {
                 for item in items.iter().skip(3) {
@@ -423,9 +516,27 @@ impl LayoutPlan {
                     self.add_break(exports.span.start, form.datum_span.start, 2);
                 }
             }
-            "defn" | "defmacro" | "defn-for-syntax" | "defstruct" => {
+            // The Clojure style guide indents the body of every `def` form and
+            // of every form that takes a body by two spaces, rather than
+            // aligning it under the first argument. These keep their body
+            // inline while it fits, unlike `defn`, whose body always starts on
+            // its own line.
+            "def" | "fn" | "static-record" => {
+                if overflows {
+                    for body in items.iter().skip(2) {
+                        self.add_break(body.span.start, form.datum_span.start, 2);
+                    }
+                }
+            }
+            "defstatic-schema" => {
+                if overflows {
+                    self.plan_pairs(form, items, 2);
+                }
+            }
+            "defn" | "defn-" | "defmacro" | "defn-for-syntax" | "defstruct" => {
                 if let Some(parameters) = items.get(2)
-                    && flat_width(form.datum_span.start, parameters.span.end, tokens)
+                    && self.anchor_column(form)
+                        + flat_width(form.datum_span.start, parameters.span.end, tokens)
                         > MAX_LINE_WIDTH
                 {
                     self.add_break(parameters.span.start, form.datum_span.start, 2);
@@ -462,7 +573,7 @@ impl LayoutPlan {
             "case" => self.plan_pairs(form, items, 2),
             "condp" => self.plan_pairs(form, items, 3),
             "->" | "->>" | "some->" | "some->>" => {
-                let offset = display_width(head) + 2;
+                let offset = crate::text::canonical_width(head) + 2;
                 for step in items.iter().skip(2) {
                     self.add_break(step.span.start, form.datum_span.start, offset);
                 }
@@ -478,10 +589,32 @@ impl LayoutPlan {
                     self.add_break(body.span.start, form.datum_span.start, 2);
                 }
             }
-            _ if width > MAX_LINE_WIDTH => {
-                let offset = display_width(head) + 2;
-                for argument in items.iter().skip(2) {
-                    self.add_break(argument.span.start, form.datum_span.start, offset);
+            // The Clojure style guide gives a call two shapes: keep the first
+            // argument on the head line and align the rest under it, or put no
+            // argument on the head line and indent one space. Alignment reads
+            // better and is preferred, but it costs the head's own width in
+            // indentation on every following line. A wide head — which in CJK
+            // source is any four-character name — can make that unaffordable,
+            // and the one-space shape is the guide's own answer.
+            _ if overflows => {
+                let aligned = crate::text::canonical_width(head) + 2;
+                let widest = items
+                    .iter()
+                    .skip(1)
+                    .map(|argument| flat_width(argument.span.start, argument.span.end, tokens))
+                    .max()
+                    .unwrap_or(0);
+                let column = self.anchor_column(form);
+                if column + aligned + widest > MAX_LINE_WIDTH
+                    && column + 1 + widest <= MAX_LINE_WIDTH
+                {
+                    for argument in items.iter().skip(1) {
+                        self.add_break(argument.span.start, form.datum_span.start, 1);
+                    }
+                } else {
+                    for argument in items.iter().skip(2) {
+                        self.add_break(argument.span.start, form.datum_span.start, aligned);
+                    }
                 }
             }
             _ => {}
@@ -492,7 +625,7 @@ impl LayoutPlan {
         let FormKind::Vector(items) = &form.kind else {
             return;
         };
-        if items.len() > 2 || flat_form_width(form, tokens) > MAX_LINE_WIDTH / 2 {
+        if items.len() > 2 || self.overflows(form, tokens, MAX_LINE_WIDTH / 2) {
             for binding in items.iter().step_by(2).skip(1) {
                 self.add_break(binding.span.start, form.datum_span.start, 1);
             }
@@ -500,10 +633,13 @@ impl LayoutPlan {
     }
 
     fn plan_sequential_collection(&mut self, form: &Form, items: &[Form], tokens: &[Token]) {
-        if items.len() < 2 || flat_form_width(form, tokens) <= MAX_LINE_WIDTH {
+        if items.len() < 2 || !self.overflows(form, tokens, MAX_LINE_WIDTH) {
             return;
         }
-        let mut line_width = 1_usize;
+        // Items continue one column inside the opening delimiter, so that is
+        // where every packed line starts and what the budget is measured from.
+        let indent = self.anchor_column(form).saturating_add(1);
+        let mut line_width = indent;
         for (index, item) in items.iter().enumerate() {
             let item_width = flat_width(item.span.start, item.span.end, tokens);
             let separator = usize::from(index > 0);
@@ -511,10 +647,10 @@ impl LayoutPlan {
                 && line_width
                     .saturating_add(separator)
                     .saturating_add(item_width)
-                    > 72
+                    > MAX_LINE_WIDTH
             {
                 self.add_break(item.span.start, form.datum_span.start, 1);
-                line_width = 1_usize.saturating_add(item_width);
+                line_width = indent.saturating_add(item_width);
             } else {
                 line_width = line_width
                     .saturating_add(separator)
@@ -562,7 +698,7 @@ fn flat_width(start: usize, end: usize, tokens: &[Token]) -> usize {
         if needs_space(previous, token.kind) {
             width += 1;
         }
-        width += display_width(&token.text);
+        width += crate::text::canonical_width(&token.text);
         previous = Some(token.kind);
     }
     width
@@ -574,10 +710,6 @@ fn resolve_indent(spec: BreakSpec, delimiters: &[(usize, usize)]) -> usize {
         .rev()
         .find_map(|(position, column)| (*position == spec.anchor).then_some(*column + spec.offset))
         .unwrap_or(spec.offset)
-}
-
-fn display_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
 }
 
 fn enclosing_delimiter(tokens: &[Token], position: usize, kind: TokenKind) -> Option<usize> {

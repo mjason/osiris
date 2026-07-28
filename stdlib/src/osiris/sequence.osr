@@ -5,8 +5,8 @@
   [range repeat repeatedly iterate cycle sequence take drop take-while
    drop-while take-last drop-last partition partition-all partition-by
    interleave interpose distinct dedupe flatten mapcat keep keep-indexed
-   map-indexed first rest next nth count empty empty? seq reduce fold
-   reductions run! doall dorun some every? not-every? not-any?])
+   map-indexed first rest next nth count empty empty? seq reduce fold reductions
+   run! doall dorun some every? not-every? not-any?])
 
 (import osiris.sequence.kernel :refer :all)
 

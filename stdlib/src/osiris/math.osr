@@ -2,8 +2,8 @@
 (module osiris.math)
 
 (export
-  [abs floor ceil trunc sqrt exp log10 sin cos tan asin acos atan round
-   log pow atan2 finite? infinite? nan? pi e tau inf nan])
+  [abs floor ceil trunc sqrt exp log10 sin cos tan asin acos atan round log pow
+   atan2 finite? infinite? nan? pi e tau inf nan])
 
 (import osiris.math.kernel :refer :all)
 
@@ -35,7 +35,8 @@
   (kernel-leaf-ceil value))
 
 ^{:doc
-  {:default "Truncate a scalar value toward zero." "zh-CN" "将标量值向零截断。"}
+  {:default "Truncate a scalar value toward zero."
+   "zh-CN" "将标量值向零截断。"}
   :category "math"
   :since "0.3.0"
   :deprecated false}
@@ -70,7 +71,8 @@
   (kernel-leaf-log10 value))
 
 ^{:doc
-  {:default "Return the scalar sine in radians." "zh-CN" "返回以弧度计的标量正弦。"}
+  {:default "Return the scalar sine in radians."
+   "zh-CN" "返回以弧度计的标量正弦。"}
   :category "math"
   :since "0.3.0"
   :deprecated false}
@@ -78,7 +80,8 @@
   (kernel-leaf-sin value))
 
 ^{:doc
-  {:default "Return the scalar cosine in radians." "zh-CN" "返回以弧度计的标量余弦。"}
+  {:default "Return the scalar cosine in radians."
+   "zh-CN" "返回以弧度计的标量余弦。"}
   :category "math"
   :since "0.3.0"
   :deprecated false}

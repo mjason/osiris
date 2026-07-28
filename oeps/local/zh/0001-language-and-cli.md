@@ -12,11 +12,11 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-27
-revision: 26
+updated: 2026-07-28
+revision: 27
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 26
+source-revision: 27
 translation-status: Current
 requires: [0]
 replaces: []
@@ -836,8 +836,11 @@ Canonical layout 以 [Clojure Style Guide](https://guide.clojure.style/) 的 sou
 - 缩进必须使用 space，禁止 tab。带 body parameter 的 form 必须从 opening parenthesis
   向内缩进两个 space。Closing delimiter 必须收拢在最后一个 content line，禁止单独占行。
 - Function/macro call 无法放入一行时，应尽量把第一个 argument 留在 callee 同一行，后续
-  argument 必须与第一个 argument 纵向对齐。如果 callee 同行没有 argument，argument
-  必须从 opening parenthesis 后一个 space 的位置开始。
+  argument 必须与第一个 argument 纵向对齐。仅当每个 argument 在对齐所置的列上仍能满足
+  行宽时，该对齐才算可行；callee 宽到使其不可行时，同行必须不留任何 argument。如果
+  callee 同行没有 argument，argument 必须从 opening parenthesis 后一个 space 的位置开始。
+- 每一次宽度判定都必须以该 form 实际起始的显示列为基准，而不是以行首为基准。若
+  formatter 在得知该列之前就规划了换行，则必须在得知之后重新判定。
 - Binding pair 必须与 opening bracket 后的第一个 binding 对齐。Map key 必须从 opening
   brace 后一个 space的位置对齐。Sequential collection 每行必须保留尽可能多的完整
   element，continuation element 从 opening delimiter 后一个 space 的位置对齐。
@@ -1076,6 +1079,10 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 27，2026-07-28：定义了「把调用的参数与首参对齐」在什么条件下才算可行，
+  并要求每一处宽度判定都以 form 实际起始的显示列为基准（OEP-0001-R073）。宽 head
+  ——在中文源码里任何四字名都是——此前会强制对齐并撑破行宽；formatter 也可能在还
+  不知道自身缩进时就规划断行。
 - Revision 26，2026-07-28：固定惰性 metadata 规则的执行时机（OEP-0001-R019A）。宏
   template 的 `^{...}` 可以包含 unquote，syntax quote 会在 metadata 内部执行替换，
   规则改为在展开结果上强制；已发布的 macro template 按未替换形态接受。此前给生成的

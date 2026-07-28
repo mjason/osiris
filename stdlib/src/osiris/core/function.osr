@@ -8,7 +8,8 @@
 (import osiris.core.kernel :refer :all)
 
 ^{:doc
-  {:default "Return the supplied value unchanged." "zh-CN" "原样返回给定值。"}
+  {:default "Return the supplied value unchanged."
+   "zh-CN" "原样返回给定值。"}
   :category "core"
   :since "0.3.0"
   :deprecated false

@@ -51,12 +51,14 @@
   (if (empty? names)
     '()
     (cons (first names)
-          (cons (first forms) (osiris.kernel/parallel-bindings (rest names) (rest forms))))))
+          (cons (first forms)
+                (osiris.kernel/parallel-bindings (rest names) (rest forms))))))
 
 (defn-for-syntax osiris.kernel/parallel-deref-forms [names]
   (if (empty? names)
     '()
-    (cons `(deref ~(first names)) (osiris.kernel/parallel-deref-forms (rest names)))))
+    (cons `(deref ~(first names))
+          (osiris.kernel/parallel-deref-forms (rest names)))))
 
 (defn-for-syntax osiris.kernel/parallel-call-forms [names]
   (if (empty? names)
@@ -83,8 +85,7 @@
     []
     (let [function-names
           (osiris.kernel/parallel-params "pcall-function" functions)
-          future-names
-          (osiris.kernel/parallel-params "pcall-future" functions)
+          future-names (osiris.kernel/parallel-params "pcall-future" functions)
           function-bindings
           (osiris.kernel/parallel-bindings function-names functions)
           future-expressions (osiris.kernel/parallel-call-forms function-names)
@@ -147,10 +148,11 @@
     (if (not (osiris.kernel/concurrent-even-bindings? bindings))
       (syntax-error bindings "binding requires target/value pairs")
       (let [valid (osiris.kernel/validate-binding-targets bindings)]
-        `(osiris.kernel/binding* ~bindings (fn [] ~(if (empty? body)
-                                                     none
-                                                     `(do
-                                                        ~@body))))))))
+        `(osiris.kernel/binding* ~bindings
+                                 (fn [] ~(if (empty? body)
+                                           none
+                                           `(do
+                                              ~@body))))))))
 
 (defn-for-syntax osiris.kernel/with-open-form [call bindings body]
   (if (empty? bindings)
@@ -160,7 +162,8 @@
       (syntax-error call "with-open requires resource name/value pairs")
       (let [name (first bindings)
             value (nth bindings 1)
-            remaining (rest (rest bindings))]
+            remaining
+            (rest (rest bindings))]
         (if (not (symbol? name))
           (syntax-error name "with-open resource names must be symbols")
           `(let [~name ~value]
@@ -180,7 +183,8 @@
     (osiris.kernel/with-open-form &form bindings body)))
 
 ^{:doc
-  {:default "Raise the supplied exception value." "zh-CN" "抛出给定的异常值。"}
+  {:default "Raise the supplied exception value."
+   "zh-CN" "抛出给定的异常值。"}
   :category "core"
   :since "0.3.0"
   :deprecated false}

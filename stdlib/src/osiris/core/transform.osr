@@ -3,8 +3,8 @@
 (module osiris.core.transform)
 
 (export
-  [map mapv mapcat mapcatv filter filterv remove removev reduce fold
-   reductions reduced reduced? unreduced])
+  [map mapv mapcat mapcatv filter filterv remove removev reduce fold reductions
+   reduced reduced? unreduced])
 
 (import osiris.core.kernel :refer :all)
 

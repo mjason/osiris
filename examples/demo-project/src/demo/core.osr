@@ -12,8 +12,7 @@
   {:default "Increment every integer in a vector."
    "zh-CN" "将向量中的每个整数加一。"}
   :examples [increment-all-example]}
-(defn ^{:type (Vector Int)} increment-all
-  [^{:type (Vector Int)} values]
+(defn ^{:type (Vector Int)} increment-all [^{:type (Vector Int)} values]
   (mapv (fn [^Int value] (+ value 1)) values))
 
 ~osiris<sum-values-example>
