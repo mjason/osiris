@@ -165,6 +165,13 @@ pub(super) fn effective_reachable_from(
             pending.insert(target.normalized_name.clone());
         }
     }
+    // The walk starts from the project to find its dependencies, but the
+    // project itself is not one of its own extensions: its modules come from
+    // source. uv installs the root project into the environment it manages, so
+    // without this the previously installed copy is discovered alongside the
+    // source tree and every module is a duplicate of its own stale interface —
+    // an `osr check` that fails only after the first `uv sync`.
+    visited.remove(&project_name);
     Ok(visited.into_iter().collect())
 }
 

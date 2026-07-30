@@ -376,3 +376,106 @@ source = {{ registry = "https://pypi.org/simple", hash = "{HASH_B}" }}
     assert!(graph.trust_policy_hash.starts_with("sha256:"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn an_installed_copy_of_the_project_is_not_its_own_extension() {
+    // uv installs the root project into the environment it manages, so after
+    // the first `uv sync` a copy of the project sits in site-packages with a
+    // valid extension marker. Its modules come from source; discovering the
+    // installed copy made every source module a duplicate of its own stale
+    // interface.
+    let id = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let root =
+        std::env::temp_dir().join(format!("osiris-self-extension-{}-{id}", std::process::id()));
+    let site_root = root.join("site");
+    let dist_info = site_root.join("demo-1.0.dist-info");
+    let package = site_root.join("demo");
+    fs::create_dir_all(&dist_info).unwrap();
+    fs::create_dir_all(&package).unwrap();
+
+    let source =
+        "(module demo.core) ^{:doc \"The answer.\"} (def ^Int answer 42) (export [answer])";
+    let options =
+        CompileOptions::new("demo.core", PythonVersion::new(3, 11)).with_provider("demo", "1.0");
+    let compiled = compiler::compile(source, &options);
+    assert!(
+        compiled.analysis.diagnostics.is_empty(),
+        "{:?}",
+        compiled.analysis.diagnostics
+    );
+    let interface = compiled.interface.expect("interface should be emitted");
+    let parsed = crate::interface::read(&interface).unwrap();
+    fs::write(package.join("core.osri"), interface).unwrap();
+    fs::write(package.join("core.osr"), source).unwrap();
+    let source_hash = crate::hash::sha256(source.as_bytes());
+    let source_map = serde_json::to_vec(&serde_json::json!({
+        "version": 3,
+        "language_version": crate::LANGUAGE_VERSION,
+        "python_target": "3.11",
+        "source": "demo/core.osr",
+        "source_hash": source_hash,
+        "generated": "demo/core.py",
+        "mappings": [],
+    }))
+    .unwrap();
+    fs::write(package.join("core.py.map"), &source_map).unwrap();
+    fs::write(
+        dist_info.join("METADATA"),
+        "Metadata-Version: 2.4\nName: demo\nVersion: 1.0\n\n",
+    )
+    .unwrap();
+    fs::write(
+        dist_info.join("osiris.toml"),
+        format!(
+            "schema = 2\ncompiler_abi = 1\nlanguage_abi = 2\nlanguage_version = \"{}\"\nstandard_library_abi = {}\nlinkable_helper_format = {}\ndistribution = \"demo\"\nversion = \"1.0\"\npython_target = \"3.11\"\ndependencies = []\n\n[[extension]]\nid = \"core\"\ninterface = \"demo/core.osri\"\ninterface_hash = \"{}\"\nsource = \"demo/core.osr\"\nsource_hash = \"{}\"\nsource_map = \"demo/core.py.map\"\nsource_map_hash = \"{}\"\n",
+            crate::LANGUAGE_VERSION,
+            crate::STANDARD_LIBRARY_ABI,
+            crate::LINKABLE_HELPER_FORMAT,
+            parsed.semantic_interface_hash(),
+            source_hash,
+            crate::hash::sha256(&source_map),
+        ),
+    )
+    .unwrap();
+    fs::write(
+        root.join("pyproject.toml"),
+        r#"[project]
+name = "demo"
+version = "1.0"
+dependencies = []
+"#,
+    )
+    .unwrap();
+    fs::write(root.join("osiris.jsonc"), "{}").unwrap();
+    fs::write(
+        root.join("uv.lock"),
+        r#"version = 1
+requires-python = ">=3.11"
+
+[[package]]
+name = "demo"
+source = { editable = "." }
+"#,
+    )
+    .unwrap();
+
+    let config = ProjectConfig::load(&root.join("pyproject.toml")).unwrap();
+    let lock = config.load_lock().unwrap();
+    let graph = resolve_effective_extensions(&config, &lock, &[site_root]).unwrap();
+    assert!(
+        graph.extensions.is_empty(),
+        "the project's own installed copy must not be discovered: {:?}",
+        graph
+            .extensions
+            .iter()
+            .map(|extension| extension.normalized_distribution.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        graph
+            .reachable_distributions
+            .iter()
+            .all(|distribution| distribution.normalized_name != "demo")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
