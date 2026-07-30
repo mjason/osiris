@@ -3,6 +3,7 @@
 ## 0.3.22
 
 - Support `outDir: "."`: artifacts land beside the sources at the project root, published in place — only artifacts a previous build recorded are ever cleaned up, never an authored file.
+- Ship every optional `.gitignore` rule commented (`outDir` whole-directory, `*.osri`, `*.py.map`), to be opened as needed; the `outDir: "."` layout gets only the per-suffix rules.
 
 ## 0.3.21
 
