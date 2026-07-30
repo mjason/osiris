@@ -20,6 +20,16 @@ creates a publishable Osiris package using the `osiris_build` backend. Dependenc
 resolution, locking, installation, and publication remain ordinary uv/PyPI
 operations.
 
+`init` is additive on an existing project: a present `osiris.jsonc`, starter
+source, or foreign `build-system` is left alone (the last is refused, not
+replaced). A fresh project gets a `.gitignore` that ignores the environment,
+caches, and the output directory as a whole — never `*.osri` or `*.py.map` by
+suffix, because the generated artifacts are one set. Committing the output
+directory is a supported choice (consumers reading generated code without the
+compiler); delete its single line to do that. An existing `.gitignore` is
+treated as chosen policy: only the machine-local `.osiris/` cache entry is
+appended, and only when missing.
+
 Project commands discover `osiris.jsonc` from the selected path. `osr check`
 analyzes without writing output. `osr build` compiles the complete configured
 source scope into `outDir`. `osr watch` performs the same build after source

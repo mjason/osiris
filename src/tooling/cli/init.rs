@@ -48,6 +48,22 @@ const PROJECT_CONFIG: &str = r#"{
 }
 "#;
 
+fn gitignore_template(out_dir: &str) -> String {
+    format!(
+        r#"# uv 管理的环境与编译器缓存，永远不进版本库。
+.venv/
+__pycache__/
+*.pyc
+.osiris/
+
+# 生成产物。整个目录要么提交要么忽略——.py、.osri、.py.map 是一组，按后缀
+# 挑着提交会得到不完整的产物。要提交生成代码（例如让不运行编译器的消费者
+# 直接读、审查生成结果），删掉下面这一行即可。
+{out_dir}/
+"#
+    )
+}
+
 pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     let arguments = match parse_init_arguments(arguments) {
         Ok(arguments) => arguments,
@@ -77,10 +93,13 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
         Ok(configured) => configured,
         Err(message) => return init_failure(message),
     };
-    let source_root = match configure_osiris_jsonc(&root) {
-        Ok(source_root) => source_root,
+    let (source_root, out_dir) = match configure_osiris_jsonc(&root) {
+        Ok(configured) => configured,
         Err(message) => return init_failure(message),
     };
+    if let Err(message) = configure_gitignore(&root, &out_dir) {
+        return init_failure(message);
+    }
     if let Err(error) = create_starter(
         &root,
         &source_root,
@@ -254,19 +273,22 @@ fn package_module_name(distribution: &str) -> String {
 #[derive(Deserialize)]
 struct InitJsonc {
     source: Option<Vec<String>>,
+    #[serde(rename = "outDir")]
+    out_dir: Option<String>,
 }
 
-fn configure_osiris_jsonc(root: &Path) -> Result<PathBuf, String> {
+fn configure_osiris_jsonc(root: &Path) -> Result<(PathBuf, String), String> {
     let path = root.join("osiris.jsonc");
     if !path.exists() {
         fs::write(&path, PROJECT_CONFIG)
             .map_err(|error| format!("could not write {}: {error}", path.display()))?;
-        return Ok(PathBuf::from("src"));
+        return Ok((PathBuf::from("src"), "dist".to_owned()));
     }
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
     let config: InitJsonc = json5::from_str(&source)
         .map_err(|error| format!("invalid JSONC in {}: {error}", path.display()))?;
+    let out_dir = config.out_dir.unwrap_or_else(|| "dist".to_owned());
     let source = config
         .source
         .and_then(|roots| roots.into_iter().next())
@@ -282,7 +304,43 @@ fn configure_osiris_jsonc(root: &Path) -> Result<PathBuf, String> {
     {
         return Err("osiris.jsonc source must stay inside the project".to_owned());
     }
-    Ok(path)
+    Ok((path, out_dir))
+}
+
+/// Writes `.gitignore` for a fresh project; adds only the compiler cache to an
+/// existing one.
+///
+/// The template never filters by artifact kind — `.py`, `.osri` and `.py.map`
+/// are one set, and committing the output directory is a legitimate mode (a
+/// consumer reading generated code without running the compiler), so the
+/// `dist/` line carries instructions for removing it rather than being split
+/// into per-suffix patterns. An existing `.gitignore` records someone's chosen
+/// policy: only `.osiris/` is appended there, because the cache directory is
+/// machine-local and nothing else about the project reveals its existence.
+fn configure_gitignore(root: &Path, out_dir: &str) -> Result<(), String> {
+    let path = root.join(".gitignore");
+    if !path.exists() {
+        return fs::write(&path, gitignore_template(out_dir))
+            .map_err(|error| format!("could not write {}: {error}", path.display()));
+    }
+    let existing = fs::read_to_string(&path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    let covers_cache = existing.lines().any(|line| {
+        matches!(
+            line.trim().trim_start_matches('/').trim_end_matches('/'),
+            ".osiris"
+        )
+    });
+    if covers_cache {
+        return Ok(());
+    }
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated.push_str("\n# osr 的编译缓存，机器本地。\n.osiris/\n");
+    fs::write(&path, updated)
+        .map_err(|error| format!("could not write {}: {error}", path.display()))
 }
 
 fn has_osiris_dependency(document: &DocumentMut) -> bool {
@@ -385,6 +443,40 @@ mod tests {
         assert_eq!(package.path, "demo-package");
         assert!(package.package);
         assert!(parse_init_arguments(&["--extension".to_owned(), "legacy".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn gitignore_is_created_whole_but_extended_minimally() {
+        let root = std::env::temp_dir().join(format!(
+            "osiris-init-gitignore-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("t").len()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        // Fresh project: the full template, honouring a custom outDir, with
+        // the output directory as one whole entry — never per-suffix filters.
+        configure_gitignore(&root, "generated").unwrap();
+        let written = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(written.contains("generated/"));
+        assert!(written.contains(".osiris/"));
+        assert!(!written.contains("*.map"));
+        assert!(!written.contains("*.osri"));
+
+        // Existing policy: only the cache entry is added, once, and the
+        // project's own dist decision is left alone.
+        fs::write(root.join(".gitignore"), ".venv/\n").unwrap();
+        configure_gitignore(&root, "dist").unwrap();
+        let appended = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(appended.starts_with(".venv/\n"));
+        assert!(appended.contains(".osiris/"));
+        assert!(!appended.contains("dist/"));
+        configure_gitignore(&root, "dist").unwrap();
+        let unchanged = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert_eq!(appended, unchanged);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
