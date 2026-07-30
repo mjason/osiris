@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.19
+
+- Stop discovering the project's own installed copy as one of its extensions. uv installs the root project into its environment, so after the first `uv sync` every source module was reported as a duplicate of its own stale interface.
+
 ## 0.3.18
 
 - Give the build backend the Osiris-to-Python name translation and use it wherever a declared module name meets an archive path, so a module like `my-pkg.core` can be packaged. The backend previously demanded the two spellings be literally equal, which rejected every module name the mapping changes.
