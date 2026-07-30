@@ -728,6 +728,25 @@ fn compile_workspace_scheduled(
                     &imported_phase,
                     Some(&scc_interfaces),
                 );
+                // Workspace-internal imports resolve through provisional
+                // interfaces, which the lowerer cannot tell apart from
+                // external ones — it marks every imported binding external.
+                // The external set is known here: only a binding whose
+                // defining module another distribution published keeps the
+                // mark, so its provider runtime is relocated while a
+                // first-party module's runtime stays a plain import into this
+                // same build's output.
+                for binding in &mut analysis.hir.bindings {
+                    if let Some(runtime) = &mut binding.runtime
+                        && runtime.external
+                    {
+                        let source_module =
+                            binding.name.id.as_str().split("::").next().unwrap_or("");
+                        if !external_interfaces.contains_key(source_module) {
+                            runtime.external = false;
+                        }
+                    }
+                }
                 let frontend_elapsed = started.elapsed();
                 let started = std::time::Instant::now();
                 let Some(interface_model) = build_interface_model(

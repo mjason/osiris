@@ -156,6 +156,7 @@ fn reading_runtime_locator_does_not_import_python() {
         module: "module_that_cannot_exist_for_osiris_test".to_owned(),
         name: "distance".to_owned(),
         python_module: true,
+        external: false,
     });
     let encoded = emit(&typed, &surface).unwrap();
     let decoded = read(&encoded).unwrap();

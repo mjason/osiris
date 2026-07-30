@@ -138,6 +138,7 @@ impl<'a> Lowerer<'a> {
                     module: "osiris.kernel".to_owned(),
                     name: public.python.clone(),
                     python_module: false,
+                    external: false,
                 });
             }
         }

@@ -241,6 +241,39 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                 support
                     .binding_ids
                     .extend(runtime.binding_ids.iter().cloned());
+                // A provider's runtime module linked into this build: the
+                // generated import names the relocated path, so the file must
+                // exist there (OEP-0002-R033G). It rides the embedded-module
+                // channel, whose same-path conflict detection applies.
+                for (relocated, original) in &runtime.external_modules {
+                    let source = match read_external_runtime_module(
+                        original,
+                        &arguments.site_roots,
+                        context.project.as_ref(),
+                    ) {
+                        Ok(source) => source,
+                        Err(message) => {
+                            return CliOutcome::failure(
+                                1,
+                                String::new(),
+                                format!("osr: {message}\n"),
+                            );
+                        }
+                    };
+                    let previous = support
+                        .embedded_modules
+                        .insert(relocated.clone(), source.clone());
+                    if previous
+                        .as_ref()
+                        .is_some_and(|existing| existing != &source)
+                    {
+                        return CliOutcome::failure(
+                            1,
+                            String::new(),
+                            format!("osr: conflicting linked runtime module `{relocated}`\n"),
+                        );
+                    }
+                }
                 if let Some(source_map) = result.source_map.as_ref() {
                     support.source_maps.insert(SourceMapIdentity {
                         source: source_map.source.clone(),
@@ -518,4 +551,37 @@ pub(super) fn aggregate_result_records<'a>(
             error.span.unwrap_or_else(|| Span::empty(0)),
         )]
     })
+}
+
+/// Reads the provider file behind an externally linked runtime module.
+///
+/// Extension discovery already validated these files against the provider's
+/// linked-support manifest hashes, so this is a lookup, not a trust decision.
+/// Not finding the file is an error: the generated import names the relocated
+/// copy, and silently skipping it would ship an import with no module behind
+/// it.
+pub(super) fn read_external_runtime_module(
+    module: &str,
+    site_roots: &[&str],
+    project: Option<&ProjectConfig>,
+) -> Result<String, String> {
+    let relative = compiler::python_module_path(module);
+    let mut roots = site_roots.iter().map(PathBuf::from).collect::<Vec<_>>();
+    if let Some(project) = project {
+        roots.extend(project.installed_package_roots());
+    }
+    for root in roots {
+        let candidate = root.join(&relative);
+        if candidate.is_file() {
+            return fs::read_to_string(&candidate).map_err(|error| {
+                format!(
+                    "could not read linked runtime module '{}': {error}",
+                    candidate.display()
+                )
+            });
+        }
+    }
+    Err(format!(
+        "linked runtime module `{module}` was not found in the installed environment"
+    ))
 }

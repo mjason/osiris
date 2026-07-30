@@ -110,6 +110,7 @@ impl<'a> Lowerer<'a> {
                             module: import.module.canonical.replace('/', "."),
                             name: name.canonical.clone(),
                             python_module: false,
+                            external: false,
                         }),
                     );
                     self.predeclare_interface_import(import, item.metadata.as_slice());
@@ -130,6 +131,7 @@ impl<'a> Lowerer<'a> {
                             module: import.module.clone(),
                             name: name.canonical.clone(),
                             python_module: true,
+                            external: false,
                         }),
                     );
                 }
@@ -200,6 +202,7 @@ impl<'a> Lowerer<'a> {
                                         module: extern_block.module.clone(),
                                         name: python_identifier(&definition.name.canonical),
                                         python_module: true,
+                                        external: false,
                                     }),
                                 );
                             }

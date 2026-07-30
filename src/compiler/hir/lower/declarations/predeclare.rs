@@ -92,6 +92,7 @@ impl<'a> Lowerer<'a> {
                 module: module.to_owned(),
                 name: runtime_name,
                 python_module: true,
+                external: false,
             }),
         ) {
             self.register_callable(

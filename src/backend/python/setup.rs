@@ -209,6 +209,7 @@ impl<'hir> Backend<'hir> {
             runtime_helpers: BTreeSet::new(),
             linked_runtime_helpers: BTreeMap::new(),
             reachable_standard_bindings: BTreeSet::new(),
+            external_runtime_modules: BTreeMap::new(),
         }
     }
 
@@ -322,7 +323,26 @@ impl<'hir> Backend<'hir> {
             }
             self.runtime_module.clone()
         } else if runtime.python_module {
-            runtime.module.replace('/', ".")
+            let provider_module = runtime.module.replace('/', ".");
+            // An external interface bakes the provider's installed runtime
+            // location into `:runtime :module`. Importing that couples the
+            // output to site-packages and treats the provider's private
+            // runtime as an interface (OEP-0002-R033A). The consumer links
+            // instead: the import is rewritten under this module's own
+            // runtime package, and the caller copies the provider file there
+            // (OEP-0002-R033G). The `packages/<provider-id>/…` suffix is kept
+            // verbatim, so provenance stays visible in the relocated tree.
+            if runtime.external
+                && let Some((_, relocatable)) =
+                    provider_module.split_once(".__osiris_runtime__.packages.")
+            {
+                let relocated = format!("{}.packages.{relocatable}", self.runtime_module);
+                self.external_runtime_modules
+                    .insert(relocated.clone(), provider_module);
+                relocated
+            } else {
+                provider_module
+            }
         } else {
             crate::name::python_module_identifier(&runtime.module)
         };
@@ -467,13 +487,15 @@ impl<'hir> Backend<'hir> {
     }
 
     pub(super) fn runtime_support(&self) -> Option<RuntimeSupport> {
-        (!self.runtime_helpers.is_empty() || !self.reachable_standard_bindings.is_empty()).then(
-            || RuntimeSupport {
-                package: self.runtime_module.clone(),
-                helpers: self.runtime_helpers.clone(),
-                binding_ids: self.reachable_standard_bindings.clone(),
-            },
-        )
+        (!self.runtime_helpers.is_empty()
+            || !self.reachable_standard_bindings.is_empty()
+            || !self.external_runtime_modules.is_empty())
+        .then(|| RuntimeSupport {
+            package: self.runtime_module.clone(),
+            helpers: self.runtime_helpers.clone(),
+            binding_ids: self.reachable_standard_bindings.clone(),
+            external_modules: self.external_runtime_modules.clone(),
+        })
     }
 }
 

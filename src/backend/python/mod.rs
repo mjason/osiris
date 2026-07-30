@@ -32,6 +32,11 @@ pub struct RuntimeSupport {
     pub package: String,
     pub helpers: BTreeSet<String>,
     pub binding_ids: BTreeSet<String>,
+    /// Provider runtime modules this module linked into its own runtime tree:
+    /// relocated Python module path → the provider's installed module path the
+    /// caller must copy the file from (OEP-0002-R033G). Generated imports use
+    /// the relocated path only.
+    pub external_modules: BTreeMap<String, String>,
 }
 
 struct DirectImport {
@@ -192,6 +197,7 @@ struct Backend<'hir> {
     runtime_helpers: BTreeSet<String>,
     linked_runtime_helpers: BTreeMap<String, String>,
     reachable_standard_bindings: BTreeSet<String>,
+    external_runtime_modules: BTreeMap<String, String>,
 }
 
 mod bindings;

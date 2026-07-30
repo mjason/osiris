@@ -132,11 +132,44 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
                     package: runtime.package.clone(),
                     helpers: BTreeSet::new(),
                     binding_ids: BTreeSet::new(),
+                    external_modules: BTreeMap::new(),
                 });
             support.helpers.extend(runtime.helpers.iter().cloned());
             support
                 .binding_ids
                 .extend(runtime.binding_ids.iter().cloned());
+            // Generated imports name the relocated copies of provider runtime
+            // modules, so the staged tree must hold them like any other
+            // runtime file (OEP-0002-R033G).
+            for (relocated, original) in &runtime.external_modules {
+                let source = match super::compile::read_external_runtime_module(
+                    original,
+                    &arguments.site_roots,
+                    context.project.as_ref(),
+                ) {
+                    Ok(source) => source,
+                    Err(message) => {
+                        let _ = fs::remove_dir_all(&temporary);
+                        return CliOutcome::failure(1, String::new(), format!("osr: {message}\n"));
+                    }
+                };
+                let path = temporary.join(python_module_path(relocated));
+                if let Err(error) = path
+                    .parent()
+                    .ok_or_else(|| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent")
+                    })
+                    .and_then(fs::create_dir_all)
+                    .and_then(|()| fs::write(&path, &source))
+                {
+                    let _ = fs::remove_dir_all(&temporary);
+                    return CliOutcome::failure(
+                        1,
+                        String::new(),
+                        format!("osr: could not stage linked runtime module: {error}\n"),
+                    );
+                }
+            }
         }
         let generated_path = temporary.join(python_module_path(module_name));
         let Some(parent) = generated_path.parent() else {

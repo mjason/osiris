@@ -156,6 +156,14 @@ pub struct RuntimeBinding {
     pub module: String,
     pub name: String,
     pub python_module: bool,
+    /// The binding entered through another distribution's `.osri`. Its
+    /// `module` then names the provider's installed private runtime, which a
+    /// consumer build must relocate into its own output rather than import
+    /// (OEP-0002-R033A/R033G) — the provider's `__osiris_runtime__` is not an
+    /// interface, and generated code reaching into site-packages for it makes
+    /// the output undeployable without the provider installed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

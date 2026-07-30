@@ -242,6 +242,7 @@ impl<'a> Lowerer<'a> {
                     module: interface.module.clone(),
                     name: public.python.clone(),
                     python_module: false,
+                    external: true,
                 },
                 |runtime| RuntimeBinding {
                     module: if runtime.module.is_empty() {
@@ -251,6 +252,7 @@ impl<'a> Lowerer<'a> {
                     },
                     name: runtime.name.clone(),
                     python_module: runtime.python_module,
+                    external: true,
                 },
             );
             let name = BindingName {
