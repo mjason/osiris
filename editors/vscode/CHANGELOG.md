@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.18
+
+- Give the build backend the Osiris-to-Python name translation and use it wherever a declared module name meets an archive path, so a module like `my-pkg.core` can be packaged. The backend previously demanded the two spellings be literally equal, which rejected every module name the mapping changes.
+
 ## 0.3.17
 
 - Add `py/embed`, which names an embedded Python provider by file so the Python can be written, read and tested as an ordinary `.py`.
