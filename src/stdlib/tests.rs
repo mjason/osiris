@@ -311,3 +311,40 @@ fn cached_core_interface_matches_a_fresh_compilation() {
         crate::interface::render(&compiled).expect("rendered fresh interface")
     );
 }
+
+/// A standard module may publish with the per-item marker.
+///
+/// Standard-API extraction resolves the public surface itself, and it read only
+/// the `(export [...])` manifest. A standard module written with `^:export`
+/// therefore compiled and then was invisible to every consumer — no symbol, no
+/// macro registration, no diagnostic. This is the fifth place that decides the
+/// public surface; the others are the provisional interface, HIR lowering,
+/// static-record owners, and the phase-1 interface.
+#[test]
+fn a_standard_module_can_publish_with_the_export_marker() {
+    let source = concat!(
+        "(module osiris.probe)\n",
+        "^{:doc {:default \"Marked.\"} :export true}\n",
+        "(def ^Int marked 1)\n",
+        "^{:doc {:default \"Listed.\"}}\n",
+        "(def ^Int listed 2)\n",
+        "(export [listed])\n",
+    );
+    let document = crate::reader::read(source);
+    let lowered = crate::ast::lower_document(&document);
+    assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
+    let published = lowered
+        .module
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ast::ItemKind::Export(export) => Some(export.names.iter()),
+            _ => None,
+        })
+        .flatten()
+        .chain(crate::ast::export_markers(&lowered.module.items))
+        .map(|name| name.canonical.clone())
+        .collect::<BTreeSet<_>>();
+    assert!(published.contains("marked"), "{published:?}");
+    assert!(published.contains("listed"), "{published:?}");
+}

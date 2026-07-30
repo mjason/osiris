@@ -223,6 +223,9 @@ fn source_bindings(namespace: &'static str) -> Vec<StandardBinding> {
         "invalid packaged standard source `{namespace}`: {:?}",
         lowered.diagnostics
     );
+    // Both explicit ways to publish feed the standard API surface. Reading only
+    // the manifest here left `^:export` inert for a standard module, so a module
+    // written with markers would compile and then be invisible to every consumer.
     let exported = lowered
         .module
         .items
@@ -232,6 +235,7 @@ fn source_bindings(namespace: &'static str) -> Vec<StandardBinding> {
             _ => None,
         })
         .flatten()
+        .chain(ast::export_markers(&lowered.module.items))
         .map(|name| name.canonical.clone())
         .collect::<Vec<_>>();
     let mut declarations = BTreeMap::<String, BTreeSet<BindingKind>>::new();
