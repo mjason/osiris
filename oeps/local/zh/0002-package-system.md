@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 21
+revision: 22
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 21
+source-revision: 22
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -184,6 +184,12 @@ graph，验证 name、type、contract、interface、extension record 和 target 
 **OEP-0002-R019：** `osr build [directory]` 必须在全部 `check` gate 通过后编译完整
 configured source scope，并以足够原子的方式把一套 coherent artifact 发布到 `outDir`，
 使失败 build 不会把新旧 module artifact 混成同一个 build。
+
+**OEP-0002-R019A：** `osr clean [directory]` 必须移除构建产物与 `.osiris/` 缓存，且不得
+移除任何其他东西。专用 `outDir` 归编译器所有，可以整目录移除。`outDir` 为 `"."` 时产物
+与手写文件混居，因此每次就地发布都必须记录自己写了什么，clean 只删除记录过的路径——
+没有记录就什么都不删。禁止按名字或后缀猜测生成文件：残留陈旧产物可恢复，误删手写
+文件不可恢复。
 
 **OEP-0002-R020：** `osr compile <file>...` 必须保留为低层 explicit source command。
 它可以 override output directory/artifact selection，但必须使用与 build 相同的 semantic、
@@ -567,6 +573,9 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 22，2026-07-30：新增 OEP-0002-R019A，`osr clean`：专用 `outDir` 整目录移除；
+  `outDir` 为 `"."` 时每次就地发布记录写入清单，clean 只删清单路径，绝不在手写文件
+  之间猜测生成文件。
 - Revision 21，2026-07-30：新增 OEP-0002-R033I，`[tool.osiris].wheel-exclude`：以
   module path 的 fnmatch pattern 指定不进 wheel 的 module；它们照常编译、照常进 sdist。
   wheel 装什么是打包配置，所以这个开关在 `pyproject.toml` 与 build backend，不在编译器。

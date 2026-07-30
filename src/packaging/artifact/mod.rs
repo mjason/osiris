@@ -102,32 +102,10 @@ pub fn publish_artifacts_in_place(out_dir: &Path, artifacts: &[Artifact]) -> io:
         }
     }
 
-    let manifest_path = out_dir.join(".osiris").join("published-artifacts-v1");
-    let previous = fs::read_to_string(&manifest_path)
-        .map(|contents| {
-            contents
-                .lines()
-                .filter(|line| !line.is_empty())
-                .map(PathBuf::from)
-                .collect::<BTreeSet<_>>()
-        })
-        .unwrap_or_default();
-
+    let manifest_path = published_manifest_path(out_dir);
+    let previous = read_published_manifest(out_dir);
     for stale in previous.difference(&paths) {
-        if validate_relative_artifact_path(stale).is_err() {
-            continue;
-        }
-        let absolute = out_dir.join(stale);
-        let _ = fs::remove_file(&absolute);
-        // Directories emptied by the removal are cleaned up, never non-empty
-        // ones, and never the output root itself.
-        let mut parent = absolute.parent();
-        while let Some(directory) = parent {
-            if directory == out_dir || fs::remove_dir(directory).is_err() {
-                break;
-            }
-            parent = directory.parent();
-        }
+        remove_recorded_artifact(out_dir, stale);
     }
 
     for artifact in artifacts {
@@ -141,12 +119,98 @@ pub fn publish_artifacts_in_place(out_dir: &Path, artifacts: &[Artifact]) -> io:
     if let Some(parent) = manifest_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut manifest = String::new();
-    for path in &paths {
-        manifest.push_str(&path.to_string_lossy());
-        manifest.push('\n');
+    let manifest = serde_json::json!({
+        "format-version": PUBLISHED_MANIFEST_FORMAT,
+        "artifacts": paths
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>(),
+    });
+    fs::write(&manifest_path, format!("{:#}\n", manifest))?;
+    let _ = fs::remove_file(legacy_published_manifest_path(out_dir));
+    Ok(())
+}
+
+fn published_manifest_path(out_dir: &Path) -> PathBuf {
+    out_dir.join(".osiris").join("published-artifacts.json")
+}
+
+/// 0.3.22 wrote the manifest as bare lines; it is read once so an upgrade can
+/// still clean that build, and every write replaces it with the JSON form.
+fn legacy_published_manifest_path(out_dir: &Path) -> PathBuf {
+    out_dir.join(".osiris").join("published-artifacts-v1")
+}
+
+const PUBLISHED_MANIFEST_FORMAT: u32 = 1;
+
+fn read_published_manifest(out_dir: &Path) -> BTreeSet<PathBuf> {
+    if let Ok(contents) = fs::read_to_string(published_manifest_path(out_dir)) {
+        let parsed: Option<BTreeSet<PathBuf>> =
+            serde_json::from_str::<serde_json::Value>(&contents)
+                .ok()
+                .filter(|value| {
+                    value
+                        .get("format-version")
+                        .and_then(serde_json::Value::as_u64)
+                        == Some(u64::from(PUBLISHED_MANIFEST_FORMAT))
+                })
+                .and_then(|value| {
+                    Some(
+                        value
+                            .get("artifacts")?
+                            .as_array()?
+                            .iter()
+                            .filter_map(|item| item.as_str().map(PathBuf::from))
+                            .collect(),
+                    )
+                });
+        return parsed.unwrap_or_default();
     }
-    fs::write(&manifest_path, manifest)
+    fs::read_to_string(legacy_published_manifest_path(out_dir))
+        .map(|contents| {
+            contents
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Removes one manifest-recorded artifact and any directories the removal
+/// empties — never a non-empty directory, never the output root itself.
+fn remove_recorded_artifact(out_dir: &Path, path: &Path) {
+    if validate_relative_artifact_path(path).is_err() {
+        return;
+    }
+    let absolute = out_dir.join(path);
+    let _ = fs::remove_file(&absolute);
+    let mut parent = absolute.parent();
+    while let Some(directory) = parent {
+        if directory == out_dir || fs::remove_dir(directory).is_err() {
+            break;
+        }
+        parent = directory.parent();
+    }
+}
+
+/// Removes every artifact the in-place publication manifest records, then the
+/// manifest itself. Returns how many entries the manifest named.
+///
+/// This is the `osr clean` path for `outDir: "."`: generated files sit among
+/// authored ones — often another framework's tree — so cleaning must not
+/// guess. Only recorded paths are deleted; with no manifest nothing is.
+pub fn clean_published_artifacts(out_dir: &Path) -> io::Result<usize> {
+    let recorded = read_published_manifest(out_dir);
+    for path in &recorded {
+        remove_recorded_artifact(out_dir, path);
+    }
+    let manifest_path = published_manifest_path(out_dir);
+    if manifest_path.exists() {
+        fs::remove_file(&manifest_path)?;
+    }
+    let _ = fs::remove_file(legacy_published_manifest_path(out_dir));
+    Ok(recorded.len())
 }
 
 /// Publishes a complete build directory with rollback if the final rename fails.

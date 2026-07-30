@@ -35,7 +35,11 @@ analyzes without writing output. `osr build` compiles the complete configured
 source scope into `outDir`. With `outDir: "."` the artifacts land beside the
 sources at the project root — importable and testable with no path prefix —
 and publication switches to an in-place mode that only ever deletes artifacts
-a previous build recorded, never an authored file. `osr watch` performs the same build after source
+a previous build recorded, never an authored file. `osr clean` removes what builds produced and nothing
+else: a dedicated `outDir` goes whole, while under `outDir: "."` only the
+artifacts the publication manifest recorded are deleted — generated files are
+never guessed at among authored ones — and the `.osiris/` cache goes in both
+modes. `osr watch` performs the same build after source
 changes and exits promptly on an interrupt. `osr run <file> -- <args>` compiles
 the source entry and propagates the target program's status.
 

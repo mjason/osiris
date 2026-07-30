@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 21
+revision: 22
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -230,6 +230,14 @@ build artifacts or change dependency state.
 source scope after all `check` gates pass. It MUST publish one coherent artifact
 set to `outDir` atomically enough that a failed build does not leave a mixture
 of new and prior module artifacts presented as one build.
+
+**OEP-0002-R019A:** `osr clean [directory]` MUST remove build artifacts and the
+`.osiris/` cache and MUST NOT remove anything else. A dedicated `outDir` is
+compiler-owned and MAY be removed whole. With `outDir: "."` artifacts sit among
+authored files, so every in-place publication MUST record what it wrote and
+clean MUST delete recorded paths only — with no record, nothing. Guessing at
+generated files by name or suffix is forbidden: a stale artifact left behind is
+recoverable, a deleted authored file is not.
 
 **OEP-0002-R020:** `osr compile <file>...` MUST remain the lower-level explicit
 source command. It MAY override output directory and artifact selection, but it
@@ -712,6 +720,10 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 22, 2026-07-30: Added OEP-0002-R019A, `osr clean`: a dedicated
+  `outDir` may go whole; with `outDir: "."` every in-place publication records
+  what it wrote and clean deletes recorded paths only, never guessing at
+  generated files among authored ones.
 - Revision 21, 2026-07-30: Added OEP-0002-R033I, `[tool.osiris].wheel-exclude`:
   fnmatch patterns over module paths whose artifacts stay out of the wheel
   while the modules still compile and still ship in the sdist. Wheel contents

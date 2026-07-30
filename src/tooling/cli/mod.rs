@@ -87,6 +87,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
         }
         [command, rest @ ..] if command == "init" => run_init(rest),
         [command, rest @ ..] if command == "check" => run_check(rest),
+        [command, rest @ ..] if command == "clean" => run_clean(rest),
         [command, rest @ ..] if command == "build" => run_build(rest),
         [command, rest @ ..] if command == "compile" => run_compile(rest),
         [command, rest @ ..] if command == "run" => run_program(rest),
@@ -103,6 +104,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
 mod build;
 mod build_cache;
 mod check;
+mod clean;
 mod compile;
 mod docs;
 mod expand;
@@ -120,6 +122,7 @@ mod workspace;
 use build::*;
 use build_cache::*;
 use check::*;
+use clean::*;
 use compile::*;
 use docs::*;
 use expand::*;
