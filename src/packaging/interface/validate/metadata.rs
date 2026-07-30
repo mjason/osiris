@@ -144,7 +144,13 @@ pub(super) fn include_metadata_target(
     declaration: &mut MetadataResourceUsage,
     interface: &mut MetadataResourceUsage,
 ) -> InterfaceResult<()> {
-    include_metadata_target_as(metadata, context, declaration, interface, MetadataForm::Final)
+    include_metadata_target_as(
+        metadata,
+        context,
+        declaration,
+        interface,
+        MetadataForm::Final,
+    )
 }
 
 pub(super) fn include_metadata_target_as(

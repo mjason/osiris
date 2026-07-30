@@ -102,9 +102,8 @@ fn watch_sees_an_edit_made_during_the_initial_build() {
 
     // Write immediately, without waiting for the first build to finish.
     fs::write(&source, "(module main)\n(def value 2)\n").unwrap();
-    let rebuilt = wait_for(|| {
-        fs::read_to_string(&generated).is_ok_and(|generated| generated.contains('2'))
-    });
+    let rebuilt =
+        wait_for(|| fs::read_to_string(&generated).is_ok_and(|generated| generated.contains('2')));
 
     let _ = child.kill();
     let output = child.wait_with_output().expect("watch process should stop");

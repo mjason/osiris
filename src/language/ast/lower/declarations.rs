@@ -22,9 +22,7 @@ impl Lowerer {
             Some(DeclarationForm::PythonImport) => {
                 Item::new(form, ItemKind::PyImport(self.lower_py_import(form)))
             }
-            Some(DeclarationForm::PythonEmbed) => {
-                Item::new(form, self.lower_py_embed(form))
-            }
+            Some(DeclarationForm::PythonEmbed) => Item::new(form, self.lower_py_embed(form)),
             Some(DeclarationForm::PythonDecorate) => {
                 Item::new(form, ItemKind::PyDecorate(self.lower_py_decorate(form)))
             }
@@ -544,7 +542,10 @@ fn validate_embed_path(path: &str) -> Result<(), &'static str> {
     if path.starts_with('/') || path.contains(':') || path.contains('\\') {
         return Err("py/embed source path must be relative and use `/` separators");
     }
-    if path.split('/').any(|part| part == ".." || part.is_empty() || part == ".") {
+    if path
+        .split('/')
+        .any(|part| part == ".." || part.is_empty() || part == ".")
+    {
         return Err("py/embed source path must not contain `.` or `..` components");
     }
     if !path.ends_with(".py") {

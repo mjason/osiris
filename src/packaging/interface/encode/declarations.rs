@@ -143,7 +143,10 @@ pub(super) fn macro_interface_form(
         ("minimum-arity", integer_usize(macro_.minimum_arity)),
         ("variadic", boolean(macro_.variadic)),
         ("helper-bindings", strings_form(&macro_.helper_bindings)),
-        ("phase-1-ir", project_form_metadata(&macro_.phase_ir, projection)),
+        (
+            "phase-1-ir",
+            project_form_metadata(&macro_.phase_ir, projection),
+        ),
     ])
 }
 
@@ -156,6 +159,9 @@ pub(super) fn phase_helper_form(
         ("canonical", string(&helper.canonical)),
         ("phase", keyword("syntax")),
         ("visibility", keyword("private")),
-        ("phase-1-ir", project_form_metadata(&helper.phase_ir, projection)),
+        (
+            "phase-1-ir",
+            project_form_metadata(&helper.phase_ir, projection),
+        ),
     ])
 }

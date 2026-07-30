@@ -255,9 +255,10 @@ fn read_embedded_sources(
         }
         let canonical = fs::canonicalize(&candidate)
             .map_err(|error| format!("could not resolve '{relative}': {error}"))?;
-        let inside_a_root = project.source_roots.iter().any(|root| {
-            fs::canonicalize(root).is_ok_and(|root| canonical.starts_with(root))
-        });
+        let inside_a_root = project
+            .source_roots
+            .iter()
+            .any(|root| fs::canonicalize(root).is_ok_and(|root| canonical.starts_with(root)));
         if !inside_a_root {
             return Err(format!(
                 "embedded provider source '{relative}' resolves outside every configured source root"
