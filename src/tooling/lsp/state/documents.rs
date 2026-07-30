@@ -308,7 +308,10 @@ impl LspState {
         }
         let target_index = target_index?;
         lap("collect sources");
-        let fingerprint = workspace_fingerprint(&project, &buffers, &self.site_roots);
+        // The fingerprint must cover the roots resolution actually uses, or
+        // installing a dependency into `.venv` leaves a stale cache hit.
+        let effective_roots = effective_site_roots(&project, &self.site_roots);
+        let fingerprint = workspace_fingerprint(&project, &buffers, &effective_roots);
         lap("fingerprint");
         let reusable = self.workspace_cache.as_ref().is_some_and(|cache| {
             cache.project_root == project.root && cache.fingerprint == fingerprint

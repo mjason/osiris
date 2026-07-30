@@ -74,15 +74,36 @@ pub(super) fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
     String::from_utf8(decoded).ok().map(PathBuf::from)
 }
 
+/// The site roots extension resolution actually uses: the editor's explicit
+/// `initializationOptions.siteRoots` plus the project's own installed
+/// environment, exactly as the CLI combines them.
+///
+/// Resolving from the explicit roots alone made every `.venv` extension
+/// invisible to the language server: the editor rarely configures site roots,
+/// so a file `osr check` accepted was littered with missing-module
+/// diagnostics, and nothing suggested the two were even looking at different
+/// worlds.
+pub(super) fn effective_site_roots(
+    project: &ProjectConfig,
+    site_roots: &[PathBuf],
+) -> Vec<PathBuf> {
+    let mut roots = site_roots.to_vec();
+    roots.extend(project.installed_package_roots());
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
 pub(super) fn load_project_interfaces(
     project: &ProjectConfig,
     site_roots: &[PathBuf],
 ) -> Option<BTreeMap<String, Interface>> {
-    if site_roots.is_empty() {
+    let roots = effective_site_roots(project, site_roots);
+    if roots.is_empty() {
         return Some(BTreeMap::new());
     }
     let lock = project.load_lock().ok()?;
-    let graph = dependency::resolve_effective_extensions(project, &lock, site_roots).ok()?;
+    let graph = dependency::resolve_effective_extensions(project, &lock, &roots).ok()?;
     let mut interfaces = BTreeMap::<String, Interface>::new();
     for distribution in graph.extensions {
         for extension in distribution.extensions {
@@ -170,4 +191,50 @@ pub(super) fn document_declares_phase_name(document: &OpenDocument, name: &str) 
                 .and_then(form_name)
                 .is_some_and(|declared| declared.nfc().eq(name.nfc()))
     })
+}
+
+#[cfg(test)]
+mod site_root_tests {
+    use super::*;
+
+    #[test]
+    fn effective_roots_include_the_project_environment() {
+        let root = std::env::temp_dir().join(format!(
+            "osiris-lsp-roots-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        // A real installed environment, so `installed_package_roots` finds it.
+        let site = root.join(".venv/lib/python3.11/site-packages");
+        std::fs::create_dir_all(&site).unwrap();
+        std::fs::write(
+            root.join("pyproject.toml"),
+            "[project]\nname = \"demo\"\nversion = \"0\"\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("osiris.jsonc"), r#"{"source":["src"]}"#).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let project = ProjectConfig::discover(&root).unwrap();
+
+        // With no editor-configured roots the environment must still appear —
+        // this being empty is exactly the bug where `osr check` accepted a
+        // file the language server covered in missing-module diagnostics.
+        let roots = effective_site_roots(&project, &[]);
+        assert!(
+            roots
+                .iter()
+                .any(|candidate| candidate.ends_with("site-packages")),
+            "{roots:?}"
+        );
+
+        // Explicit editor roots are kept alongside, deduplicated.
+        let explicit = vec![roots[0].clone(), PathBuf::from("/elsewhere/site")];
+        let combined = effective_site_roots(&project, &explicit);
+        assert!(combined.contains(&PathBuf::from("/elsewhere/site")));
+        let unique = combined.iter().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), combined.len());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
