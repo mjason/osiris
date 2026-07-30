@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.17
+
+- Add `py/embed`, which names an embedded Python provider by file so the Python can be written, read and tested as an ordinary `.py`.
+- Stop shipping a `py/embed` source twice in a wheel, once as itself and once inside the generated module.
+- Decide a module's public surface through one entry point, so a per-item `^:export` marker cannot be honoured in some places and ignored in others.
+
 ## 0.3.16
 
 - Add `osr lsc name`, which reports what an Osiris name becomes in generated Python.
