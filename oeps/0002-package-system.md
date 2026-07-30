@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 22
+revision: 23
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -220,6 +220,19 @@ name equal the translated archive path. Directory components beneath a source
 root are module components and translate; a non-module file's basename is not,
 and is preserved as authored so runtime resource lookup finds it under the
 name the author wrote.
+
+**OEP-0002-R017B:** A bare `osr` resolved through PATH MUST first prefer the
+project's own compiler: the activated `VIRTUAL_ENV`, then a `.venv` on the
+ancestor path of the working directory. When that environment holds an `osr`
+that is not the running binary, the invocation MUST be handed to it unchanged —
+help, version, and LSP included, since the version report is itself the
+diagnostic. The project locked its compiler; a stale global install answering
+instead reports errors the locked version fixed and nothing in the output says
+which binary spoke. An invocation that spelled a path chose a specific binary
+and MUST NOT be delegated — a harness exercising a freshly built compiler must
+not be handed to whatever an enclosing project pinned. Self-delegation MUST be
+prevented by executable identity, and `OSR_NO_DELEGATE` MUST opt out. A failed
+handover MUST be an error, not a fallback to running in place.
 
 **OEP-0002-R018:** `osr check [path]` MUST discover the applicable project,
 parse and expand the selected module graph, validate names, types, contracts,
@@ -720,6 +733,11 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 23, 2026-07-30: Added OEP-0002-R017B: every invocation prefers the
+  project's own osr — activated `VIRTUAL_ENV`, then an ancestor `.venv` — and
+  hands over unchanged. Recorded because a stale global install twice reported
+  errors the locked compiler had fixed, with nothing in the output saying
+  which binary spoke.
 - Revision 22, 2026-07-30: Added OEP-0002-R019A, `osr clean`: a dedicated
   `outDir` may go whole; with `outDir: "."` every in-place publication records
   what it wrote and clean deletes recorded paths only, never guessing at

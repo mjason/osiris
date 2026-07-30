@@ -106,6 +106,7 @@ mod build_cache;
 mod check;
 mod clean;
 mod compile;
+mod delegate;
 mod docs;
 mod expand;
 mod extensions;
@@ -134,6 +135,7 @@ use run::*;
 use source_io::*;
 use workspace::*;
 
+pub use delegate::project_local_osr;
 pub use docs::run_doc_stdio;
 pub use fmt::run_fmt_stdio;
 pub use watch::run_watch_stdio;

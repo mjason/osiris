@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 22
+revision: 23
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 22
+source-revision: 23
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -176,6 +176,15 @@ relative path。两个 source module 映射到同一 canonical module 或 target
 declared name 与翻译后的 archive path 字面相等。Source root 之下的目录分量是 module
 分量，必须翻译；非 module file 的 basename 不是，按作者所写保留，使 runtime resource
 查找能以作者写下的名字找到它。
+
+**OEP-0002-R017B：** 经 PATH 解析的裸 `osr` 调用必须先选择项目自己的编译器：先看
+激活的 `VIRTUAL_ENV`，再沿工作目录的祖先路径找 `.venv`。当该环境里的 osr 不是当前
+运行的二进制时，调用必须原样移交给它——help、version、LSP 一并如此，因为版本报告
+本身就是诊断手段。项目锁定了它的编译器；陈旧的全局安装抢答会报出锁定版本早已修复的
+错误，而输出里没有任何东西说明是哪个二进制在说话。写明路径的调用选择了特定二进制，
+不得被委派——测试新构建编译器的 harness 不能被移交给外层项目锁定的任何东西。自我
+委派必须以可执行文件同一性防止，`OSR_NO_DELEGATE` 必须可以退出该行为。移交失败必须
+是错误，不得回退为就地运行。
 
 **OEP-0002-R018：** `osr check [path]` 必须发现适用 project，parse/expand 所选 module
 graph，验证 name、type、contract、interface、extension record 和 target compatibility，
@@ -573,6 +582,9 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 23，2026-07-30：新增 OEP-0002-R017B：每次调用先选项目自己的 osr——激活的
+  `VIRTUAL_ENV`，再沿祖先路径找 `.venv`——并原样移交。记录在案的原因：陈旧的全局安装
+  两次报出锁定编译器早已修复的错误，输出里没有任何东西说明是哪个二进制在说话。
 - Revision 22，2026-07-30：新增 OEP-0002-R019A，`osr clean`：专用 `outDir` 整目录移除；
   `outDir` 为 `"."` 时每次就地发布记录写入清单，clean 只删清单路径，绝不在手写文件
   之间猜测生成文件。

@@ -8,7 +8,12 @@ revision: 5
 # Osiris Command-Line Interface
 
 `osr` is the native command-line interface for compiling, querying, formatting,
-and running Osiris. It does not use a Python process for compilation, watch, or
+and running Osiris. A bare `osr` resolved through PATH first prefers the
+project's own compiler: the activated `VIRTUAL_ENV`, then a `.venv` found on
+the ancestor path of the working directory, handing the whole invocation —
+help, version, and LSP included — to the project's binary, so what answers is
+always what the project locked. Invoking a binary by explicit path runs
+exactly that binary; `OSR_NO_DELEGATE=1` opts out entirely. It does not use a Python process for compilation, watch, or
 language-server operation. Concise command help is available with
 `osr <command> --help`; this document explains the complete command families.
 
