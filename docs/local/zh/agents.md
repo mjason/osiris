@@ -42,6 +42,11 @@ Osiris 沿用了 Clojure 的 reader、宏模型和大部分核心词汇，因此
 `import-for-syntax`，Python 模块用 `py/import`；三者是不同的操作，且都不会在
 编译期执行 Python。
 
+源码文件与目录按 Osiris 方式拼写：路径就是模块名本身，`-` 原样写——
+`(module osiris-test.core)` 位于 `src/osiris-test/core.osr`，路径与声明不一致时
+编译器会拒绝。只有生成产物用 Python 拼写（`dist/osiris_test/core.py`），所以建文件
+时不要自己预先把 `-` 翻译成 `_`；任何名字的翻译结果可用 `osr lsc name` 查看。
+
 ### 导出是显式的
 
 Clojure 默认公开每个 `def`，除非标记为私有。Osiris 则是不写明就不公开——因为

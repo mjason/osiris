@@ -187,8 +187,19 @@ and exports:
   remain valid but receive a non-failing replacement advisory. Use
   `:osiris/names` with `:preferred` for a recommended localized spelling.
 
-The project configuration maps source paths to module names. A written
-`module` declaration must agree with that mapping.
+The project configuration maps source paths to module names, and the source
+tree is spelled the Osiris way: a file or directory name is the module
+component as written, `-` included, matching the `module` declaration
+literally. Only generated output switches to the Python spelling:
+
+```text
+src/osiris-test/core.osr        (module osiris-test.core)     ← authored, Osiris spelling
+dist/osiris_test/core.py        import osiris_test.core       ← generated, Python spelling
+```
+
+Do not pre-translate a directory name to `_` yourself — the compiler rejects a
+source path that does not match the declared module name, and `osr lsc name`
+shows what any name becomes on the Python side.
 
 ## Publishing a Declaration
 

@@ -172,7 +172,16 @@ PEP 427/625 再在文件名或目录名承载它的地方转义为 `osiris_panda
 - `alias` 为已有 binding 保留迁移拼写；引用仍然有效，但会收到不阻断编译的替换提示。
   推荐的本地化拼写应使用带 `:preferred` 的 `:osiris/names`。
 
-项目配置把源码路径映射成模块名。源码中的 `module` 声明必须与该映射一致。
+项目配置把源码路径映射成模块名，而源码树按 Osiris 方式拼写：文件名与目录名就是模块
+分量本身，`-` 原样写，与 `module` 声明逐字一致。只有生成产物切换到 Python 拼写：
+
+```text
+src/osiris-test/core.osr        (module osiris-test.core)     ← 源码，Osiris 拼写
+dist/osiris_test/core.py        import osiris_test.core       ← 产物，Python 拼写
+```
+
+不要自己预先把目录名翻译成 `_`——源码路径与声明的模块名不一致时编译器会拒绝；
+`osr lsc name` 可以查看任何名字在 Python 一侧的样子。
 
 ## 公开一个声明
 

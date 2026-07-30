@@ -45,6 +45,13 @@ separate top-level forms:
 dependencies use `import-for-syntax`, and Python modules use `py/import`; these
 are three distinct operations and none of them executes Python at compile time.
 
+Source files and directories are spelled the Osiris way: the path is the
+module name as written, `-` included — `(module osiris-test.core)` lives at
+`src/osiris-test/core.osr`, and the compiler rejects a path that disagrees
+with the declaration. Only generated output uses the Python spelling
+(`dist/osiris_test/core.py`), so never pre-translate `-` to `_` when creating
+a file; check any translation with `osr lsc name`.
+
 ### Exports are explicit
 
 Clojure publishes every `def` unless it is marked private. Osiris publishes
