@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.25
+
+- The language server now resolves extensions from the project's own installed environment (`.venv`) in addition to any editor-configured site roots, matching the CLI. Files `osr check` accepted no longer show missing-module diagnostics for installed extensions in the editor.
+
 ## 0.3.24
 
 - A bare `osr` resolved through PATH now hands the invocation to the project's own compiler — the activated `VIRTUAL_ENV`, then a `.venv` on the ancestor path — so what answers is always what the project locked. Explicit paths run exactly the named binary; `OSR_NO_DELEGATE=1` opts out.
