@@ -49,19 +49,38 @@ const PROJECT_CONFIG: &str = r#"{
 "#;
 
 fn gitignore_template(out_dir: &str) -> String {
-    format!(
-        r#"# uv 管理的环境与编译器缓存，永远不进版本库。
+    let header = r#"# uv 管理的环境与编译器缓存，永远不进版本库。
 .venv/
 __pycache__/
 *.pyc
 .osiris/
-
-# 生成产物。整个目录要么提交要么忽略——.py、.osri、.py.map 是一组，按后缀
-# 挑着提交会得到不完整的产物。要提交生成代码（例如让不运行编译器的消费者
-# 直接读、审查生成结果），删掉下面这一行即可。
-{out_dir}/
+"#;
+    // Every rule is present; the ones that encode a choice ship commented, to
+    // be opened as needed. `outDir: "."` has no directory to ignore — a `./`
+    // line would ignore the whole project — so that layout gets only the
+    // per-suffix rules.
+    if out_dir == "." {
+        format!(
+            r#"{header}
+# outDir 为 "."：产物与源码同在项目根，没有目录可忽略。需要哪条打开哪条
+# 的注释（生成的 .py 与手写 Python 无法按后缀区分）。
+# *.osri
+# *.py.map
 "#
-    )
+        )
+    } else {
+        format!(
+            r#"{header}
+# 生成产物整目录忽略；要提交生成代码（让不运行编译器的消费者直接读）就删掉
+# 下面这一行。
+{out_dir}/
+
+# outDir 改为 "." 时产物落在项目根，改用按后缀的规则，需要哪条打开哪条的注释。
+# *.osri
+# *.py.map
+"#
+        )
+    }
 }
 
 pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
@@ -310,13 +329,12 @@ fn configure_osiris_jsonc(root: &Path) -> Result<(PathBuf, String), String> {
 /// Writes `.gitignore` for a fresh project; adds only the compiler cache to an
 /// existing one.
 ///
-/// The template never filters by artifact kind — `.py`, `.osri` and `.py.map`
-/// are one set, and committing the output directory is a legitimate mode (a
-/// consumer reading generated code without running the compiler), so the
-/// `dist/` line carries instructions for removing it rather than being split
-/// into per-suffix patterns. An existing `.gitignore` records someone's chosen
-/// policy: only `.osiris/` is appended there, because the cache directory is
-/// machine-local and nothing else about the project reveals its existence.
+/// Every rule ships in the file; the ones that encode a choice are commented,
+/// to be opened as needed — ignoring the output directory whole, or by suffix
+/// where `outDir: "."` leaves no directory to ignore. An existing `.gitignore`
+/// records someone's chosen policy, so only the machine-local `.osiris/` cache
+/// entry is added active there; the optional rules are appended commented and
+/// never uncommented on the author's behalf.
 fn configure_gitignore(root: &Path, out_dir: &str) -> Result<(), String> {
     let path = root.join(".gitignore");
     if !path.exists() {
@@ -339,6 +357,11 @@ fn configure_gitignore(root: &Path, out_dir: &str) -> Result<(), String> {
         updated.push('\n');
     }
     updated.push_str("\n# osr 的编译缓存，机器本地。\n.osiris/\n");
+    updated.push_str("# 编译产物按需忽略，需要哪条打开哪条的注释。\n");
+    if out_dir != "." {
+        updated.push_str(&format!("# {out_dir}/\n"));
+    }
+    updated.push_str("# *.osri\n# *.py.map\n");
     fs::write(&path, updated)
         .map_err(|error| format!("could not write {}: {error}", path.display()))
 }
@@ -455,23 +478,34 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 
-        // Fresh project: the full template, honouring a custom outDir, with
-        // the output directory as one whole entry — never per-suffix filters.
+        // Fresh project: the output directory is ignored whole and active;
+        // the per-suffix rules are present but commented — a choice the
+        // author opens, never one made for them.
         configure_gitignore(&root, "generated").unwrap();
         let written = fs::read_to_string(root.join(".gitignore")).unwrap();
-        assert!(written.contains("generated/"));
-        assert!(written.contains(".osiris/"));
-        assert!(!written.contains("*.map"));
-        assert!(!written.contains("*.osri"));
+        assert!(written.lines().any(|line| line == "generated/"));
+        assert!(written.lines().any(|line| line == ".osiris/"));
+        assert!(written.lines().any(|line| line == "# *.osri"));
+        assert!(written.lines().any(|line| line == "# *.py.map"));
+        assert!(!written.lines().any(|line| line == "*.osri"));
 
-        // Existing policy: only the cache entry is added, once, and the
-        // project's own dist decision is left alone.
+        // `outDir: "."` has no directory to ignore — a `./` line would
+        // swallow the project — so only the commented suffix rules appear.
+        fs::remove_file(root.join(".gitignore")).unwrap();
+        configure_gitignore(&root, ".").unwrap();
+        let in_root = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(!in_root.lines().any(|line| line == "./" || line == "# ./"));
+        assert!(in_root.lines().any(|line| line == "# *.osri"));
+
+        // Existing policy: the cache entry is added active, the optional
+        // rules commented, once; the file's own decisions are left alone.
         fs::write(root.join(".gitignore"), ".venv/\n").unwrap();
         configure_gitignore(&root, "dist").unwrap();
         let appended = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert!(appended.starts_with(".venv/\n"));
-        assert!(appended.contains(".osiris/"));
-        assert!(!appended.contains("dist/"));
+        assert!(appended.lines().any(|line| line == ".osiris/"));
+        assert!(appended.lines().any(|line| line == "# dist/"));
+        assert!(!appended.lines().any(|line| line == "dist/"));
         configure_gitignore(&root, "dist").unwrap();
         let unchanged = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert_eq!(appended, unchanged);

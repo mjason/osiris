@@ -23,12 +23,12 @@ operations.
 `init` is additive on an existing project: a present `osiris.jsonc`, starter
 source, or foreign `build-system` is left alone (the last is refused, not
 replaced). A fresh project gets a `.gitignore` that ignores the environment,
-caches, and the output directory as a whole — never `*.osri` or `*.py.map` by
-suffix, because the generated artifacts are one set. Committing the output
-directory is a supported choice (consumers reading generated code without the
-compiler); delete its single line to do that. An existing `.gitignore` is
-treated as chosen policy: only the machine-local `.osiris/` cache entry is
-appended, and only when missing.
+caches, and the output directory as a whole; every optional rule is present
+but commented — the whole-directory line can be deleted to commit generated
+code, and the per-suffix `*.osri` / `*.py.map` rules can be uncommented, which
+is the form an `outDir: "."` layout needs since it has no directory to ignore.
+An existing `.gitignore` is treated as chosen policy: the machine-local
+`.osiris/` cache entry is added active, the optional rules only as comments.
 
 Project commands discover `osiris.jsonc` from the selected path. `osr check`
 analyzes without writing output. `osr build` compiles the complete configured

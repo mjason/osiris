@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.22
+
+- Support `outDir: "."`: artifacts land beside the sources at the project root, published in place — only artifacts a previous build recorded are ever cleaned up, never an authored file.
+
 ## 0.3.21
 
 - Treat the same locked extension dependency installed at two site roots — the project venv plus an isolated build environment — as one provider instead of a conflict, which made every editable install of a project with an extension dependency fail.
