@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.23
+
+- Add `osr clean`: a dedicated `outDir` is removed whole; under `outDir: "."` only manifest-tracked artifacts are deleted, never authored files. The `.osiris/` cache goes in both modes.
+- Record the in-place publication manifest as versioned JSON (`.osiris/published-artifacts.json`); the 0.3.22 plain-text form is read once and migrated.
+
 ## 0.3.22
 
 - Support `outDir: "."`: artifacts land beside the sources at the project root, published in place — only artifacts a previous build recorded are ever cleaned up, never an authored file.
