@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.20
+
+- Add `[tool.osiris] wheel-exclude` to `pyproject.toml`: fnmatch patterns over module paths whose artifacts stay out of the wheel. The modules still compile and still ship in the sdist — the way a project keeps its test modules out of what it distributes.
+
 ## 0.3.19
 
 - Stop discovering the project's own installed copy as one of its extensions. uv installs the root project into its environment, so after the first `uv sync` every source module was reported as a duplicate of its own stale interface.

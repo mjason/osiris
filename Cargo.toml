@@ -1,6 +1,6 @@
 [package]
 name = "osiris"
-version = "0.3.19"
+version = "0.3.20"
 edition = "2024"
 rust-version = "1.94"
 authors = ["MJ <tywf91@gmail.com>"]
