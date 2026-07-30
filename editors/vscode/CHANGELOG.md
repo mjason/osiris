@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.24
+
+- A bare `osr` resolved through PATH now hands the invocation to the project's own compiler — the activated `VIRTUAL_ENV`, then a `.venv` on the ancestor path — so what answers is always what the project locked. Explicit paths run exactly the named binary; `OSR_NO_DELEGATE=1` opts out.
+
 ## 0.3.23
 
 - Add `osr clean`: a dedicated `outDir` is removed whole; under `outDir: "."` only manifest-tracked artifacts are deleted, never authored files. The `.osiris/` cache goes in both modes.
