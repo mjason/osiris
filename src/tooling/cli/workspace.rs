@@ -68,11 +68,13 @@ pub(super) fn load_workspace_sources(
         if canonical == entry {
             entry_index = Some(units.len());
         }
+        let embedded_sources = read_embedded_sources(project, &path, &source)?;
         units.push(WorkspaceSource {
             options: CompileOptions::new(&module_name, project.target_python)
                 .with_strict(project.strict)
                 .with_source_name(path.display().to_string())
                 .with_expected_module_name(module_name)
+                .with_embedded_sources(embedded_sources)
                 .with_provider(
                     project.distribution.clone(),
                     project.distribution_version.clone(),
@@ -211,4 +213,59 @@ pub(super) fn compile_context(source_path: &Path) -> Result<CompileContext, Conf
         }),
         Err(error) => Err(error),
     }
+}
+
+/// Resolve every `py/embed` reference a source names.
+///
+/// Compilation is a function of source text and options, so this is where the
+/// filesystem is touched (OEP-0001-R006CC). The checks that need the disk live
+/// here too: the file must exist, must resolve inside a source root, and must not
+/// be a symlink (OEP-0001-R006CB). A path that fails one of those is reported
+/// here rather than reaching the compiler as an absent entry.
+fn read_embedded_sources(
+    project: &ProjectConfig,
+    source_path: &Path,
+    source: &str,
+) -> Result<BTreeMap<String, String>, String> {
+    let document = crate::reader::read(source);
+    let lowered = crate::ast::lower_document(&document);
+    let mut resolved = BTreeMap::new();
+    for item in &lowered.module.items {
+        let crate::ast::ItemKind::EmbeddedPython(provider) = &item.kind else {
+            continue;
+        };
+        let Some(relative) = provider.source_path.as_deref() else {
+            continue;
+        };
+        if resolved.contains_key(relative) {
+            continue;
+        }
+        let owner = source_path.parent().unwrap_or(Path::new("."));
+        let candidate = owner.join(relative);
+        let metadata = fs::symlink_metadata(&candidate).map_err(|error| {
+            format!(
+                "'{}' references embedded provider source '{relative}', which could not be read: {error}",
+                source_path.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "embedded provider source '{relative}' must not be a symlink"
+            ));
+        }
+        let canonical = fs::canonicalize(&candidate)
+            .map_err(|error| format!("could not resolve '{relative}': {error}"))?;
+        let inside_a_root = project.source_roots.iter().any(|root| {
+            fs::canonicalize(root).is_ok_and(|root| canonical.starts_with(root))
+        });
+        if !inside_a_root {
+            return Err(format!(
+                "embedded provider source '{relative}' resolves outside every configured source root"
+            ));
+        }
+        let content = fs::read_to_string(&canonical)
+            .map_err(|error| format!("could not read '{relative}': {error}"))?;
+        resolved.insert(relative.to_owned(), content);
+    }
+    Ok(resolved)
 }

@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 13
+revision: 14
 ---
 
 # Osiris Syntax
@@ -88,6 +88,21 @@ def normalize(value: str) -> str:
 (extern python text-backend
   (defn ^Str normalize [^Str value]))
 ```
+
+A provider may name a file instead of carrying its body inline, which keeps one
+source of truth and lets ordinary Python tooling read it:
+
+```clojure
+(py/embed text-backend "backend/text.py")
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+```
+
+The path is relative to the `.osr` that names it, must stay inside a source root,
+must end in `.py`, and must not be a symlink. One file backs one provider. The two
+forms are indistinguishable downstream — same relocation, same hashes, same
+interface — so choose by how you prefer to edit.
 
 `extern python text-backend` links that local authored module into the
 distribution-private `__osiris_runtime__`. By contrast,

@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 28
+revision: 29
 requires: [0]
 replaces: []
 superseded-by: null
@@ -285,6 +285,51 @@ compiler MUST derive and expose a deterministic relocatable logical module
 identity from the owning Osiris module and handle. The extern declaration's
 validated bindings form the only Osiris-visible API of the embedded module and
 are exported or imported through the ordinary module rules.
+
+**OEP-0001-R006CA:** An embedded Python provider MAY name a file instead of
+carrying its body inline:
+
+```clojure
+(py/embed text-backend "backend/text.py")
+
+(extern python text-backend
+  (defn ^Str normalize
+    [^Str value]))
+```
+
+The two forms MUST be indistinguishable everywhere downstream. The referenced
+content becomes the provider body, so relocation into the owning distribution's
+private runtime package, the linkable closure, hashing, and `extern python
+<handle>` resolution MUST behave exactly as they do for an inline body, and
+generated Python MUST continue to require no Osiris runtime package. The form is
+an authored boundary declaration: a macro MUST NOT generate one, because the
+handle identity is an authored decision under OEP-0001-R006C.
+
+`py/embed` exists because the inline form makes a copy the natural way to work:
+Python is drafted in a `.py`, moved into the block, and the original is left
+behind to drift. A referenced file is one source of truth, is testable without a
+build, and lets ordinary Python tooling read it directly.
+
+**OEP-0001-R006CB:** The reference MUST be a relative path with `/` separators,
+MUST resolve inside a configured source root, MUST NOT traverse upward, and MUST
+NOT be a symlink. A referenced file MUST NOT also be a compiled Osiris source, and
+MUST NOT be referenced by more than one provider: one file has one owner. A
+missing file, an escaping path, a symlink, and a duplicate reference MUST each be
+a distinct diagnostic rather than a fallback.
+
+**OEP-0001-R006CC:** Compilation MUST remain a function of source text and
+options: the compiler core MUST NOT read the filesystem to resolve a reference.
+The caller MUST resolve every reference and pass the content in, exactly as it
+already passes resolved external interfaces. The resolved content and its hash
+MUST be recorded so an artifact identifies what it embedded, and the interface
+MUST change when that content changes — the body is the provider's
+implementation, so this is a semantic change, not a documentation one.
+
+**OEP-0001-R006CD:** Tooling MUST treat the referenced file as the authored
+source it is. `osr fmt` MUST format it in place with the same pinned profile it
+applies to an inline body, and a source map MUST identify the referenced file
+rather than the `.osr` that names it, so a runtime traceback points at the line a
+person can edit.
 
 **OEP-0001-R006D:** A body beginning immediately after the opening tag's newline
 and ending on the closing tag's own line MUST remove that structural first/last
@@ -1348,6 +1393,13 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 29, 2026-07-30: Added `py/embed`, which names a file as an embedded
+  Python provider's body instead of carrying it inline (OEP-0001-R006CA through
+  OEP-0001-R006CD). The inline form makes a duplicate the natural way to work —
+  draft a `.py`, move it in, leave the original to drift — which had already
+  produced two stale copies in practice. Fixed that the compiler core stays a
+  function of source text: the caller resolves references and passes the content
+  in, as it already does for external interfaces.
 - Revision 28, 2026-07-28: Defined the name mappings the compiler already
   performs and never wrote down: Osiris identifier to Python identifier, module
   path to import path and to alias, and distribution name to its PEP 503

@@ -36,6 +36,14 @@ pub struct CompileOptions {
     pub target_python: PythonVersion,
     pub strict: bool,
     pub trust_policy: hir::ContractTrustPolicy,
+    /// Content for every `py/embed` reference in this source, keyed by the path
+    /// as written.
+    ///
+    /// Compilation stays a function of source text and options, so the caller
+    /// resolves these and passes them in rather than having the compiler read
+    /// the filesystem (OEP-0001-R006CC). A reference with no entry here is a
+    /// diagnostic, never a silently empty provider.
+    pub embedded_sources: BTreeMap<String, String>,
 }
 
 impl CompileOptions {
@@ -50,9 +58,17 @@ impl CompileOptions {
             expected_module_name: None,
             target_python,
             strict: true,
+            embedded_sources: BTreeMap::new(),
             trust_policy: dependency::contract_trust_policy(&[], &[])
                 .expect("empty trust policy is valid"),
         }
+    }
+
+    /// Supplies the content behind every `py/embed` reference in this source.
+    #[must_use]
+    pub fn with_embedded_sources(mut self, sources: BTreeMap<String, String>) -> Self {
+        self.embedded_sources = sources;
+        self
     }
 
     #[must_use]

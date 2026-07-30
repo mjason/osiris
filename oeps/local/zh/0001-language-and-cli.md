@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 28
+revision: 29
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 28
+source-revision: 29
 translation-status: Current
 requires: [0]
 replaces: []
@@ -236,6 +236,40 @@ value。`extern python <handle>` 必须解析到该 local declaration；`extern 
 碰撞必须诊断。Compiler 必须从 owning Osiris module 与 handle 确定性派生并暴露可 relocate
 logical module identity。Extern declaration 的 validated binding 是 embedded module 唯一
 对 Osiris 可见的 API，并通过普通 module rule export/import。
+
+**OEP-0001-R006CA：** 内嵌 Python provider 可以指定一个文件，而不把 body 写在行内：
+
+```clojure
+(py/embed text-backend "backend/text.py")
+
+(extern python text-backend
+  (defn ^Str normalize
+    [^Str value]))
+```
+
+两种形式在下游必须不可区分。被引用的内容成为 provider body，因此重定位进所属发行版的
+私有运行时包、linkable closure、哈希，以及 `extern python <handle>` 的解析，都必须与
+行内 body 完全一致；生成的 Python 也必须继续不需要任何 Osiris 运行时包。该形式属于作者
+边界声明：宏不得生成它，因为按 OEP-0001-R006C，handle 身份是作者的决定。
+
+`py/embed` 之所以存在，是因为行内形式让「产生副本」成了最自然的工作方式：先在 `.py` 里
+起草 Python，搬进块中，原文件留在那里各自漂移。被引用的文件是单一事实来源，不需要构建
+即可测试，也能让普通 Python 工具直接读取。
+
+**OEP-0001-R006CB：** 该引用必须是使用 `/` 分隔的相对路径，必须解析到某个已配置的源码
+根之内，不得向上穿越，且不得是符号链接。被引用的文件不得同时是被编译的 Osiris 源码，也
+不得被多于一个 provider 引用：一个文件只有一个归属。文件缺失、路径逃逸、符号链接、重复
+引用，各自必须是独立的诊断，而不是退化行为。
+
+**OEP-0001-R006CC：** 编译必须保持为「源码文本与选项」的函数：编译器核心不得为解析引用
+而读取文件系统。调用方必须解析每个引用并把内容传入，正如它已经在传入已解析的外部
+interface 一样。解析后的内容及其哈希必须被记录，使 artifact 能标明自己内嵌了什么；该
+内容变化时 interface 必须变化——body 就是 provider 的实现，所以这是语义变化，不是文档
+变化。
+
+**OEP-0001-R006CD：** 工具必须把被引用文件当作它本来的样子——作者写下的源码。`osr fmt`
+必须用与行内 body 相同的固定 profile 就地格式化它；source map 必须标明被引用的文件，而
+不是那个指向它的 `.osr`，这样运行时 traceback 指向的才是人能编辑的那一行。
 
 **OEP-0001-R006D：** Body 紧跟 opening tag 的 newline 开始，且 closing tag 独占一行时，
 必须移除结构性首尾 newline，并从每个非空 body line 移除 closing tag 的 indentation。
@@ -1111,6 +1145,11 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 29，2026-07-30：新增 `py/embed`，以指定文件作为内嵌 Python provider 的 body，
+  而不是写在行内（OEP-0001-R006CA 到 OEP-0001-R006CD）。行内形式让「产生副本」成为最
+  自然的工作方式——起草一个 `.py`、搬进去、原件留下漂移——实践中已经因此留下两份陈旧
+  副本。同时明确编译器核心保持为源码文本的函数：由调用方解析引用并传入内容，与它已经
+  对外部 interface 所做的一致。
 - Revision 28，2026-07-28：定义了编译器一直在做、却从未写下的名字映射：Osiris 标识符
   到 Python 标识符、模块路径到导入路径与 alias、发行名到其 PEP 503 规范化与 PEP 427/625
   转义（OEP-0001-R005A 到 OEP-0001-R005C）。要求每种映射只有一份权威实现，并由测试

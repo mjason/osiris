@@ -451,6 +451,14 @@ pub struct EmbeddedPython {
     pub body: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logical_module: Option<String>,
+    /// Set when `py/embed` named a file rather than carrying the body inline.
+    ///
+    /// The body arrives empty and the caller fills it, because compilation is a
+    /// function of source text and options: the compiler core does not read the
+    /// filesystem (OEP-0001-R006CC). Everything downstream sees an ordinary
+    /// provider either way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

@@ -213,3 +213,103 @@ fn an_export_marker_publishes_a_macro() {
         .expect("the provider publishes an interface");
     assert!(interface.contains("sample.macros::macro::emit"), "{interface}");
 }
+
+/// `py/embed` and an inline `~python` block must be indistinguishable
+/// downstream (OEP-0001-R006CA), so the same content produces the same
+/// interface either way.
+#[test]
+fn py_embed_and_an_inline_block_produce_the_same_interface() {
+    const BODY: &str = "from __future__ import annotations\n\n\ndef normalize(value: str) -> str:\n    return value.strip()\n";
+    let referenced = r#"
+            (module sample.embed)
+            (py/embed text-backend "backend/text.py")
+            (extern python text-backend
+              ^{:doc "Normalize." :export true}
+              (defn ^Str normalize [^Str value]
+                :contract {:id "sample/normalize-v1" :effects :pure}))
+        "#;
+    let inline = format!(
+        r#"
+            (module sample.embed)
+            ~python<text-backend>
+{BODY}</text-backend>
+            (extern python text-backend
+              ^{{:doc "Normalize." :export true}}
+              (defn ^Str normalize [^Str value]
+                :contract {{:id "sample/normalize-v1" :effects :pure}}))
+        "#
+    );
+    let mut sources = BTreeMap::new();
+    sources.insert("backend/text.py".to_owned(), BODY.to_owned());
+    let referenced_options = CompileOptions::new("sample.embed", PythonVersion::MINIMUM)
+        .with_embedded_sources(sources);
+    let inline_options = CompileOptions::new("sample.embed", PythonVersion::MINIMUM);
+
+    let from_file = compile(referenced, &referenced_options);
+    let from_inline = compile(&inline, &inline_options);
+    assert!(
+        from_file.analysis.diagnostics.is_empty(),
+        "{:?}",
+        from_file.analysis.diagnostics
+    );
+    assert!(
+        from_inline.analysis.diagnostics.is_empty(),
+        "{:?}",
+        from_inline.analysis.diagnostics
+    );
+    assert_eq!(
+        from_file.python.expect("python").source,
+        from_inline.python.expect("python").source
+    );
+}
+
+/// An unresolved reference must fail rather than compile an empty provider: a
+/// missing file would otherwise surface as an `ImportError` far from its cause.
+#[test]
+fn py_embed_without_resolved_content_is_an_error() {
+    let source = r#"
+            (module sample.embed)
+            (py/embed text-backend "backend/text.py")
+            (extern python text-backend
+              ^{:doc "Normalize." :export true}
+              (defn ^Str normalize [^Str value]
+                :contract {:id "sample/normalize-v1" :effects :pure}))
+        "#;
+    let result = compile(source, &CompileOptions::new("sample.embed", PythonVersion::MINIMUM));
+    assert!(
+        result
+            .analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-C0009"),
+        "{:?}",
+        result.analysis.diagnostics
+    );
+}
+
+/// One file backs one provider (OEP-0001-R006CB).
+#[test]
+fn two_providers_cannot_share_one_embedded_source() {
+    let source = r#"
+            (module sample.embed)
+            (py/embed first "backend/text.py")
+            (py/embed second "backend/text.py")
+        "#;
+    let mut sources = BTreeMap::new();
+    sources.insert("backend/text.py".to_owned(), "x = 1\n".to_owned());
+    let result = compile(
+        source,
+        &CompileOptions::new("sample.embed", PythonVersion::MINIMUM)
+            .with_embedded_sources(sources),
+    );
+    assert!(
+        result
+            .analysis
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-C0009"
+                && diagnostic.message.contains("one owner")),
+        "{:?}",
+        result.analysis.diagnostics
+    );
+}

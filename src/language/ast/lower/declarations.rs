@@ -22,6 +22,9 @@ impl Lowerer {
             Some(DeclarationForm::PythonImport) => {
                 Item::new(form, ItemKind::PyImport(self.lower_py_import(form)))
             }
+            Some(DeclarationForm::PythonEmbed) => {
+                Item::new(form, self.lower_py_embed(form))
+            }
             Some(DeclarationForm::PythonDecorate) => {
                 Item::new(form, ItemKind::PyDecorate(self.lower_py_decorate(form)))
             }
@@ -176,6 +179,58 @@ impl Lowerer {
                 ImportPhase::Runtime
             },
         }
+    }
+
+    /// Lower `(py/embed <handle> "<relative/path.py>")`.
+    ///
+    /// The body is left empty here on purpose: reading the file is the caller's
+    /// job, because compilation is a function of source text and options
+    /// (OEP-0001-R006CC). Everything downstream sees an ordinary embedded
+    /// Python provider once the caller has filled it in.
+    pub(super) fn lower_py_embed(&mut self, form: &Form) -> ItemKind {
+        let parts = list_parts(form).unwrap_or_default();
+        let Some(handle) = parts.get(1).and_then(|part| match &part.kind {
+            FormKind::Symbol(name) => Some(name.clone()),
+            _ => None,
+        }) else {
+            self.error(
+                "OSR-A0013",
+                "py/embed requires a provider handle symbol",
+                form.span,
+            );
+            return ItemKind::Error("py/embed handle".to_owned());
+        };
+        let Some(path) = parts.get(2).and_then(|part| match &part.kind {
+            FormKind::String(value) => Some(value.clone()),
+            _ => None,
+        }) else {
+            self.error(
+                "OSR-A0013",
+                "py/embed requires a source path string",
+                form.span,
+            );
+            return ItemKind::Error("py/embed path".to_owned());
+        };
+        if parts.len() > 3 {
+            self.error(
+                "OSR-A0013",
+                "py/embed accepts exactly a handle and a source path",
+                form.span,
+            );
+        }
+        if let Err(message) = validate_embed_path(&path) {
+            self.error("OSR-A0013", message, form.span);
+            return ItemKind::Error("py/embed path".to_owned());
+        }
+        ItemKind::EmbeddedPython(EmbeddedPython {
+            span: form.span,
+            body_span: form.span,
+            handle,
+            raw_body: String::new(),
+            body: String::new(),
+            logical_module: None,
+            source_path: Some(path),
+        })
     }
 
     pub(super) fn lower_py_import(&mut self, form: &Form) -> PyImport {
@@ -475,4 +530,25 @@ impl Lowerer {
             phase_form: (phase != FunctionPhase::Runtime).then(|| form.clone()),
         }
     }
+}
+
+/// The path shape OEP-0001-R006CB fixes, checked without touching the disk.
+///
+/// The filesystem checks a caller must additionally make — that the file exists,
+/// resolves inside a source root, and is not a symlink — cannot happen here, so
+/// this is deliberately only the syntactic half.
+fn validate_embed_path(path: &str) -> Result<(), &'static str> {
+    if path.is_empty() {
+        return Err("py/embed source path must not be empty");
+    }
+    if path.starts_with('/') || path.contains(':') || path.contains('\\') {
+        return Err("py/embed source path must be relative and use `/` separators");
+    }
+    if path.split('/').any(|part| part == ".." || part.is_empty() || part == ".") {
+        return Err("py/embed source path must not contain `.` or `..` components");
+    }
+    if !path.ends_with(".py") {
+        return Err("py/embed source path must name a `.py` file");
+    }
+    Ok(())
 }

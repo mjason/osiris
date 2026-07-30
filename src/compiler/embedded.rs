@@ -14,6 +14,7 @@ pub(super) fn resolve_provider_names(
     options: &CompileOptions,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    resolve_embedded_sources(module, options, diagnostics);
     let module_name = module
         .name
         .as_ref()
@@ -374,4 +375,47 @@ fn runtime_root(module: &str) -> String {
             )
         },
     )
+}
+
+/// Fill in the body of every `py/embed` provider from the content the caller
+/// resolved.
+///
+/// A reference the caller did not resolve is an error rather than an empty
+/// provider: silently compiling an empty Python module would turn a missing file
+/// into an `ImportError` far from its cause. One file may back only one
+/// provider, so a repeated path is an error too (OEP-0001-R006CB).
+fn resolve_embedded_sources(
+    module: &mut ast::Module,
+    options: &CompileOptions,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut claimed = BTreeMap::<String, String>::new();
+    for item in &mut module.items {
+        let ast::ItemKind::EmbeddedPython(provider) = &mut item.kind else {
+            continue;
+        };
+        let Some(path) = provider.source_path.clone() else {
+            continue;
+        };
+        if let Some(previous) = claimed.insert(path.clone(), provider.handle.spelling.clone()) {
+            diagnostics.push(Diagnostic::error(
+                "OSR-C0009",
+                format!(
+                    "`{path}` already backs embedded provider `{previous}`; one file has one owner"
+                ),
+                provider.span,
+            ));
+            continue;
+        }
+        let Some(content) = options.embedded_sources.get(&path) else {
+            diagnostics.push(Diagnostic::error(
+                "OSR-C0009",
+                format!("embedded provider source `{path}` was not found"),
+                provider.span,
+            ));
+            continue;
+        };
+        provider.raw_body = content.clone();
+        provider.body = content.clone();
+    }
 }

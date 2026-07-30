@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 13
+revision: 14
 source: ../../syntax.md
-source-revision: 13
+source-revision: 14
 translation-status: Current
 ---
 
@@ -85,6 +85,20 @@ def normalize(value: str) -> str:
 (extern python text-backend
   (defn ^Str normalize [^Str value]))
 ```
+
+provider 也可以指定一个文件、而不把 body 写在行内，这样只有一份事实来源，普通 Python
+工具也能直接读它：
+
+```clojure
+(py/embed text-backend "backend/text.py")
+
+(extern python text-backend
+  (defn ^Str normalize [^Str value]))
+```
+
+路径相对于指向它的那个 `.osr`，必须留在源码根之内、以 `.py` 结尾、且不得是符号链接。
+一个文件只支撑一个 provider。两种形式在下游不可区分——同样的重定位、同样的哈希、同样的
+interface——按你更喜欢怎么编辑来选。
 
 `extern python text-backend` 会把本地模块链接到 distribution-private
 `__osiris_runtime__`。相反，`extern python "package.module"` 表示由 uv/PyPI 提供的

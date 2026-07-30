@@ -408,6 +408,7 @@ impl Lowerer {
                 raw_body: raw_body.clone(),
                 body: body.clone(),
                 logical_module: None,
+                source_path: None,
             })
         } else {
             ItemKind::EmbeddedText(EmbeddedText {
