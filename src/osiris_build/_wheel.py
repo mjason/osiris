@@ -128,9 +128,17 @@ def _matches_exclude(path: str, pattern: str) -> bool:
 
 def _collect_static_files(project: _Project) -> Dict[str, bytes]:
     files: Dict[str, bytes] = {}
+    embedded = _embedded_provider_sources(project)
     for source_root in project.source_roots:
         for path in sorted(source_root.rglob("*"), key=lambda item: item.as_posix()):
             if _is_excluded(project, path):
+                continue
+            # A `py/embed` reference ships relocated into `__osiris_runtime__`.
+            # Copying it as an ordinary payload file too would put two copies in
+            # the wheel, and the second is importable — a de facto public Python
+            # API that bypasses the Osiris interface. It stays in the sdist,
+            # because there it is the source the wheel is built from.
+            if path.resolve() in embedded:
                 continue
             if path.is_symlink():
                 raise _error("source file `%s` must not be a symlink" % path)
@@ -449,3 +457,29 @@ from ._wheel_archive import (  # noqa: E402,F401
     _wheel_metadata_bytes,
     _write_atomic,
 )
+
+
+def _embedded_provider_sources(project: _Project) -> Set[Path]:
+    """Files named by a `py/embed` declaration, resolved absolutely.
+
+    The reference is matched textually rather than by parsing Osiris: the
+    declaration is a fixed form, and the build backend has no reader. A path
+    that does not resolve is left alone, because the compiler reports it with a
+    span this layer cannot produce.
+    """
+
+    references: Set[Path] = set()
+    pattern = re.compile(r'\(py/embed\s+\S+\s+"([^"]+)"\s*\)')
+    for source_root in project.source_roots:
+        for path in source_root.rglob("*.osr"):
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for relative in pattern.findall(text):
+                candidate = (path.parent / relative).resolve()
+                if candidate.is_file():
+                    references.add(candidate)
+    return references

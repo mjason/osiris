@@ -577,6 +577,50 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class EmbeddedProviderSourceTests(unittest.TestCase):
+    """A `py/embed` reference must ship once, relocated, not twice."""
+
+    def test_a_referenced_file_is_not_also_an_ordinary_payload(self):
+        from osiris_build._wheel import _embedded_provider_sources
+
+        root = Path(tempfile.mkdtemp())
+        try:
+            source_root = root / "src" / "demo"
+            (source_root / "backend").mkdir(parents=True)
+            backend = source_root / "backend" / "primitives.py"
+            backend.write_text("x = 1\n", encoding="utf-8")
+            (source_root / "a.osr").write_text(
+                '(module demo.a)\n(py/embed be "backend/primitives.py")\n',
+                encoding="utf-8",
+            )
+
+            class Stub:
+                source_roots = [root / "src"]
+
+            self.assertEqual(_embedded_provider_sources(Stub()), {backend.resolve()})
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_an_unresolvable_reference_is_left_to_the_compiler(self):
+        from osiris_build._wheel import _embedded_provider_sources
+
+        root = Path(tempfile.mkdtemp())
+        try:
+            source_root = root / "src" / "demo"
+            source_root.mkdir(parents=True)
+            (source_root / "a.osr").write_text(
+                '(module demo.a)\n(py/embed be "backend/missing.py")\n',
+                encoding="utf-8",
+            )
+
+            class Stub:
+                source_roots = [root / "src"]
+
+            self.assertEqual(_embedded_provider_sources(Stub()), set())
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 class NameTranslationParityTests(unittest.TestCase):
     """The backend and the compiler must agree on every name they both derive.
 
