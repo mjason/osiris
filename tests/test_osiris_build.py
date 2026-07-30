@@ -335,6 +335,39 @@ sidecar = {
             osiris_build.get_requires_for_build_wheel()
         self.assertIn("duplicate JSONC field `futureOption`", str(context.exception))
 
+    def test_wheel_exclude_is_read_from_tool_osiris(self):
+        self._replace(
+            self.root / "pyproject.toml",
+            'dependencies = ["NumPy>=2"]',
+            'dependencies = ["NumPy>=2"]\n\n[tool.osiris]\nwheel-exclude = ["tests", "tests.*"]',
+        )
+        from osiris_build._project import _load_project
+
+        project = _load_project(require_lock=False, enforce_runtime_python=False)
+        self.assertEqual(project.wheel_exclude, ["tests", "tests.*"])
+
+    def test_wheel_exclude_entries_must_be_non_empty_patterns(self):
+        self._replace(
+            self.root / "pyproject.toml",
+            'dependencies = ["NumPy>=2"]',
+            'dependencies = ["NumPy>=2"]\n\n[tool.osiris]\nwheel-exclude = ["tests", "  "]',
+        )
+        with self.assertRaises(osiris_build.BackendError) as context:
+            osiris_build.get_requires_for_build_wheel()
+        self.assertIn("wheel-exclude entry 1", str(context.exception))
+
+    def test_unknown_tool_osiris_field_is_rejected(self):
+        # A typo like `wheel-exculde` silently excluding nothing is the
+        # failure this guards against.
+        self._replace(
+            self.root / "pyproject.toml",
+            'dependencies = ["NumPy>=2"]',
+            'dependencies = ["NumPy>=2"]\n\n[tool.osiris]\nwheel-exculde = ["tests"]',
+        )
+        with self.assertRaises(osiris_build.BackendError) as context:
+            osiris_build.get_requires_for_build_wheel()
+        self.assertIn("unknown [tool.osiris] field `wheel-exculde`", str(context.exception))
+
     def test_display_locale_accepts_bcp47(self):
         self._replace(
             self.root / "osiris.jsonc",

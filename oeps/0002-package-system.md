@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 20
+revision: 21
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -385,6 +385,17 @@ The initial linker MUST NOT attempt Python function-level tree shaking. A
 provider wheel carries its complete validated graph once; each consumer output
 carries only the selected Osiris bindings and embedded Python modules.
 
+**OEP-0002-R033I:** `[tool.osiris].wheel-exclude` in `pyproject.toml` MAY name
+fnmatch patterns over Osiris module paths. A matching module MUST still compile
+with the full project graph and MUST still ship in the sdist, but none of its
+artifacts — authored source, generated Python, interface, source map, or
+`osiris.toml` entry — may enter the wheel. This is how a project keeps test
+modules out of what it distributes: what a wheel contains is packaging
+configuration, so it is decided here and not by the compiler. A configuration
+that would exclude every module MUST be rejected, and an unknown
+`[tool.osiris]` field MUST be rejected so a misspelled pattern list cannot
+silently exclude nothing.
+
 **OEP-0002-R034:** The wheel backend MUST generate
 `<distribution>.dist-info/osiris.toml`; authors MUST NOT maintain this marker by
 hand. The marker MUST identify its schema version, provider distribution and
@@ -701,6 +712,11 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 21, 2026-07-30: Added OEP-0002-R033I, `[tool.osiris].wheel-exclude`:
+  fnmatch patterns over module paths whose artifacts stay out of the wheel
+  while the modules still compile and still ship in the sdist. Wheel contents
+  are packaging configuration, so the knob lives in `pyproject.toml` and the
+  build backend, not in the compiler.
 - Revision 20, 2026-07-30: Added OEP-0002-R017A, naming the spelling boundary
   between source-root layout (Osiris) and built-distribution paths (Python)
   and requiring translation before any comparison across it. Recorded because

@@ -282,6 +282,30 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         if any(part == ".." for part in value.split("/")):
             raise _error("exclude pattern `%s` must not escape the project" % value)
         exclude_patterns.append(value.rstrip("/"))
+    # `[tool.osiris] wheel-exclude` names Osiris module paths (fnmatch
+    # patterns) to leave out of the wheel — test modules, typically. What a
+    # distribution contains is packaging configuration, so it lives here in
+    # pyproject rather than in the compiler or osiris.jsonc: the modules still
+    # compile and still ship in the sdist.
+    tool_table = document.get("tool", {})
+    if not isinstance(tool_table, dict):
+        raise _error("[tool] must be a table")
+    osiris_tool = tool_table.get("osiris", {})
+    if not isinstance(osiris_tool, dict):
+        raise _error("[tool.osiris] must be a table")
+    unknown_tool = sorted(set(osiris_tool) - {"wheel-exclude"})
+    if unknown_tool:
+        raise _error("unknown [tool.osiris] field `%s`" % unknown_tool[0])
+    wheel_exclude_values = osiris_tool.get("wheel-exclude", [])
+    if not isinstance(wheel_exclude_values, list):
+        raise _error("[tool.osiris].wheel-exclude must be an array")
+    wheel_exclude: List[str] = []
+    for index, value in enumerate(wheel_exclude_values):
+        if not isinstance(value, str) or not value.strip():
+            raise _error(
+                "[tool.osiris].wheel-exclude entry %d must be a non-empty module pattern" % index
+            )
+        wheel_exclude.append(value.strip())
     lock_path = root / "uv.lock"
     if not require_lock:
         lock_bytes, lock_document = b"", {}
@@ -378,6 +402,7 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         source_roots=source_roots,
         output_dir=output_dir,
         exclude_patterns=exclude_patterns,
+        wheel_exclude=wheel_exclude,
         target_python=target,
         requirements=[item.raw for item in requirements],
         locked_requirements=locked,

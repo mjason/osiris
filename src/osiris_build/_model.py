@@ -42,6 +42,11 @@ class _Project:
     source_roots: List[Path]
     output_dir: Path
     exclude_patterns: List[str]
+    # `[tool.osiris] wheel-exclude`: fnmatch patterns over Osiris module
+    # paths whose artifacts stay out of the wheel. The modules still compile
+    # and still ship in the sdist — this decides distribution contents, not
+    # language semantics, which is why it lives in pyproject.
+    wheel_exclude: List[str]
     target_python: Tuple[int, int]
     requirements: List[str]
     locked_requirements: List[str]

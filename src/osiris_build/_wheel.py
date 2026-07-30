@@ -312,6 +312,13 @@ def _collect_compiler_output(
             _add_file(static_files, archive_path, artifact)
             if name.endswith(".osri"):
                 interface_projections.append(_interface_projection(archive_path, artifact))
+        excluded_modules = {
+            projection.module
+            for projection in interface_projections
+            if any(fnmatch.fnmatchcase(projection.module, pattern) for pattern in project.wheel_exclude)
+        }
+        if excluded_modules and len(excluded_modules) == len(interface_projections):
+            raise _error("[tool.osiris].wheel-exclude removes every module from the wheel")
         for projection in interface_projections:
             # Osiris-spelled module → Python-spelled archive paths (R005B).
             base = python_module_identifier(projection.module).replace(".", "/")
@@ -325,6 +332,15 @@ def _collect_compiler_output(
             raw_map = source_maps.pop(source_map_path, None)
             if raw_map is None:
                 raise _error("interface `%s` has no corresponding source map" % projection.path)
+            if projection.module in excluded_modules:
+                # The module compiled — its checks ran, its imports resolved —
+                # but none of its artifacts enter the wheel, and it gets no
+                # osiris.toml entry. The sdist keeps the source: it is the
+                # buildable form of the project, tests included.
+                del static_files[projection.path]
+                del static_files[generated_path]
+                del static_files[source_path]
+                continue
             rewritten_map = _rewrite_source_map(
                 project,
                 source_map_path,

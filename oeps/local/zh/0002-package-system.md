@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 20
+revision: 21
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 20
+source-revision: 21
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -312,6 +312,14 @@ static import closure 中全部 provider-owned embedded module。初始 linker �
 function-level tree shaking。Provider wheel 只携带一次完整 validated graph；每个 consumer
 output 只携带 selected Osiris binding 与 embedded Python module。
 
+**OEP-0002-R033I：** `pyproject.toml` 的 `[tool.osiris].wheel-exclude` 可以给出针对
+Osiris module path 的 fnmatch pattern。匹配的 module 仍然必须随完整 project graph 编译，
+仍然必须进入 sdist，但它的任何 artifact——authored source、生成的 Python、interface、
+source map、`osiris.toml` 条目——都不得进入 wheel。项目用它把 test module 挡在发行物
+之外：wheel 装什么是打包配置，因此在这里决定，而不由编译器决定。会剔除所有 module 的
+配置必须被拒绝；未知的 `[tool.osiris]` 字段必须被拒绝，使拼错的 pattern 列表不会静默地
+什么都不剔除。
+
 **OEP-0002-R034：** Wheel backend 必须生成
 `<distribution>.dist-info/osiris.toml`，作者禁止手工维护。Marker 必须标识 schema version、
 provider distribution/version、target Python compatibility、每个 interface/source path、
@@ -559,6 +567,9 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 21，2026-07-30：新增 OEP-0002-R033I，`[tool.osiris].wheel-exclude`：以
+  module path 的 fnmatch pattern 指定不进 wheel 的 module；它们照常编译、照常进 sdist。
+  wheel 装什么是打包配置，所以这个开关在 `pyproject.toml` 与 build backend，不在编译器。
 - Revision 20，2026-07-30：新增 OEP-0002-R017A，命名 source root 布局（Osiris 拼写）与
   构建产物 path（Python 拼写）之间的拼写边界，要求跨边界比较前必须翻译。记录在案的原因：
   build backend 曾按字面比较，拒绝 OEP-0001-R005A 映射会改变的每一个 module name，
