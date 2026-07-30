@@ -25,6 +25,10 @@ pub struct DistributionMetadata {
 pub struct ExtensionResource {
     pub id: String,
     pub interface: PathBuf,
+    /// Semantic interface hash, already verified against the `.osri` content.
+    /// Carried so a second installed copy of the same pin can be recognized
+    /// as the same provider rather than reported as a conflict.
+    pub interface_hash: String,
     pub source: Option<PathBuf>,
     pub source_map: Option<PathBuf>,
 }

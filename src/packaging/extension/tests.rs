@@ -294,3 +294,17 @@ fn a_site_root_reached_through_a_symlink_is_visited_once() {
     fs::remove_file(&linked).unwrap();
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn the_same_pin_installed_at_two_roots_is_one_provider() {
+    // A project's own venv and an isolated build environment both carry the
+    // dependency at the locked version. That is one provider seen twice —
+    // reporting it as `provided by both X and X` made every editable install
+    // of a project with an extension dependency fail.
+    let records = b"{}";
+    let first = fixture(&marker(Some(records)), Some(records));
+    let second = fixture(&marker(Some(records)), Some(records));
+    let graph = discover(&[first, second], &["sample".to_owned()]).unwrap();
+    assert_eq!(graph.distributions.len(), 1);
+    assert_eq!(graph.distributions[0].metadata.normalized_name, "sample-ext");
+}

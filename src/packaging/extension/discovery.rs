@@ -97,8 +97,25 @@ fn discover_filtered(
         (&left.metadata.normalized_name, &left.metadata.version)
             .cmp(&(&right.metadata.normalized_name, &right.metadata.version))
     });
+    // The same pin installed at two roots — the project's own venv plus an
+    // isolated build environment, typically — is one provider seen twice, not
+    // a conflict. Identity is verified, not assumed: only a copy whose
+    // extension ids and interface hashes all match is dropped, so a corrupted
+    // same-version install still reaches the duplicate-id error below.
+    distributions.dedup_by(|second, first| {
+        first.metadata.normalized_name == second.metadata.normalized_name
+            && first.metadata.version == second.metadata.version
+            && first.extensions.len() == second.extensions.len()
+            && first
+                .extensions
+                .iter()
+                .zip(&second.extensions)
+                .all(|(left, right)| {
+                    left.id == right.id && left.interface_hash == right.interface_hash
+                })
+    });
 
-    let mut by_id = BTreeMap::new();
+    let mut by_id: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     for (distribution_index, distribution) in distributions.iter().enumerate() {
         for (extension_index, extension) in distribution.extensions.iter().enumerate() {
             if enabled
@@ -266,6 +283,7 @@ fn load_distribution(
         extensions.push(ExtensionResource {
             id: extension.id,
             interface,
+            interface_hash: extension.interface_hash,
             source,
             source_map,
         });
