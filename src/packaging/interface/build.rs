@@ -314,15 +314,8 @@ pub(crate) fn collect_phase_interface(
     // resolves through this path rather than through the binding table, so
     // reading only the manifest here would leave `^:export` on a `defmacro`
     // silently inert.
-    let exports = surface
-        .items
-        .iter()
-        .filter_map(|item| match &item.kind {
-            ast::ItemKind::Export(export) => Some(export.names.as_slice()),
-            _ => None,
-        })
-        .flatten()
-        .chain(ast::export_markers(&surface.items))
+    let exports = ast::published_names(&surface.items)
+        .into_iter()
         .map(|name| name.canonical.clone())
         .collect::<BTreeSet<_>>();
 

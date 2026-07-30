@@ -5,15 +5,8 @@ impl<'a> Lowerer<'a> {
         // Both explicit ways to publish a name feed this set: the module-level
         // manifest and the per-item `^:export` marker. A public alias requires
         // its canonical target to be published, and either way satisfies that.
-        let explicit_canonical = module
-            .items
-            .iter()
-            .filter_map(|item| match &item.kind {
-                AstItemKind::Export(export) => Some(&export.names),
-                _ => None,
-            })
-            .flatten()
-            .chain(ast::export_markers(&module.items))
+        let explicit_canonical = ast::published_names(&module.items)
+            .into_iter()
             .filter(|name| {
                 !self
                     .aliases

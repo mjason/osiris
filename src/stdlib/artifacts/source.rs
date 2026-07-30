@@ -255,15 +255,8 @@ fn packaged_source(namespace: &str) -> Result<String, String> {
 
 fn declaration_lines(namespace: &str, source: &str) -> BTreeMap<String, u32> {
     let lowered = ast::lower_document(&crate::reader::read(source));
-    let exported = lowered
-        .module
-        .items
-        .iter()
-        .filter_map(|item| match &item.kind {
-            ast::ItemKind::Export(export) => Some(export.names.iter()),
-            _ => None,
-        })
-        .flatten()
+    let exported = ast::published_names(&lowered.module.items)
+        .into_iter()
         .map(|name| name.canonical.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     let mut lines = BTreeMap::new();

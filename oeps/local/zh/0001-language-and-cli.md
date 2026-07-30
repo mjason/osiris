@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 29
+revision: 30
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 29
+source-revision: 30
 translation-status: Current
 requires: [0]
 replaces: []
@@ -267,6 +267,10 @@ interface 一样。解析后的内容及其哈希必须被记录，使 artifact 
 内容变化时 interface 必须变化——body 就是 provider 的实现，所以这是语义变化，不是文档
 变化。
 
+**OEP-0001-R006CE：** 标准库不得使用 `py/embed`。按 OEP-0001-R006CC，解析是调用方的
+职责；而编译器在构建它自己的标准库时并不存在这样的调用方——引用会解析不到任何东西，
+provider 因此为空。标准模块的 provider body 写在行内。
+
 **OEP-0001-R006CD：** 工具必须把被引用文件当作它本来的样子——作者写下的源码。`osr fmt`
 必须用与行内 body 相同的固定 profile 就地格式化它；source map 必须标明被引用的文件，而
 不是那个指向它的 `.osr`，这样运行时 traceback 指向的才是人能编辑的那一行。
@@ -312,6 +316,15 @@ form 上，声明宏可以生成标记。因此宏贡献的公开面只会出现
 interface 中，编译器必须在发布 artifact 之前在该 surface 上收敛。这并不放宽 authored
 boundary：`module`、`import` 与 `export` 仍固定在展开之前，宏生成其中任何一个仍然
 必须被拒绝。
+
+**OEP-0001-R009C：** 每一条判定「某声明是否公开」的代码路径，都必须经由同一个共享入口
+得出该判定。组件不得为回答这个问题而直接匹配清单形式，因为这样做的路径会静默忽略标记：
+声明编译通过、什么都没公开、也不产生任何诊断。
+
+这不是风格规定。判定公开面的路径共有五条——provisional interface、HIR lowering、
+static-record owner、Phase-1 interface、标准 API 抽取——其中标记引入之后新发现的四条，
+每一条都是靠「察觉下游少了个名字」找出来的，而不是靠某个测试失败。必须互相一致的组件
+之间，必须由测试保证一致，正如 OEP-0001-R005D 已经对名字映射所要求的那样。
 
 **OEP-0001-R010：** 每个声明、参数、字段、类型和宏必须有一个与 locale 无关的
 canonical binding ID。中文或其他本地化 preferred name 与 alias 必须解析到该身份，
@@ -1145,6 +1158,11 @@ format/validate。
 
 ## 修订历史 (Change History)
 
+- Revision 30，2026-07-30：要求判定「声明是否公开」必须经由同一个共享入口，并由测试保证
+  必须一致的组件之间确实一致（OEP-0001-R009C）。该判定分散在五条路径上，其中四条在
+  `^:export` 引入时忽略了它；每一条都是靠察觉下游少了个名字才发现的，而不是靠测试失败
+  ——一个用标记写的标准模块会编译通过、并对所有消费者不可见。 同时记录标准库不能使用 `py/embed`：编译器在构建自身标准库时不存在解析引用的
+  调用方（OEP-0001-R006CE）。
 - Revision 29，2026-07-30：新增 `py/embed`，以指定文件作为内嵌 Python provider 的 body，
   而不是写在行内（OEP-0001-R006CA 到 OEP-0001-R006CD）。行内形式让「产生副本」成为最
   自然的工作方式——起草一个 `.py`、搬进去、原件留下漂移——实践中已经因此留下两份陈旧

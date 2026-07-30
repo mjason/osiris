@@ -224,6 +224,27 @@ fn collect_declared_items<'a>(items: &'a [Item], flattened: &mut Vec<&'a Item>) 
     }
 }
 
+/// Every name a module publishes, by either explicit form.
+///
+/// This is the one entry point OEP-0001-R009C requires. Deciding publicity by
+/// matching `ItemKind::Export` directly silently ignores the marker: the
+/// declaration compiles, nothing is published, and no diagnostic says so. That
+/// mistake was made five times before this existed, and each instance was found
+/// by noticing a missing name downstream rather than by a failing test.
+#[must_use]
+pub fn published_names(items: &[Item]) -> Vec<&Name> {
+    let mut names = items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Export(export) => Some(export.names.iter()),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    names.extend(export_markers(items));
+    names
+}
+
 /// The names a module publishes through per-item `^:export` markers.
 #[must_use]
 pub fn export_markers(items: &[Item]) -> Vec<&Name> {

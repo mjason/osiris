@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 29
+revision: 30
 requires: [0]
 replaces: []
 superseded-by: null
@@ -325,6 +325,12 @@ MUST be recorded so an artifact identifies what it embedded, and the interface
 MUST change when that content changes — the body is the provider's
 implementation, so this is a semantic change, not a documentation one.
 
+**OEP-0001-R006CE:** The standard library MUST NOT use `py/embed`. Resolution is
+the caller's responsibility under OEP-0001-R006CC, and while the compiler builds
+its own standard library there is no caller to resolve anything — the reference
+would resolve to nothing and the provider would be empty. A standard module
+carries its provider body inline.
+
 **OEP-0001-R006CD:** Tooling MUST treat the referenced file as the authored
 source it is. `osr fmt` MUST format it in place with the same pinned profile it
 applies to an inline body, and a source map MUST identify the referenced file
@@ -386,6 +392,19 @@ built from the expanded surface, and the compiler MUST converge on that surface
 before publishing an artifact. This does not relax the authored boundary:
 `module`, `import` and `export` remain fixed before expansion, and a macro that
 generates one MUST still be rejected.
+
+**OEP-0001-R009C:** Every code path that decides whether a declaration is
+published MUST reach that decision through one shared entry point. A component
+MUST NOT match the manifest form directly to answer the question, because a path
+that does so silently ignores the marker: the declaration compiles, nothing is
+published, and no diagnostic is produced.
+
+This is not a style rule. Five separate paths decide publicity — the provisional
+interface, HIR lowering, static-record owners, the Phase-1 interface, and
+standard-API extraction — and each of the four added after the marker had to be
+found by noticing its absence downstream rather than by a failing test. A
+component that must agree with the others MUST be held to that agreement by a
+test, as OEP-0001-R005D already requires of the name mappings.
 
 **OEP-0001-R010:** Every declaration, parameter, field, type, and macro MUST
 have one locale-independent canonical binding ID. Chinese or other localized
@@ -1393,6 +1412,14 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 30, 2026-07-30: Required one shared entry point for deciding whether a
+  declaration is published, and a test holding components that must agree
+  (OEP-0001-R009C). Five paths make that decision independently; four of them
+  ignored `^:export` when it was introduced, and each was found by noticing a
+  missing name downstream rather than by a failing test — a standard module
+  written with the marker compiled and was invisible to every consumer. Also recorded that the standard library cannot use `py/embed`: while the
+  compiler builds its own standard library there is no caller to resolve a
+  reference (OEP-0001-R006CE).
 - Revision 29, 2026-07-30: Added `py/embed`, which names a file as an embedded
   Python provider's body instead of carrying it inline (OEP-0001-R006CA through
   OEP-0001-R006CD). The inline form makes a duplicate the natural way to work —

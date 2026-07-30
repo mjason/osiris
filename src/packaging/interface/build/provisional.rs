@@ -16,15 +16,8 @@ pub(crate) fn build_provisional(surface: &ast::Module) -> InterfaceResult<Interf
     // per-item `^:export` markers. Markers are read from the surface handed to
     // this builder, so a marker a macro generated counts once the expanded
     // surface is available.
-    let exports = surface
-        .items
-        .iter()
-        .filter_map(|item| match &item.kind {
-            ast::ItemKind::Export(export) => Some(export.names.iter()),
-            _ => None,
-        })
-        .flatten()
-        .chain(ast::export_markers(&surface.items))
+    let exports = ast::published_names(&surface.items)
+        .into_iter()
         .map(|name| name.canonical.clone())
         .collect::<BTreeSet<_>>();
 

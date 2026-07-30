@@ -226,16 +226,8 @@ fn source_bindings(namespace: &'static str) -> Vec<StandardBinding> {
     // Both explicit ways to publish feed the standard API surface. Reading only
     // the manifest here left `^:export` inert for a standard module, so a module
     // written with markers would compile and then be invisible to every consumer.
-    let exported = lowered
-        .module
-        .items
-        .iter()
-        .filter_map(|item| match &item.kind {
-            ast::ItemKind::Export(export) => Some(export.names.iter()),
-            _ => None,
-        })
-        .flatten()
-        .chain(ast::export_markers(&lowered.module.items))
+    let exported = ast::published_names(&lowered.module.items)
+        .into_iter()
         .map(|name| name.canonical.clone())
         .collect::<Vec<_>>();
     let mut declarations = BTreeMap::<String, BTreeSet<BindingKind>>::new();
