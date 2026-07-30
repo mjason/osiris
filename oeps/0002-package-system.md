@@ -12,8 +12,8 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-27
-revision: 19
+updated: 2026-07-30
+revision: 20
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -207,6 +207,19 @@ match that path. Ambiguous ownership by multiple roots MUST be rejected.
 **OEP-0002-R017:** Generated `.py`, `.osri`, and `.py.map` files MUST preserve
 the module-relative path beneath `outDir`. Build tools MUST diagnose two source
 modules that would map to the same canonical module or target path.
+
+**OEP-0002-R017A:** Source-root layout spells module components the Osiris way
+(OEP-0002-R016); every path beneath `outDir` and every file path inside a built
+distribution spells them the Python way, by OEP-0001-R005B. A component that
+compares a name from one side of this boundary against a path from the other
+MUST translate before comparing and MUST NOT compare spellings literally. A
+literal comparison passes for every module name the mapping leaves unchanged
+and then rejects the first name it does not — `(module my-pkg.core)` compiled
+and could never be packaged, because the build backend demanded the declared
+name equal the translated archive path. Directory components beneath a source
+root are module components and translate; a non-module file's basename is not,
+and is preserved as authored so runtime resource lookup finds it under the
+name the author wrote.
 
 **OEP-0002-R018:** `osr check [path]` MUST discover the applicable project,
 parse and expand the selected module graph, validate names, types, contracts,
@@ -688,6 +701,12 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 20, 2026-07-30: Added OEP-0002-R017A, naming the spelling boundary
+  between source-root layout (Osiris) and built-distribution paths (Python)
+  and requiring translation before any comparison across it. Recorded because
+  the build backend compared literally and rejected every module name the
+  OEP-0001-R005A mapping changes, so `(module my-pkg.core)` compiled but could
+  never be packaged.
 - Revision 19, 2026-07-27: Corrected an RFC 2119 keyword in OEP-0002-R033D
   that was written in lowercase and therefore carried no obligation under
   OEP-0000-R017.

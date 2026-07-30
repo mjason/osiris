@@ -12,11 +12,11 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-27
-revision: 19
+updated: 2026-07-30
+revision: 20
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 19
+source-revision: 20
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -167,6 +167,15 @@ separator 替换成 dot 后，必须决定 canonical module path。显式 source
 
 **OEP-0002-R017：** 生成 `.py`、`.osri`、`.py.map` 必须在 `outDir` 下保留 module
 relative path。两个 source module 映射到同一 canonical module 或 target path 时必须诊断。
+
+**OEP-0002-R017A：** Source root 布局按 Osiris 方式拼写 module 分量（OEP-0002-R016）；
+`outDir` 之下的每个 path 以及构建产物 distribution 内的每个 file path 按 Python 方式拼写，
+依 OEP-0001-R005B。任何组件将边界一侧的 name 与另一侧的 path 相比较时，必须先翻译再比较，
+不得按字面比较拼写。字面比较对映射不改变的每个 module name 都通过，然后拒绝第一个被映射
+改变的 name——`(module my-pkg.core)` 能编译却永远打不出包，因为 build backend 要求
+declared name 与翻译后的 archive path 字面相等。Source root 之下的目录分量是 module
+分量，必须翻译；非 module file 的 basename 不是，按作者所写保留，使 runtime resource
+查找能以作者写下的名字找到它。
 
 **OEP-0002-R018：** `osr check [path]` 必须发现适用 project，parse/expand 所选 module
 graph，验证 name、type、contract、interface、extension record 和 target compatibility，
@@ -550,6 +559,10 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 20，2026-07-30：新增 OEP-0002-R017A，命名 source root 布局（Osiris 拼写）与
+  构建产物 path（Python 拼写）之间的拼写边界，要求跨边界比较前必须翻译。记录在案的原因：
+  build backend 曾按字面比较，拒绝 OEP-0001-R005A 映射会改变的每一个 module name，
+  `(module my-pkg.core)` 能编译却永远打不出包。
 - Revision 19，2026-07-27：修正 OEP-0002-R033D 中本意规范却写成小写的 RFC 2119
   关键词，按 OEP-0000-R017 它此前不具约束力。
 - Revision 18，2026-07-27：在 OEP-0003-R005G 从标准宏面移除 `defn-` 之后，改用「未公开的

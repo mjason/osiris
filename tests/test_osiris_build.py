@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import osiris_build  # noqa: E402
 from osiris_build._interface import _is_supported_python_target  # noqa: E402
 from osiris_build._wheel import _compiler_command  # noqa: E402
-from osiris_build import _common, _wheel_archive  # noqa: E402
+from osiris_build import _common, _names, _wheel_archive  # noqa: E402
 
 
 class OsirisBuildTests(unittest.TestCase):
@@ -677,3 +677,37 @@ class NameTranslationParityTests(unittest.TestCase):
                     normalized.replace("-", "_"),
                 )
                 self.assertNotIn("-", _wheel_archive._dist_info_name(normalized))
+
+    # Expected values transcribed from `language/name/tests.rs`
+    # (`maps_lisp_and_unicode_names_deterministically`), plus the boundary
+    # cases R005A spells out. The backend not having this mapping at all is
+    # what made `(module my-pkg.core)` compile but never package.
+    IDENTIFIERS = [
+        ("format-message", "format_message"),
+        ("empty?", "empty_p"),
+        ("归一化数据", "归一化数据"),
+        ("class", "class_"),
+        ("swap!", "swap_bang"),
+        ("+", "_u2b_"),
+        ("2x", "_2x"),
+        ("", "_osiris_empty"),
+        # `五` is numeric to Python's str predicates (Numeric_Type) but a
+        # letter to the compiler (category Lo); the port must not prefix `_`.
+        ("五行", "五行"),
+    ]
+    MODULES = [
+        ("example.data-tools", "example.data_tools"),
+        ("my-pkg.core", "my_pkg.core"),
+        ("osiris-test.core", "osiris_test.core"),
+        ("a/b-c", "a.b_c"),
+    ]
+
+    def test_identifier_translation_matches_the_compiler(self):
+        for name, expected in self.IDENTIFIERS:
+            with self.subTest(name=name):
+                self.assertEqual(_names.python_identifier(name), expected)
+
+    def test_module_translation_matches_the_compiler(self):
+        for module, expected in self.MODULES:
+            with self.subTest(module=module):
+                self.assertEqual(_names.python_module_identifier(module), expected)

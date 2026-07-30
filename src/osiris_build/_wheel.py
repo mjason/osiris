@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 from ._common import _error, _json_object, _normalise_name, _sha256
+from ._names import python_identifier, python_module_identifier
 from ._interface import (
     _INTERFACE_COMPILER_ABI,
     _INTERFACE_LANGUAGE_ABI,
@@ -151,7 +152,14 @@ def _collect_static_files(project: _Project) -> Dict[str, bytes]:
             relative = path.relative_to(source_root)
             if "__osiris_runtime__" in relative.parts:
                 raise _error("`__osiris_runtime__` is reserved for compiler-linked support")
-            _add_file(files, _safe_archive_path(relative), path.read_bytes())
+            # Directories are module components and translate (R005B); the file
+            # itself is not a module name and keeps its authored basename, so
+            # `importlib.resources` finds it under the name the author wrote.
+            archive = "/".join(
+                [python_identifier(part) for part in relative.parts[:-1]]
+                + [relative.parts[-1]]
+            )
+            _add_file(files, _safe_archive_path(archive), path.read_bytes())
     return files
 
 
@@ -164,7 +172,13 @@ def _packaged_sources(project: _Project, source_files: Sequence[Path]) -> Dict[s
         relative = source.relative_to(owners[0])
         if "__osiris_runtime__" in relative.parts:
             raise _error("`__osiris_runtime__` is reserved for compiler-linked support")
-        archive_path = _safe_archive_path(relative)
+        # Source-root layout spells module components the Osiris way
+        # (OEP-0002-R016); the wheel spells them the Python way, so the `.osr`
+        # stays next to the `.py` it produced. Every component of the relative
+        # path is a module component, so each is translated (R005B).
+        translated = [python_identifier(part) for part in relative.parts[:-1]]
+        translated.append(python_identifier(relative.parts[-1][: -len(".osr")]) + ".osr")
+        archive_path = _safe_archive_path("/".join(translated))
         _add_file(packaged, archive_path, source.read_bytes())
     return packaged
 
@@ -299,7 +313,8 @@ def _collect_compiler_output(
             if name.endswith(".osri"):
                 interface_projections.append(_interface_projection(archive_path, artifact))
         for projection in interface_projections:
-            base = projection.module.replace(".", "/")
+            # Osiris-spelled module → Python-spelled archive paths (R005B).
+            base = python_module_identifier(projection.module).replace(".", "/")
             source_path = base + ".osr"
             generated_path = base + ".py"
             source_map_path = base + ".py.map"

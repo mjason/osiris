@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from ._common import _error
 from ._interface_records import _record_from_interface
 from ._model import _InterfaceProjection
+from ._names import python_module_identifier
 from ._sexpr import (
     _SAtom,
     _SList,
@@ -115,11 +116,14 @@ def _interface_projection(path: str, data: bytes) -> _InterfaceProjection:
         },
     )
     module = _sexpr_string(body["module"], "`%s` module" % path)
+    # The declared name is Osiris-spelled; the archive path is Python-spelled.
+    # Translate before comparing (OEP-0001-R005B) — demanding literal equality
+    # here is what made `my-pkg.core` compile fine yet never package.
     expected_module = path[: -len(".osri")].replace("/", ".")
-    if module != expected_module:
+    if python_module_identifier(module) != expected_module:
         raise _error(
-            "interface `%s` declares module `%s`, expected `%s`"
-            % (path, module, expected_module)
+            "interface `%s` declares module `%s` (Python `%s`), expected `%s`"
+            % (path, module, python_module_identifier(module), expected_module)
         )
 
     hashes = _sexpr_map(
