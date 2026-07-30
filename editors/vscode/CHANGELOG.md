@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.21
+
+- Treat the same locked extension dependency installed at two site roots — the project venv plus an isolated build environment — as one provider instead of a conflict, which made every editable install of a project with an extension dependency fail.
+- Generate a `.gitignore` on `osr init`; an existing one only gains the machine-local `.osiris/` cache entry.
+
 ## 0.3.20
 
 - Add `[tool.osiris] wheel-exclude` to `pyproject.toml`: fnmatch patterns over module paths whose artifacts stay out of the wheel. The modules still compile and still ship in the sdist — the way a project keeps its test modules out of what it distributes.
