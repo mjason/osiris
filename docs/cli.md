@@ -32,7 +32,10 @@ appended, and only when missing.
 
 Project commands discover `osiris.jsonc` from the selected path. `osr check`
 analyzes without writing output. `osr build` compiles the complete configured
-source scope into `outDir`. `osr watch` performs the same build after source
+source scope into `outDir`. With `outDir: "."` the artifacts land beside the
+sources at the project root — importable and testable with no path prefix —
+and publication switches to an in-place mode that only ever deletes artifacts
+a previous build recorded, never an authored file. `osr watch` performs the same build after source
 changes and exits promptly on an interrupt. `osr run <file> -- <args>` compiles
 the source entry and propagates the target program's status.
 

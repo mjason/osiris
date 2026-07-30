@@ -244,7 +244,16 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
     source_values = osiris.get("source", ["src"])
     if not isinstance(source_values, list) or not source_values:
         raise _error("osiris.jsonc source must be a non-empty array")
-    output_relative = _validate_relative_path(osiris.get("outDir", "dist"), "output directory")
+    # `outDir: "."` generates beside the sources at the project root. The
+    # source-inside-output rejection below does not apply then: with the root
+    # as output every source root is inside it by construction, and the CLI's
+    # in-place publication mode is what makes that safe.
+    output_value = osiris.get("outDir", "dist")
+    output_is_root = output_value == "."
+    if output_is_root:
+        output_relative = Path(".")
+    else:
+        output_relative = _validate_relative_path(output_value, "output directory")
     output_dir = (root / output_relative).resolve()
     source_roots: List[Path] = []
     seen_source_roots: Set[Path] = set()
@@ -253,15 +262,16 @@ def _load_project(require_lock: bool = True, enforce_runtime_python: bool = True
         if relative in seen_source_roots:
             raise _error("duplicate normalized source root `%s`" % relative)
         seen_source_roots.add(relative)
-        try:
-            relative.relative_to(output_relative)
-        except ValueError:
-            pass
-        else:
-            raise _error(
-                "source root `%s` must not be inside output directory `%s`"
-                % (relative, output_relative)
-            )
+        if not output_is_root:
+            try:
+                relative.relative_to(output_relative)
+            except ValueError:
+                pass
+            else:
+                raise _error(
+                    "source root `%s` must not be inside output directory `%s`"
+                    % (relative, output_relative)
+                )
         absolute = (root / relative).resolve()
         try:
             absolute.relative_to(root)

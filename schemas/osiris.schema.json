@@ -22,8 +22,8 @@
     "outDir": {
       "$ref": "#/$defs/relativePath",
       "default": "dist",
-      "description": "Project-relative destination for complete build artifacts. It is always excluded from source discovery.",
-      "examples": ["dist", "build/osiris"]
+      "description": "Project-relative destination for complete build artifacts, excluded from source discovery. \".\" generates beside the sources at the project root; artifacts are then written in place and only previously published artifacts are ever cleaned up.",
+      "examples": ["dist", "build/osiris", "."]
     },
     "exclude": {
       "type": "array",

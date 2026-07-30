@@ -121,12 +121,36 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
     let out_dir = arguments
         .out_dir
         .map_or_else(|| context.default_out_dir.clone(), PathBuf::from);
+    // The whole-directory replacement in `publish_artifacts` is only correct
+    // when every file in the output directory is a build product. With
+    // `outDir: "."` the output directory is the project root — sources,
+    // configuration and all — so publication switches to the in-place mode,
+    // and the whole-directory freshness check (which would count authored
+    // files as stale artifacts) does not apply.
+    let publish_in_place = context
+        .project
+        .as_ref()
+        .is_some_and(|project| project.output_dir == project.root)
+        || fs::canonicalize(&out_dir).ok().is_some_and(|out| {
+            context
+                .project
+                .as_ref()
+                .and_then(|project| fs::canonicalize(&project.root).ok())
+                .is_some_and(|root| out == root)
+        });
+    let publish = |out_dir: &Path, artifacts: &[Artifact]| {
+        if publish_in_place {
+            crate::artifact::publish_artifacts_in_place(out_dir, artifacts)
+        } else {
+            publish_artifacts(out_dir, artifacts)
+        }
+    };
     let workspace_cache = workspace_cache(&context, &sources, &loaded, &arguments);
     if let Some((cache, key)) = &workspace_cache
         && let Some(artifacts) = cache.load(key)
     {
-        if !crate::cache::output_matches(&out_dir, &artifacts)
-            && let Err(error) = publish_artifacts(&out_dir, &artifacts)
+        if (publish_in_place || !crate::cache::output_matches(&out_dir, &artifacts))
+            && let Err(error) = publish(&out_dir, &artifacts)
         {
             return CliOutcome::failure(
                 1,
@@ -352,7 +376,7 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
             contents: records.bytes,
         });
     }
-    if let Err(error) = publish_artifacts(&out_dir, &artifacts) {
+    if let Err(error) = publish(&out_dir, &artifacts) {
         return CliOutcome::failure(
             1,
             String::new(),

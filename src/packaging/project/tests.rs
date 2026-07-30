@@ -294,3 +294,16 @@ fn loads_output_and_glob_exclusions() {
     let root = path.parent().unwrap();
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn output_at_the_project_root_keeps_sources_discoverable() {
+    let path = fixture(r#"{"source": ["src"], "outDir": "."}"#);
+    let config = ProjectConfig::load(&path).expect("outDir `.` is a supported layout");
+    assert_eq!(config.output_dir, config.root);
+    // Sources stay inputs even though the output directory encloses them...
+    assert!(!config.is_excluded(&config.root.join("src/module.osr")));
+    // ...while generated trees at the root remain excluded from discovery.
+    assert!(config.is_excluded(&config.root.join("app/module.py")));
+    let root = path.parent().expect("fixture has parent");
+    let _ = fs::remove_dir_all(root);
+}

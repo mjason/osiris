@@ -149,7 +149,15 @@ impl ProjectConfig {
                 .clone()
                 .unwrap_or_else(|| "dist".to_owned()),
         );
-        validate_relative_path(&output_relative, "output directory")?;
+        // `outDir: "."` generates beside the sources: `app/main.py` lands at
+        // the project root, importable and testable without a path prefix.
+        // Source roots are then inside the output directory by construction,
+        // which is why `is_excluded` exempts them instead of this check
+        // rejecting the layout.
+        let output_is_root = output_relative == Path::new(".");
+        if !output_is_root {
+            validate_relative_path(&output_relative, "output directory")?;
+        }
         let sources = jsonc.source.unwrap_or_else(|| vec!["src".to_owned()]);
         if sources.is_empty() {
             return Err(ConfigError::Invalid(
@@ -198,7 +206,13 @@ impl ProjectConfig {
             })
             .transpose()?;
         let exclude = compile_exclude_patterns(jsonc.exclude.unwrap_or_default())?;
-        let output_dir = root.join(output_relative);
+        // `root.join(".")` keeps a trailing `.` component that defeats every
+        // later prefix comparison, so the root case uses the root itself.
+        let output_dir = if output_is_root {
+            root.clone()
+        } else {
+            root.join(output_relative)
+        };
 
         Ok(Self {
             root,
@@ -226,8 +240,18 @@ impl ProjectConfig {
         } else {
             self.root.join(path)
         };
+        // The output-directory exclusion keeps generated artifacts from being
+        // read back as inputs. With `outDir: "."` the output directory is the
+        // project root and contains every source root by construction, so a
+        // path inside a source root that the output directory *encloses* stays
+        // an input. The exemption is that narrow deliberately: an output
+        // directory nested *inside* a source root (`outDir: "src/generated"`)
+        // still excludes its contents.
+        let in_output_enclosed_source_root = self.source_roots.iter().any(|source_root| {
+            absolute.starts_with(source_root) && source_root.starts_with(&self.output_dir)
+        });
         absolute.strip_prefix(&self.root).is_ok_and(|relative| {
-            absolute.starts_with(&self.output_dir)
+            (!in_output_enclosed_source_root && absolute.starts_with(&self.output_dir))
                 || relative.starts_with(".osiris")
                 || self.exclude.is_match(relative)
         })

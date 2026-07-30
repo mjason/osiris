@@ -80,6 +80,75 @@ pub struct GeneratedPosition {
     pub column: usize,
 }
 
+/// Publishes into a directory the compiler does not own — the project root,
+/// when `outDir` is `.`.
+///
+/// [`publish_artifacts`] replaces the whole directory as one unit, which is
+/// correct only when every file in it is a build product. Here artifacts are
+/// written file by file, and stale products are removed by consulting the
+/// previous publication's manifest: only a path this function itself recorded
+/// is ever deleted, and with no manifest nothing is deleted at all — leaving a
+/// stale generated file behind is recoverable, deleting an authored one is
+/// not.
+pub fn publish_artifacts_in_place(out_dir: &Path, artifacts: &[Artifact]) -> io::Result<()> {
+    let mut paths = BTreeSet::new();
+    for artifact in artifacts {
+        validate_relative_artifact_path(&artifact.path)?;
+        if !paths.insert(artifact.path.clone()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("duplicate artifact path `{}`", artifact.path.display()),
+            ));
+        }
+    }
+
+    let manifest_path = out_dir.join(".osiris").join("published-artifacts-v1");
+    let previous = fs::read_to_string(&manifest_path)
+        .map(|contents| {
+            contents
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(PathBuf::from)
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+
+    for stale in previous.difference(&paths) {
+        if validate_relative_artifact_path(stale).is_err() {
+            continue;
+        }
+        let absolute = out_dir.join(stale);
+        let _ = fs::remove_file(&absolute);
+        // Directories emptied by the removal are cleaned up, never non-empty
+        // ones, and never the output root itself.
+        let mut parent = absolute.parent();
+        while let Some(directory) = parent {
+            if directory == out_dir || fs::remove_dir(directory).is_err() {
+                break;
+            }
+            parent = directory.parent();
+        }
+    }
+
+    for artifact in artifacts {
+        let destination = out_dir.join(&artifact.path);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&destination, &artifact.contents)?;
+    }
+
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut manifest = String::new();
+    for path in &paths {
+        manifest.push_str(&path.to_string_lossy());
+        manifest.push('\n');
+    }
+    fs::write(&manifest_path, manifest)
+}
+
 /// Publishes a complete build directory with rollback if the final rename fails.
 ///
 /// `out_dir` is compiler-owned: an existing directory is replaced as one unit,
