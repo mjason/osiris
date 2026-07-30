@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.26
+
+- Link an external extension's runtime into the consumer's own output instead of importing the provider's installed private `__osiris_runtime__` package: generated imports now name `<owning>.__osiris_runtime__.packages.<provider-id>.…` and the provider file is copied there, so the output no longer requires the provider's package layout at runtime. First-party runtime imports within one build are unchanged.
+
 ## 0.3.25
 
 - The language server now resolves extensions from the project's own installed environment (`.venv`) in addition to any editor-configured site roots, matching the CLI. Files `osr check` accepted no longer show missing-module diagnostics for installed extensions in the editor.

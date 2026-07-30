@@ -2,7 +2,7 @@
   "name": "osiris",
   "displayName": "Osiris",
   "description": "Language support for the Osiris Lisp-to-Python compiler",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "publisher": "mjason",
   "license": "MIT",
   "engines": {
