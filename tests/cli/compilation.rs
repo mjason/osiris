@@ -559,6 +559,77 @@ fn macros_answer_to_their_osiris_names_spellings() {
 }
 
 #[test]
+fn refer_all_brings_macros_under_every_spelling() {
+    // `:refer :all` refers macros like any other export — canonical and
+    // `:osiris/names` spellings alike, through `import` and
+    // `import-for-syntax` (OEP-0001-R062A).
+    let app_source = r#"(module sample.app)
+            (import sample.marks :refer :all)
+            (import-for-syntax sample.helpers :refer :all)
+            (export [f])
+            ^{:doc "Call refer-all macros by canonical and localized names."}
+            (defn ^Int f [^Int value]
+              (+ (twice value) (加倍 value) (助力 value)))
+        "#;
+    let fixture = SourceFixture::new(app_source);
+    let app = fixture.write("src/sample/app.osr", app_source);
+    let marks = fixture.write(
+        "src/sample/marks.osr",
+        r#"(module sample.marks)
+            ^{:doc {:default "Twice."}
+              :osiris/names {"zh-CN" {:preferred 加倍}}}
+            (defmacro twice [value]
+              (list '+ value value))
+            (export [twice])
+        "#,
+    );
+    let helpers = fixture.write(
+        "src/sample/helpers.osr",
+        r#"(module sample.helpers)
+            ^{:doc {:default "Boost."}
+              :osiris/names {"zh-CN" {:preferred 助力}}}
+            (defmacro boost [value]
+              (list '* value 2))
+            (export [boost])
+        "#,
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"refer-all-demo\"\nversion = \"1.0.0\"\n",
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+    let out_dir = fixture.directory.join("refer-all-build");
+
+    let output = osr(&[
+        "compile",
+        path_argument(&app),
+        path_argument(&marks),
+        path_argument(&helpers),
+        "--out-dir",
+        path_argument(&out_dir),
+        "--emit",
+        "py,osri",
+    ]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated = fs::read_to_string(out_dir.join("sample/app.py"))
+        .expect("macro consumer Python should exist");
+    assert!(
+        generated.contains("value + value") && generated.contains("value * 2"),
+        "{generated}"
+    );
+}
+
+#[test]
 fn generated_python_uses_one_readable_import_for_an_osiris_provider() {
     let app_source = r#"(module sample.app)
             (import sample.values :as values :refer [increment])

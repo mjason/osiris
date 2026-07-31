@@ -33,12 +33,11 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .map(|alias| alias.canonical.clone()),
             )
-            .chain(
-                interface
-                    .macros
-                    .iter()
-                    .map(|macro_| macro_.canonical.clone()),
-            )
+            .chain(interface.macros.iter().flat_map(|macro_| {
+                // A macro is importable under its canonical name and every
+                // `:osiris/names` spelling alike (OEP-0001-R062A).
+                std::iter::once(macro_.canonical.clone()).chain(macro_.aliases.iter().cloned())
+            }))
             .collect::<BTreeSet<_>>();
         let excluded = self.validate_interface_exclusions(import, &exported);
         let renamed = self.validate_interface_renames(import, &exported, &excluded);
@@ -47,7 +46,7 @@ impl<'a> Lowerer<'a> {
             if interface
                 .macros
                 .iter()
-                .any(|macro_| macro_.canonical == *canonical)
+                .any(|macro_| macro_.canonical == *canonical || macro_.aliases.contains(canonical))
             {
                 self.phase_one_names
                     .insert(renamed.get(canonical).unwrap_or(canonical).clone());

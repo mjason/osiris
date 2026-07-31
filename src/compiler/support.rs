@@ -159,6 +159,27 @@ pub(super) fn imported_phase_modules(
                 );
             }
         }
+        if import.refer_all {
+            // `:refer :all` refers every export, and macros are exports: each
+            // canonical and `:osiris/names` spelling becomes a bare visible
+            // name, minus explicit `:exclude` members.
+            for imported_macro in &interface.macros {
+                if import
+                    .excluded
+                    .iter()
+                    .any(|excluded| excluded.canonical == imported_macro.canonical)
+                {
+                    continue;
+                }
+                for spelling in
+                    std::iter::once(&imported_macro.canonical).chain(imported_macro.aliases.iter())
+                {
+                    descriptor
+                        .macro_names
+                        .insert(spelling.clone(), imported_macro.canonical.clone());
+                }
+            }
+        }
         for member in &import.members {
             if let Some(imported_macro) = interface.macros.iter().find(|imported_macro| {
                 imported_macro.canonical == member.canonical
