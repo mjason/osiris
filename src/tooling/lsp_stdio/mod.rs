@@ -36,6 +36,9 @@ pub fn run_stdio() -> io::Result<()> {
     // is doing, so record document synchronization by default. `OSIRIS_LSP_LOG`
     // overrides this in either direction.
     log::set_default_level(log::Level::Info);
+    // The editor shows stderr as one error-tagged stream; the protocol's
+    // typed `window/logMessage` is where records belong in a real session.
+    log::enable_protocol_queue();
     let stdout = io::stdout();
     // `StdinLock` is not `Send`, and reading happens on its own thread.
     let result = serve(
@@ -96,6 +99,7 @@ pub fn serve<R: BufRead + Send, W: Write>(reader: &mut R, writer: &mut W) -> io:
                     for message in machine.flush().messages() {
                         write_message(writer, message.as_bytes())?;
                     }
+                    flush_protocol_logs(writer)?;
                     writer.flush()?;
                     deferred_since = None;
                     continue;
@@ -122,6 +126,7 @@ pub fn serve<R: BufRead + Send, W: Write>(reader: &mut R, writer: &mut W) -> io:
             for message in machine.handle(input).messages() {
                 write_message(writer, message.as_bytes())?;
             }
+            flush_protocol_logs(writer)?;
             writer.flush()?;
             if machine.state.has_deferred_changes() {
                 deferred_since.get_or_insert_with(Instant::now);
@@ -227,6 +232,20 @@ fn read_message<R: BufRead>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
     let mut payload = vec![0; length];
     reader.read_exact(&mut payload)?;
     Ok(Some(payload))
+}
+
+/// Delivers queued log records as `window/logMessage` notifications, typed by
+/// their real level rather than stderr's one-size-fits-all error tag.
+fn flush_protocol_logs(writer: &mut impl Write) -> io::Result<()> {
+    for (message_type, message) in log::drain_protocol_queue() {
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "window/logMessage",
+            "params": { "type": message_type, "message": message },
+        });
+        write_message(writer, notification.to_string().as_bytes())?;
+    }
+    Ok(())
 }
 
 fn write_message(writer: &mut impl Write, payload: &[u8]) -> io::Result<()> {

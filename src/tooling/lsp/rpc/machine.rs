@@ -215,6 +215,9 @@ fn subject(params: &JsonValue) -> String {
         return String::new();
     };
     let name = uri.rsplit('/').next().unwrap_or(uri);
+    // File names travel percent-encoded in URIs; a CJK name is unreadable
+    // that way, and the log exists to be read.
+    let name = percent_decoded(name).unwrap_or_else(|| name.to_owned());
     match document.and_then(|document| document.get("version")) {
         Some(version) => format!(" {name}@{version}"),
         None => format!(" {name}"),
@@ -258,4 +261,26 @@ pub fn handle_request(state: &mut LspState, request: &JsonRpcRequest) -> JsonRpc
             notifications: Vec::new(),
         },
     }
+}
+
+/// Decodes `%XX` escapes when the result is valid UTF-8.
+fn percent_decoded(value: &str) -> Option<String> {
+    if !value.contains('%') {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let high = (bytes[index + 1] as char).to_digit(16)?;
+            let low = (bytes[index + 2] as char).to_digit(16)?;
+            decoded.push((high * 16 + low) as u8);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
 }

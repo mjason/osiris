@@ -123,6 +123,28 @@ pub(crate) fn error(message: &str) {
 
 /// Writes one record unconditionally. Prefer the [`lsp_log`] macro, or [`info`]
 /// and [`error`], so the message is only formatted when the level is enabled.
+/// Records queued for delivery as `window/logMessage` notifications.
+///
+/// An editor shows a language server's stderr as one undifferentiated error
+/// stream — every `INFO` line wears an `[error]` tag in the output panel. The
+/// protocol has typed log messages for exactly this, so the stdio transport
+/// queues records here and flushes them onto the wire with their real level;
+/// stderr stays the sink for embedders and tests that never enable the queue.
+static PROTOCOL_QUEUE: OnceLock<Mutex<Vec<(u8, String)>>> = OnceLock::new();
+
+pub(crate) fn enable_protocol_queue() {
+    let _ = PROTOCOL_QUEUE.set(Mutex::new(Vec::new()));
+}
+
+/// Drained by the transport; `u8` is the LSP `MessageType`.
+pub(crate) fn drain_protocol_queue() -> Vec<(u8, String)> {
+    PROTOCOL_QUEUE
+        .get()
+        .and_then(|queue| queue.lock().ok())
+        .map(|mut queue| std::mem::take(&mut *queue))
+        .unwrap_or_default()
+}
+
 pub(crate) fn record(level: Level, message: &str) {
     let elapsed = started().elapsed();
     let line = format!(
@@ -130,7 +152,21 @@ pub(crate) fn record(level: Level, message: &str) {
         elapsed.as_secs_f64(),
         level.label()
     );
-    let _ = std::io::stderr().write_all(line.as_bytes());
+    let queued = PROTOCOL_QUEUE.get().is_some_and(|queue| {
+        queue.lock().is_ok_and(|mut queue| {
+            let message_type = match level {
+                Level::Error | Level::Off => 1,
+                Level::Warn => 2,
+                Level::Info => 3,
+                Level::Debug | Level::Trace => 4,
+            };
+            queue.push((message_type, line.trim_end().to_owned()));
+            true
+        })
+    });
+    if !queued {
+        let _ = std::io::stderr().write_all(line.as_bytes());
+    }
     if let Some(sink) = file_sink()
         && let Ok(mut file) = sink.lock()
     {
