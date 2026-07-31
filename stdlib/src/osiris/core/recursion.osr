@@ -140,10 +140,9 @@
                       (osiris.kernel/letfn-normalize remaining))))
         (if (empty? remaining)
           (syntax-error entry "letfn requires name/function pairs")
-          (cons entry
-            (cons (first remaining)
-                  (osiris.kernel/letfn-normalize
-                   (rest remaining)))))))))
+          (cons entry (cons (first remaining)
+                            (osiris.kernel/letfn-normalize
+                             (rest remaining)))))))))
 
 ^{:doc
   {:default "Define mutually visible local functions."
@@ -158,8 +157,8 @@
       (syntax-error &form "letfn requires a body")
       `(osiris.kernel/letfn*
         ~(apply vector
-                (osiris.kernel/letfn-normalize
-                 bindings))
+           (osiris.kernel/letfn-normalize
+            bindings))
         (do
           ~@body)))))
 

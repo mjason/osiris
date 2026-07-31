@@ -85,16 +85,16 @@ fn aligns_long_calls_and_osiris_metadata_extensions() {
 }
 
 #[test]
-fn alignment_under_the_first_argument_is_preferred_while_it_fits() {
+fn a_named_body_call_with_many_clauses_indents_them_two() {
     let source = concat!(
         "(filter-out-values even-predicate (range-values 1 10) ",
         "(range-values 20 30) (range-values 40 50))\n",
     );
     let expected = concat!(
         "(filter-out-values even-predicate\n",
-        "                   (range-values 1 10)\n",
-        "                   (range-values 20 30)\n",
-        "                   (range-values 40 50))\n",
+        "  (range-values 1 10)\n",
+        "  (range-values 20 30)\n",
+        "  (range-values 40 50))\n",
     );
     assert_eq!(format_source(source).unwrap(), expected);
 }
@@ -237,9 +237,10 @@ fn a_named_body_macro_call_keeps_the_name_and_indents_clauses() {
         lines[1].starts_with("  (因子") && lines[3].starts_with("  (节点"),
         "top-level clauses indent exactly two: {formatted}"
     );
-    // The nested `(节点 …)` call affords alignment, which stays preferred.
+    // The three-element clause keeps its expression opening on the head line
+    // and folds inside it.
     assert!(
-        lines[4].trim_start().starts_with("(按条件取值"),
+        lines[3].starts_with("  (节点 排名靠前 (按条件取值"),
         "{formatted}"
     );
     assert_eq!(

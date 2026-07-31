@@ -589,16 +589,60 @@ impl<'anchors> LayoutPlan<'anchors> {
                     self.add_break(body.span.start, form.datum_span.start, 2);
                 }
             }
-            // The Clojure style guide gives a call two shapes: keep the first
-            // argument on the head line and align the rest under it, or put no
-            // argument on the head line and indent one space. Alignment reads
-            // better and is preferred, but it costs the head's own width in
-            // indentation on every following line. A wide head — which in CJK
-            // source is any four-character name — can make that unaffordable.
-            // When it is, a named body form — `(macro name (clause …) …)` —
-            // reads like `defn` and formats like it: name on the head line,
-            // clauses indented two. Anything else falls back to the guide's
-            // one-space shape.
+            // A named body form — `(macro name (clause …) …)`, a symbol then
+            // only lists — reads like `defn` and formats like it whenever it
+            // breaks: name on the head line, every clause indented two. One
+            // rule for the shape at every nesting depth; mixing alignment
+            // into it made sibling clauses sit at two different indents.
+            _ if overflows
+                && items.len() > 2
+                && items.get(1).and_then(form_symbol).is_some()
+                && items
+                    .iter()
+                    .skip(2)
+                    .all(|item| matches!(item.kind, FormKind::List(_))) =>
+            {
+                // The three-element clause `(verb name expression)` breaks as
+                // late and as deep as it can: the expression's opening stays
+                // on the head line and the expression folds inside itself on
+                // a later layout round. Only an opening that itself cannot
+                // fit hangs the whole expression.
+                if items.len() == 3 {
+                    let expression = &items[2];
+                    // Breaking deep only helps when the expression has
+                    // structure to fold; atoms would just stack one per line.
+                    let foldable = match &expression.kind {
+                        FormKind::List(inner) => inner.iter().skip(1).any(|item| {
+                            matches!(item.kind, FormKind::List(_) | FormKind::Vector(_))
+                        }),
+                        _ => false,
+                    };
+                    let opening_end = match &expression.kind {
+                        FormKind::List(inner) => inner
+                            .first()
+                            .map_or(expression.span.end, |head| head.span.end),
+                        _ => expression.span.end,
+                    };
+                    let column = self.anchor_column(form);
+                    let opening = flat_width(form.datum_span.start, opening_end, tokens);
+                    if foldable && column + opening <= MAX_LINE_WIDTH {
+                        return;
+                    }
+                    self.add_break(expression.span.start, form.datum_span.start, 2);
+                    return;
+                }
+                for clause in items.iter().skip(2) {
+                    self.add_break(clause.span.start, form.datum_span.start, 2);
+                }
+            }
+            // Any other call gets the Clojure style guide's two shapes: keep
+            // the first argument on the head line and align the rest under
+            // it, or put no argument on the head line and indent one space.
+            // Alignment reads better and is preferred, but it costs the
+            // head's own width in indentation on every following line. A wide
+            // head — which in CJK source is any four-character name — can
+            // make that unaffordable, and the one-space shape is the guide's
+            // own answer.
             _ if overflows => {
                 let aligned = crate::text::canonical_width(head) + 2;
                 let widest = items
@@ -608,21 +652,9 @@ impl<'anchors> LayoutPlan<'anchors> {
                     .max()
                     .unwrap_or(0);
                 let column = self.anchor_column(form);
-                if column + aligned + widest <= MAX_LINE_WIDTH {
-                    for argument in items.iter().skip(2) {
-                        self.add_break(argument.span.start, form.datum_span.start, aligned);
-                    }
-                } else if items.len() > 2
-                    && items.get(1).and_then(form_symbol).is_some()
-                    && items
-                        .iter()
-                        .skip(2)
-                        .all(|item| matches!(item.kind, FormKind::List(_)))
+                if column + aligned + widest > MAX_LINE_WIDTH
+                    && column + 1 + widest <= MAX_LINE_WIDTH
                 {
-                    for clause in items.iter().skip(2) {
-                        self.add_break(clause.span.start, form.datum_span.start, 2);
-                    }
-                } else if column + 1 + widest <= MAX_LINE_WIDTH {
                     for argument in items.iter().skip(1) {
                         self.add_break(argument.span.start, form.datum_span.start, 1);
                     }
