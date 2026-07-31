@@ -32,7 +32,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:osiris",
-    "onCommand:osiris.restartLanguageServer"
+    "onCommand:osiris.restartLanguageServer",
+    "onLanguage:python"
   ],
   "contributes": {
     "languages": [

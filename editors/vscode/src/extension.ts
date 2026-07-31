@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { registerGeneratedSourceNavigation } from "./sourcemap";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -177,6 +178,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       restartClient
     )
   );
+  registerGeneratedSourceNavigation(context);
   await startClient();
   registerEmbeddedLanguageSupport(context, async (uri) => {
     if (client === undefined) {
