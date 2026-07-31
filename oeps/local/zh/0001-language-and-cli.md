@@ -12,11 +12,11 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-28
-revision: 30
+updated: 2026-07-31
+revision: 32
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 30
+source-revision: 32
 translation-status: Current
 requires: [0]
 replaces: []
@@ -748,6 +748,19 @@ Replacement 应优先使用 requested display locale 的 `:preferred` spelling�
 canonical spelling。源码使用 `:preferred` 时不得产生该提示。LSP 应提供执行替换的
 code action。
 
+**OEP-0001-R062B：** 宏可以通过 `:osiris/clauses` 为其从句词提供文档：以作者书写的
+从句 symbol 为 key，值为字符串或 `{:default …, "<bcp47>" …}` 文档 map，写在宏声明的
+metadata 上。工具在该宏调用内悬停某个从句词时，必须以该从句自己的文档作答；未记录的
+词回退到宏本身的文档。该 key 属展示数据，不得进入 semantic interface projection——
+修改从句文档不改变任何依赖方的编译结果。
+
+**OEP-0001-R062C：** 显式 `:refer` 成员指名的是一个 export，而不是一个 spelling。
+成员无论写 canonical、`:preferred` 还是任一 `:aliases` spelling，都必须引入该 export，
+并使其 canonical spelling 与全部 `:osiris/names` spelling 在引用处可调用——与
+`:refer :all` 赋予该 export 的可见性一致。函数与宏必须行为相同。迁移提示
+（OEP-0001-R062A）始终按每处引用实际使用的 spelling 判定，与 import form 里写的
+spelling 无关。
+
 **OEP-0001-R063：** `.osri`、semantic query、LSP 与 local CLI query 必须保留 default
 documentation、所有 tagged translation、canonical name、localized preferred name、alias
 与 provenance。Embedded content reference 必须序列化为 resolved content，并携带 label、
@@ -1157,6 +1170,14 @@ format/validate。
   diagnostic、format 并验证 source file；所有 operation 在没有 network 时仍可工作。
 
 ## 修订历史 (Change History)
+
+- Revision 32，2026-07-31：新增 OEP-0001-R062C：显式 `:refer` 成员指名 export 而非
+  spelling——引任一 spelling 即令 canonical 与全部 `:osiris/names` spelling 可调用，
+  函数与宏一致。按 spelling 解读曾造成 `:refer [twice]` 调不到 `加倍` 而
+  `:refer :all` 可以的不对称，且该不对称对用户没有可见的道理。
+
+- Revision 31，2026-07-31：新增 OEP-0001-R062B，`:osiris/clauses`：宏为其从句词提供
+  文档；在调用内悬停按从句作答，该 key 不进入 semantic projection。
 
 - Revision 30，2026-07-30：要求判定「声明是否公开」必须经由同一个共享入口，并由测试保证
   必须一致的组件之间确实一致（OEP-0001-R009C）。该判定分散在五条路径上，其中四条在

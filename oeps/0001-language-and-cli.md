@@ -12,8 +12,8 @@ areas:
   - Documentation
   - AI
 created: 2026-07-23
-updated: 2026-07-28
-revision: 31
+updated: 2026-07-31
+revision: 32
 requires: [0]
 replaces: []
 superseded-by: null
@@ -922,6 +922,15 @@ be the requested display locale's `:preferred` spelling when available and the
 canonical spelling otherwise. References authored with `:preferred` MUST NOT
 receive this advisory. LSP SHOULD provide a code action for the replacement.
 
+**OEP-0001-R062C:** An explicit `:refer` member names an export, not a
+spelling. A member authored with the canonical, `:preferred`, or any
+`:aliases` spelling MUST refer that export, and the export's canonical
+spelling together with every `:osiris/names` spelling MUST become callable at
+the referring site — the same visibility `:refer :all` grants the export.
+Functions and macros MUST behave identically. Migration advisories
+(OEP-0001-R062A) remain keyed to the spelling used at each reference, never to
+the spelling used in the import form.
+
 **OEP-0001-R063:** `.osri`, semantic queries, LSP, and local CLI queries MUST
 preserve the default documentation, every tagged translation, the canonical
 name, localized preferred names, aliases, and provenance. Embedded content
@@ -1420,6 +1429,13 @@ A conforming implementation provides evidence that:
   operations continue to work without network access.
 
 ## Change History
+
+- Revision 32, 2026-07-31: Added OEP-0001-R062C: an explicit `:refer` member
+  names an export, not a spelling — referring any spelling makes the
+  canonical name and every `:osiris/names` spelling callable, for functions
+  and macros alike. The per-spelling reading left `:refer [twice]` unable to
+  call `加倍` while `:refer :all` could, an asymmetry with no user-visible
+  rationale.
 
 - Revision 31, 2026-07-31: Added OEP-0001-R062B, `:osiris/clauses`: a
   macro documents its clause words; hover inside a call answers with the

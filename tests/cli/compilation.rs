@@ -559,6 +559,70 @@ fn macros_answer_to_their_osiris_names_spellings() {
 }
 
 #[test]
+fn a_referred_member_brings_every_spelling_of_its_export() {
+    // OEP-0001-R062C: `:refer [twice bump]` writes canonical names, yet the
+    // localized spellings of those same exports stay callable — the member
+    // names the export, not one spelling. Names of unreferred exports stay
+    // unknown.
+    let app_source = r#"(module sample.app)
+            (import sample.marks :refer [twice bump])
+            (export [f])
+            ^{:doc "Call referred exports by their localized names."}
+            (defn ^Int f [^Int value]
+              (+ (加倍 value) (加一 value)))
+        "#;
+    let fixture = SourceFixture::new(app_source);
+    let app = fixture.write("src/sample/app.osr", app_source);
+    let marks = fixture.write(
+        "src/sample/marks.osr",
+        r#"(module sample.marks)
+            ^{:doc {:default "Twice."}
+              :osiris/names {"zh-CN" {:preferred 加倍}}}
+            (defmacro twice [value]
+              (list '+ value value))
+            ^{:doc {:default "Add one."}
+              :osiris/names {"zh-CN" {:preferred 加一}}}
+            (defn ^Int bump [^Int value]
+              (+ value 1))
+            (export [twice bump])
+        "#,
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"referred-export-demo\"\nversion = \"1.0.0\"\n",
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+    let out_dir = fixture.directory.join("referred-export-build");
+
+    let output = osr(&[
+        "compile",
+        path_argument(&app),
+        path_argument(&marks),
+        "--out-dir",
+        path_argument(&out_dir),
+        "--emit",
+        "py,osri",
+    ]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated = fs::read_to_string(out_dir.join("sample/app.py"))
+        .expect("macro consumer Python should exist");
+    assert!(
+        generated.contains("value + value") && generated.contains("bump"),
+        "{generated}"
+    );
+}
+
+#[test]
 fn refer_all_brings_macros_under_every_spelling() {
     // `:refer :all` refers macros like any other export — canonical and
     // `:osiris/names` spellings alike, through `import` and

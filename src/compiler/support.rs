@@ -185,9 +185,16 @@ pub(super) fn imported_phase_modules(
                 imported_macro.canonical == member.canonical
                     || imported_macro.aliases.contains(&member.canonical)
             }) {
-                descriptor
-                    .macro_names
-                    .insert(member.canonical.clone(), imported_macro.canonical.clone());
+                // The member names the export, not one spelling
+                // (OEP-0001-R062C): referring any spelling makes the
+                // canonical name and every other spelling callable too.
+                for spelling in
+                    std::iter::once(&imported_macro.canonical).chain(imported_macro.aliases.iter())
+                {
+                    descriptor
+                        .macro_names
+                        .insert(spelling.clone(), imported_macro.canonical.clone());
+                }
                 descriptor
                     .macro_names
                     .insert(member.spelling.clone(), imported_macro.canonical.clone());

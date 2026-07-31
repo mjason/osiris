@@ -41,7 +41,29 @@ impl<'a> Lowerer<'a> {
             .collect::<BTreeSet<_>>();
         let excluded = self.validate_interface_exclusions(import, &exported);
         let renamed = self.validate_interface_renames(import, &exported, &excluded);
-        let referred = self.validate_interface_refers(import, &exported, &excluded);
+        let mut referred = self.validate_interface_refers(import, &exported, &excluded);
+        // A referred member names an export, not a spelling (OEP-0001-R062C):
+        // whichever spelling the import wrote, the export's canonical name and
+        // every `:osiris/names` spelling become callable here.
+        for canonical in referred.clone() {
+            if let Some(public) = find_imported_binding(&interface, &canonical) {
+                referred.insert(public.canonical.clone());
+                for alias in &interface.aliases {
+                    if alias_target_canonical(&interface, alias) == public.canonical {
+                        referred.insert(alias.canonical.clone());
+                    }
+                }
+            }
+            if let Some(macro_) = interface
+                .macros
+                .iter()
+                .find(|macro_| macro_.canonical == canonical || macro_.aliases.contains(&canonical))
+            {
+                referred.insert(macro_.canonical.clone());
+                referred.extend(macro_.aliases.iter().cloned());
+            }
+        }
+        referred.retain(|name| !excluded.contains(name));
         for canonical in &referred {
             if interface
                 .macros
