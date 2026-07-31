@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.31
+
+- Format named body calls — `(macro name (clause …) …)` — like `defn` when alignment cannot fit: the name keeps the head line and each clause indents two, instead of the one-space hang that pushed the name down and flattened the structure (FORMAT_VERSION 8). Alignment stays preferred while it fits.
+
 ## 0.3.30
 
 - Hover inside a macro call now answers what the cursor is on: the macro's own documentation for its clause words, a referred macro's documentation at its use site, and nothing for unknown tokens — never an expansion-generated binding covering the whole call. Operator-named macros (`<=`, `>`) are now tokenized and answer as themselves.
