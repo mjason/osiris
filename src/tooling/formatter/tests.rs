@@ -64,12 +64,11 @@ fn aligns_long_calls_and_osiris_metadata_extensions() {
         "(defn ^{:type A} identity [^{:type A} value] value)\n",
     );
     // Aligning under `even?` would put the `(range ...)` argument at column 82.
-    // The Clojure style guide's second shape — no argument on the function name
-    // line, one space of indent — is what fits, and is the guide's own example.
+    // The call is a named body form — a symbol then lists — so the name stays
+    // on the head line and the body indents two (FORMAT_VERSION 8).
     let expected = concat!(
-        "(filter\n",
-        " even?\n",
-        " (range 1 1000000000000000000000000000000000000000000000000000000000000000))\n\n",
+        "(filter even?\n",
+        "  (range 1 1000000000000000000000000000000000000000000000000000000000000000))\n\n",
         "^{:doc\n  {:default \"Return the value.\" \"zh-CN\" \"返回该值。\"}\n",
         "  :category \"example\"\n  :since \"0.3.0\"}\n",
         "(defn ^{:type A} identity [^{:type A} value]\n  value)\n",
@@ -135,17 +134,14 @@ fn aligns_wide_unicode_callees_by_display_column() {
     let lines = formatted.lines().collect::<Vec<_>>();
     // `规则定义` is eight columns wide, so aligning its arguments under the
     // first one would indent every following line by ten and push the widest
-    // argument past 80. The guide's one-space shape is what fits, and the head
-    // line therefore carries no argument at all.
-    assert_eq!(lines[0], "(规则定义", "{formatted}");
+    // argument past 80. The call is a named body form, so the name keeps the
+    // head line and every clause indents two (FORMAT_VERSION 8).
+    assert_eq!(lines[0], "(规则定义 FormatText", "{formatted}");
     for line in lines.iter().skip(1).filter(|line| {
         let trimmed = line.trim_start();
-        trimmed.starts_with("FormatText")
-            || trimmed.starts_with("(参数")
-            || trimmed.starts_with("(节点")
-            || trimmed.starts_with("(输出")
+        trimmed.starts_with("(参数") || trimmed.starts_with("(节点") || trimmed.starts_with("(输出")
     }) {
-        assert_eq!(line.len() - line.trim_start().len(), 1, "{formatted}");
+        assert_eq!(line.len() - line.trim_start().len(), 2, "{formatted}");
     }
 
     let threaded_value_column = lines
@@ -226,4 +222,29 @@ fn preserves_generic_embedded_body_content() {
 fn display_column(line: &str, needle: &str) -> usize {
     let byte_offset = line.find(needle).expect("text on formatted line");
     crate::text::canonical_width(&line[..byte_offset])
+}
+
+#[test]
+fn a_named_body_macro_call_keeps_the_name_and_indents_clauses() {
+    let source = "(选股定义 小市值_周黎明 (因子 短动量 :权重位 排名门槛) (因子 长动量 :权重位 分位下限) (节点 排名靠前 (按条件取值 (小于等于 (排名 短动量 :同组 [交易日期]) 排名门槛) 1 0)))\n";
+    let formatted = format_source(source).expect("formats");
+    let lines = formatted.lines().collect::<Vec<_>>();
+    assert!(
+        lines[0].starts_with("(选股定义 小市值_周黎明"),
+        "the name stays on the head line: {formatted}"
+    );
+    assert!(
+        lines[1].starts_with("  (因子") && lines[3].starts_with("  (节点"),
+        "top-level clauses indent exactly two: {formatted}"
+    );
+    // The nested `(节点 …)` call affords alignment, which stays preferred.
+    assert!(
+        lines[4].trim_start().starts_with("(按条件取值"),
+        "{formatted}"
+    );
+    assert_eq!(
+        format_source(&formatted).expect("idempotent"),
+        formatted,
+        "reformatting must be a fixed point"
+    );
 }

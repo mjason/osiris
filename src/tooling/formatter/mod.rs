@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Version of the byte-level canonical formatting contract.
-pub const FORMAT_VERSION: u32 = 7;
+pub const FORMAT_VERSION: u32 = 8;
 
 const MAX_LINE_WIDTH: usize = 80;
 const METADATA_LINE_WIDTH: usize = 72;
@@ -594,8 +594,11 @@ impl<'anchors> LayoutPlan<'anchors> {
             // argument on the head line and indent one space. Alignment reads
             // better and is preferred, but it costs the head's own width in
             // indentation on every following line. A wide head — which in CJK
-            // source is any four-character name — can make that unaffordable,
-            // and the one-space shape is the guide's own answer.
+            // source is any four-character name — can make that unaffordable.
+            // When it is, a named body form — `(macro name (clause …) …)` —
+            // reads like `defn` and formats like it: name on the head line,
+            // clauses indented two. Anything else falls back to the guide's
+            // one-space shape.
             _ if overflows => {
                 let aligned = crate::text::canonical_width(head) + 2;
                 let widest = items
@@ -605,9 +608,21 @@ impl<'anchors> LayoutPlan<'anchors> {
                     .max()
                     .unwrap_or(0);
                 let column = self.anchor_column(form);
-                if column + aligned + widest > MAX_LINE_WIDTH
-                    && column + 1 + widest <= MAX_LINE_WIDTH
+                if column + aligned + widest <= MAX_LINE_WIDTH {
+                    for argument in items.iter().skip(2) {
+                        self.add_break(argument.span.start, form.datum_span.start, aligned);
+                    }
+                } else if items.len() > 2
+                    && items.get(1).and_then(form_symbol).is_some()
+                    && items
+                        .iter()
+                        .skip(2)
+                        .all(|item| matches!(item.kind, FormKind::List(_)))
                 {
+                    for clause in items.iter().skip(2) {
+                        self.add_break(clause.span.start, form.datum_span.start, 2);
+                    }
+                } else if column + 1 + widest <= MAX_LINE_WIDTH {
                     for argument in items.iter().skip(1) {
                         self.add_break(argument.span.start, form.datum_span.start, 1);
                     }

@@ -447,10 +447,9 @@
 (defn-for-syntax osiris.kernel/validate-case-clauses [call clauses seen]
   (if (< (count clauses) 2)
     seen
-    (osiris.kernel/validate-case-clauses
-     call
-     (rest (rest clauses))
-     (osiris.kernel/case-register-test call seen (first clauses)))))
+    (osiris.kernel/validate-case-clauses call
+      (rest (rest clauses))
+      (osiris.kernel/case-register-test call seen (first clauses)))))
 
 (defn-for-syntax osiris.kernel/case-group-condition [value tests]
   (if (empty? (rest tests))

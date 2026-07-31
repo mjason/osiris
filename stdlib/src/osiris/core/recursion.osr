@@ -141,9 +141,9 @@
         (if (empty? remaining)
           (syntax-error entry "letfn requires name/function pairs")
           (cons entry
-                (cons (first remaining)
-                      (osiris.kernel/letfn-normalize
-                       (rest remaining)))))))))
+            (cons (first remaining)
+                  (osiris.kernel/letfn-normalize
+                   (rest remaining)))))))))
 
 ^{:doc
   {:default "Define mutually visible local functions."

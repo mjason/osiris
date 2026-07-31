@@ -112,9 +112,9 @@
                    ~(osiris.kernel/for-tail call (rest remaining) body eager?)
                    (osiris.kernel/for-stop*)))
               (syntax-error clause
-                            (str "unsupported for modifier "
-                                 clause
-                                 "; expected :let, :when, or :while")))))
+                (str "unsupported for modifier "
+                     clause
+                     "; expected :let, :when, or :while")))))
         (osiris.kernel/for-bindings call clauses body eager?)))))
 
 (defn-for-syntax osiris.kernel/for-bindings [call clauses body eager?]
@@ -236,9 +236,9 @@
                    ~(osiris.kernel/doseq-tail call (rest remaining) body)
                    (osiris.kernel/for-stop*)))
               (syntax-error clause
-                            (str "unsupported doseq modifier "
-                                 clause
-                                 "; expected :let, :when, or :while")))))
+                (str "unsupported doseq modifier "
+                     clause
+                     "; expected :let, :when, or :while")))))
         (osiris.kernel/doseq-bindings call clauses body)))))
 
 (defn-for-syntax osiris.kernel/doseq-bindings [call clauses body]
