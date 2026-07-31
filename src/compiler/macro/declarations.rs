@@ -44,6 +44,11 @@ pub(super) fn parse_phase_declaration(
     if body.is_empty() {
         return Err(format!("`{declaration}` requires a body"));
     }
+    let migration_spellings = crate::syntax::metadata_alias_spellings(&form.metadata, &name)
+        .into_iter()
+        .filter(|(_, role)| matches!(role, crate::syntax::MetadataAliasRole::Migration))
+        .map(|(spelling, _)| spelling)
+        .collect();
     Ok(FunctionDef {
         source_name: name.clone(),
         name,
@@ -53,6 +58,8 @@ pub(super) fn parse_phase_declaration(
         params,
         body,
         span: form.span,
+        migration_spellings,
+        preferred_names: crate::syntax::metadata_preferred_names(&form.metadata),
     })
 }
 

@@ -19,6 +19,7 @@ impl Expander {
             active_macros: Vec::new(),
             diagnostics: Vec::new(),
             traces: Vec::new(),
+            migration_advisories: Vec::new(),
         }
     }
 

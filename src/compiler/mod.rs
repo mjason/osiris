@@ -305,6 +305,12 @@ fn analyze_document(
         ));
     }
     sort_diagnostics(&mut diagnostics);
+    // Macro calls resolve during expansion, so their alias advisories are
+    // collected there; name reads resolve in HIR lowering. One list feeds
+    // the CLI and LSP renderers.
+    let mut migration_advisories = expanded.migration_advisories;
+    migration_advisories.extend(hir_result.migration_advisories);
+    migration_advisories.sort_by_key(|advisory| (advisory.span.start, advisory.span.end));
 
     Analysis {
         document: document.clone(),
@@ -315,7 +321,7 @@ fn analyze_document(
         static_data,
         embedded_python,
         diagnostics,
-        migration_advisories: hir_result.migration_advisories,
+        migration_advisories,
         source_hash,
         cache_key,
     }

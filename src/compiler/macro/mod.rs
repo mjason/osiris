@@ -158,6 +158,10 @@ fn enclosing_chain<'trace>(
 pub struct ExpansionResult {
     pub document: Document,
     pub traces: Vec<ExpansionTrace>,
+    /// Calls that reached a macro through a `:osiris/names` `:aliases`
+    /// spelling (OEP-0001-R062A). Preferred spellings resolve silently;
+    /// migration spellings resolve and carry this advisory.
+    pub migration_advisories: Vec<crate::hir::MigrationAdvisory>,
 }
 
 /// One data-only phase-1 interface import.
@@ -209,6 +213,11 @@ struct FunctionDef {
     params: Parameters,
     body: Vec<Form>,
     span: Span,
+    /// `:osiris/names` `:aliases` spellings — calls through one of these
+    /// resolve but carry a migration advisory (OEP-0001-R062A).
+    migration_spellings: BTreeSet<String>,
+    /// Locale → `:preferred` spelling, for the advisory's replacement text.
+    preferred_names: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug)]
@@ -572,6 +581,8 @@ fn expand_document(document: &Document, mut expander: Expander) -> ExpansionResu
     diagnostics
         .sort_by_key(|diagnostic| (diagnostic.span.start, diagnostic.span.end, diagnostic.code));
 
+    let mut migration_advisories = expander.migration_advisories;
+    migration_advisories.sort_by_key(|advisory| (advisory.span.start, advisory.span.end));
     ExpansionResult {
         document: Document {
             format_version: document.format_version,
@@ -582,6 +593,7 @@ fn expand_document(document: &Document, mut expander: Expander) -> ExpansionResu
             diagnostics,
         },
         traces: expander.traces,
+        migration_advisories,
     }
 }
 
@@ -610,6 +622,7 @@ struct Expander {
     active_macros: Vec<ExpansionTrace>,
     diagnostics: Vec<Diagnostic>,
     traces: Vec<ExpansionTrace>,
+    migration_advisories: Vec<crate::hir::MigrationAdvisory>,
 }
 
 impl Expander {

@@ -432,3 +432,37 @@ fn expanded_metadata_must_still_be_serializable() {
         result.document.diagnostics
     );
 }
+
+/// OEP-0001-R062A: a `:osiris/names` `:aliases` spelling calls the macro but
+/// carries a migration advisory naming the preferred replacement; canonical
+/// and `:preferred` spellings stay silent.
+#[test]
+fn migration_spellings_expand_with_an_advisory() {
+    let source = r#"(module app.main)
+        ^{:osiris/names {"zh-CN" {:preferred 加倍 :aliases [翻倍]}}}
+        (defmacro twice [value] (list '+ value value))
+        (defn f [] (翻倍 1))"#;
+    let result = expand_core(source);
+    assert!(
+        result.document.diagnostics.is_empty(),
+        "{:?}",
+        result.document.diagnostics
+    );
+    assert_eq!(result.migration_advisories.len(), 1, "one advisory");
+    let advisory = &result.migration_advisories[0];
+    assert_eq!(advisory.alias, "翻倍");
+    assert_eq!(advisory.canonical, "twice");
+    assert_eq!(advisory.replacement(Some("zh-CN")), "加倍");
+
+    let silent = expand_core(
+        r#"(module app.main)
+        ^{:osiris/names {"zh-CN" {:preferred 加倍 :aliases [翻倍]}}}
+        (defmacro twice [value] (list '+ value value))
+        (defn f [] (+ (加倍 1) (twice 1)))"#,
+    );
+    assert!(silent.document.diagnostics.is_empty());
+    assert!(
+        silent.migration_advisories.is_empty(),
+        "preferred and canonical spellings advise nothing"
+    );
+}

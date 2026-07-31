@@ -131,6 +131,36 @@ impl Expander {
         }
     }
 
+    /// Record a migration advisory when a call reaches its macro through a
+    /// `:osiris/names` `:aliases` spelling (OEP-0001-R062A). Preferred and
+    /// canonical spellings stay silent.
+    fn advise_migration_spelling(&mut self, head: &Form, definition: &FunctionDef) {
+        if definition.migration_spellings.is_empty() {
+            return;
+        }
+        let FormKind::Symbol(name) = &head.kind else {
+            return;
+        };
+        let terminal = name
+            .spelling
+            .rmatch_indices(['/', '.'])
+            .next()
+            .map_or(name.spelling.as_str(), |(index, separator)| {
+                &name.spelling[index + separator.len()..]
+            });
+        if !definition.migration_spellings.contains(terminal) {
+            return;
+        }
+        let terminal_offset = name.spelling.len().saturating_sub(terminal.len());
+        self.migration_advisories
+            .push(crate::hir::MigrationAdvisory {
+                span: Span::new(head.span.start + terminal_offset, head.span.end),
+                alias: terminal.to_owned(),
+                canonical: definition.source_name.clone(),
+                preferred_names: definition.preferred_names.clone(),
+            });
+    }
+
     pub(in crate::macro_expand) fn expand_list(
         &mut self,
         form: &Form,
@@ -170,6 +200,7 @@ impl Expander {
         let Some(definition) = user_macro else {
             return self.expand_list_children(form, items, depth);
         };
+        self.advise_migration_spelling(&items[0], &definition);
         if self.expansions >= self.options.max_expansions {
             self.macro_error(
                 "OSR-M0002",
