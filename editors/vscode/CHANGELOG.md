@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.33
+
+- Language-server logs are delivered as typed `window/logMessage` notifications, so the editor's output panel shows INFO as info instead of tagging every line `[error]`. File names in log lines are percent-decoded.
+
 ## 0.3.32
 
 - Three-element clauses `(verb name expression)` break late and deep: the expression's opening stays on the head line and folds inside itself; only an unfittable opening (or an all-atom expression) hangs whole. Named body calls indent their clauses two at every nesting depth instead of mixing alignment in.
