@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.28
+
+- A compile-time-only module — all macros and phase-1 helpers, no runtime binding — no longer leaves an empty `.py` shell and source map in a project build; its `.osri` is the module. Wheels keep the shell their extension entries reference.
+
 ## 0.3.27
 
 - Project builds (`osr build`, `osr run`) now emit all compiler-linked runtime support into one shared `<outDir>/__osiris_runtime__` tree instead of one per top-level package; wheels keep the per-owning-package layout they need to be co-installable. `osr compile --runtime-layout shared|package` selects explicitly.
