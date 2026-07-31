@@ -92,6 +92,7 @@ pub fn run_cli(arguments: &[String]) -> CliOutcome {
         [command, rest @ ..] if command == "compile" => run_compile(rest),
         [command, rest @ ..] if command == "run" => run_program(rest),
         [command, rest @ ..] if command == "expand" => run_expand(rest),
+        [command, rest @ ..] if command == "sketch" => run_sketch(rest),
         [command, rest @ ..] if command == "fmt" => run_fmt(rest),
         [command, rest @ ..] if command == "lsc" => run_lsc(rest),
         [command, rest @ ..] if command == "syntax" => run_syntax(rest),
@@ -115,6 +116,7 @@ mod init;
 mod lsc;
 mod registry;
 mod run;
+mod sketch;
 #[path = "io.rs"]
 mod source_io;
 mod watch;
@@ -132,6 +134,7 @@ use fmt::*;
 use init::*;
 use lsc::*;
 use run::*;
+use sketch::*;
 use source_io::*;
 use workspace::*;
 

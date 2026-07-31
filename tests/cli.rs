@@ -134,5 +134,7 @@ mod initialization;
 mod inspection;
 #[path = "cli/protocol.rs"]
 mod protocol;
+#[path = "cli/sketch.rs"]
+mod sketch;
 #[path = "cli/watching.rs"]
 mod watching;

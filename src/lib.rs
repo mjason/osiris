@@ -57,6 +57,8 @@ pub mod reader;
 pub mod records;
 #[path = "tooling/semantic/mod.rs"]
 pub mod semantic;
+#[path = "tooling/sketch/mod.rs"]
+pub mod sketch;
 #[path = "language/source/mod.rs"]
 pub mod source;
 #[path = "backend/python/source_map/mod.rs"]
