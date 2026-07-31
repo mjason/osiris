@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.34
+
+- Macros can document their clause words with `:osiris/clauses`; hovering a clause word inside a call answers with that clause's own documentation, falling back to the macro's documentation for undocumented words. Presentation-only: the key never enters the semantic interface.
+
 ## 0.3.33
 
 - Language-server logs are delivered as typed `window/logMessage` notifications, so the editor's output panel shows INFO as info instead of tagging every line `[error]`. File names in log lines are percent-decoded.
