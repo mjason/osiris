@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "osiris"
-version = "0.3.26"
+version = "0.3.27"
 dependencies = [
  "async-graphql",
  "async-graphql-derive",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.27
+
+- Project builds (`osr build`, `osr run`) now emit all compiler-linked runtime support into one shared `<outDir>/__osiris_runtime__` tree instead of one per top-level package; wheels keep the per-owning-package layout they need to be co-installable. `osr compile --runtime-layout shared|package` selects explicitly.
+- Excluding a whole top-level package via `wheel-exclude` now removes its runtime tree too, instead of failing on a manifest that references removed source maps.
+
 ## 0.3.26
 
 - Link an external extension's runtime into the consumer's own output instead of importing the provider's installed private `__osiris_runtime__` package: generated imports now name `<owning>.__osiris_runtime__.packages.<provider-id>.…` and the provider file is copied there, so the output no longer requires the provider's package layout at runtime. First-party runtime imports within one build are unchanged.
