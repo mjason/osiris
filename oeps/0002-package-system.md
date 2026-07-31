@@ -13,7 +13,7 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-31
-revision: 24
+revision: 25
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -251,6 +251,13 @@ distributions would collide. Generated code therefore differs between a
 project build and a wheel of the same sources in exactly one way — where its
 runtime support lives — and each layout is the only one installable in its
 destination.
+
+**OEP-0002-R017D:** A module whose every declaration is compile-time only —
+macros and phase-1 helpers, with no runtime binding — MUST NOT leave a
+generated `.py` or source map in a project build. Its interface `.osri` is the
+module: that is what `import-for-syntax` reads. An empty runtime shell beside
+authored code reads as code when it is noise. Built distributions keep the
+shell, whose extension entries reference those files.
 
 **OEP-0002-R018:** `osr check [path]` MUST discover the applicable project,
 parse and expand the selected module graph, validate names, types, contracts,
@@ -751,6 +758,9 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 25, 2026-07-31: Added OEP-0002-R017D: a compile-time-only module —
+  all macros and phase-1 helpers — leaves no generated `.py` or source map in
+  a project build; its `.osri` is the module.
 - Revision 24, 2026-07-31: Added OEP-0002-R017C: a project build emits all
   compiler-linked runtime support into one shared `<outDir>/__osiris_runtime__`
   tree; wheels keep OEP-0002-R033's per-owning-package layout because a shared

@@ -207,6 +207,15 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
     let mut runtime_packages = BTreeMap::<String, LinkedSupport>::new();
     for (_, _, result) in units {
         let module_name = result.analysis.hir.name.clone();
+        // A compile-time-only module leaves no runtime shell in a project
+        // build (shared layout): its macros are in the `.osri`, and an empty
+        // `.py` next to authored code reads as code when it is noise. Wheels
+        // keep the shell — their extension entries reference these files.
+        let phase_only_skip = arguments.runtime_layout == compiler::RuntimeLayout::Shared
+            && result
+                .python
+                .as_ref()
+                .is_some_and(crate::backend::GeneratedPython::is_phase_only);
         if arguments.emit.contains(&EmitKind::Python) {
             for embedded in &result.analysis.embedded_python {
                 let package = embedded
@@ -288,11 +297,13 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                     });
                 }
             }
-            artifacts.push(Artifact::text(
-                ArtifactKind::Python,
-                python_module_path(&module_name),
-                generated.source,
-            ));
+            if !phase_only_skip {
+                artifacts.push(Artifact::text(
+                    ArtifactKind::Python,
+                    python_module_path(&module_name),
+                    generated.source,
+                ));
+            }
         }
         if arguments.emit.contains(&EmitKind::Interface) {
             let Some(interface) = result.interface else {
@@ -327,11 +338,13 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                 }
             };
             contents.push('\n');
-            artifacts.push(Artifact::text(
-                ArtifactKind::SourceMap,
-                source_map_artifact_path(&module_name),
-                contents,
-            ));
+            if !phase_only_skip {
+                artifacts.push(Artifact::text(
+                    ArtifactKind::SourceMap,
+                    source_map_artifact_path(&module_name),
+                    contents,
+                ));
+            }
         }
     }
     for (package, support) in runtime_packages {

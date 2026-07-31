@@ -26,6 +26,26 @@ pub struct GeneratedPython {
     pub runtime_support: Option<RuntimeSupport>,
 }
 
+impl GeneratedPython {
+    /// The module exists only at compile time: every declaration was a macro
+    /// or phase-1 helper, so the generated Python holds nothing beyond the
+    /// `__future__` import every module starts with. A project build skips
+    /// emitting this shell — the macros live in the `.osri`, and an empty
+    /// `.py` next to it reads as code when it is noise.
+    #[must_use]
+    pub fn is_phase_only(&self) -> bool {
+        self.runtime_support.is_none()
+            && self.module.body.len() <= 1
+            && self.module.body.first().is_none_or(|statement| {
+                matches!(
+                    statement,
+                    py::Stmt::Import(py::Import::From { module: Some(module), .. })
+                        if module == "__future__"
+                )
+            })
+    }
+}
+
 /// Distribution-private support requested by one generated module.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeSupport {

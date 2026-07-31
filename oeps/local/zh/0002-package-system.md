@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 24
+revision: 25
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 24
+source-revision: 25
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -197,6 +197,11 @@ declared name 与翻译后的 archive path 字面相等。Source root 之下的�
 wheel 的顶层名字装进 site-packages，两个 distribution 的共享顶层
 `__osiris_runtime__` 会相撞。因此同一份源码的项目构建与 wheel 生成代码恰好在
 一处不同——运行时支持住在哪里——而每种布局都是其目的地里唯一可安装的那种。
+
+**OEP-0002-R017D：** 声明全部只存在于编译期的模块——宏与 phase-1 helper、没有任何
+运行时绑定——在项目构建中不得留下生成的 `.py` 或 source map。它的接口 `.osri`
+就是这个模块本身：`import-for-syntax` 读的正是它。手写代码旁边的空运行时壳看起来
+像代码，实际是噪音。构建出的 distribution 保留该壳，其 extension 条目引用这些文件。
 
 **OEP-0002-R018：** `osr check [path]` 必须发现适用 project，parse/expand 所选 module
 graph，验证 name、type、contract、interface、extension record 和 target compatibility，
@@ -594,6 +599,8 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 25，2026-07-31：新增 OEP-0002-R017D：纯编译期模块（全部是宏与 phase-1
+  helper）在项目构建中不留下生成的 `.py` 与 source map；它的 `.osri` 就是模块本身。
 - Revision 24，2026-07-31：新增 OEP-0002-R017C：项目构建把全部编译器链接的运行时
   支持发射进一棵共享的 `<outDir>/__osiris_runtime__` 树；wheel 保持 OEP-0002-R033
   的按属主包布局，因为共享顶层运行时包无法共同安装进 site-packages。
