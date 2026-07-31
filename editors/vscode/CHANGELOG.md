@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.30
+
+- Hover inside a macro call now answers what the cursor is on: the macro's own documentation for its clause words, a referred macro's documentation at its use site, and nothing for unknown tokens — never an expansion-generated binding covering the whole call. Operator-named macros (`<=`, `>`) are now tokenized and answer as themselves.
+
 ## 0.3.29
 
 - Go-to-definition resolves the module name in an `import`/`import-for-syntax` and macros referred through `import-for-syntax` — both at the `:refer` member and at later call sites.
