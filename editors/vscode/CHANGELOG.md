@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.32
+
+- Three-element clauses `(verb name expression)` break late and deep: the expression's opening stays on the head line and folds inside itself; only an unfittable opening (or an all-atom expression) hangs whole. Named body calls indent their clauses two at every nesting depth instead of mixing alignment in.
+
 ## 0.3.31
 
 - Format named body calls — `(macro name (clause …) …)` — like `defn` when alignment cannot fit: the name keeps the head line and each clause indents two, instead of the one-space hang that pushed the name down and flattened the structure (FORMAT_VERSION 8). Alignment stays preferred while it fits.
