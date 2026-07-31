@@ -3,6 +3,14 @@ impl LspState {
     pub fn definition(&self, uri: &str, position: Position) -> Option<Location> {
         let document = self.document(uri)?;
         let offset = position_to_offset(&document.text, position)?;
+        // Imports are resolved syntactically first. The semantic projection
+        // does not cover a module name in an import form at all, and a macro
+        // referred through `import-for-syntax` disappears into its caller's
+        // expansion — the nearest enclosing symbol the projection falls back
+        // to is the wrong answer dressed as a right one.
+        if let Some(location) = self.import_definition(document, offset) {
+            return Some(location);
+        }
         let symbol = document.semantic.symbol_at_source(offset, &document.text)?;
         document
             .workspace_symbols
@@ -28,6 +36,112 @@ impl LspState {
                     },
                 })
             })
+    }
+
+    /// Resolves imports by their written form: the module name in an
+    /// `import`/`import-for-syntax`, a `:refer` member, or a use of a name the
+    /// file referred through `import-for-syntax`.
+    fn import_definition(&self, document: &OpenDocument, offset: usize) -> Option<Location> {
+        fn contains(span: crate::source::Span, offset: usize) -> bool {
+            span.start <= offset && offset < span.end
+        }
+        let forms = &document.analysis.document.forms;
+        let mut phase_members: Vec<(String, String)> = Vec::new();
+        for form in forms {
+            let FormKind::List(items) = &form.kind else {
+                continue;
+            };
+            let Some(FormKind::Symbol(head)) = items.first().map(|item| &item.kind) else {
+                continue;
+            };
+            let phase_import = head.canonical == "import-for-syntax";
+            if !phase_import && head.canonical != "import" {
+                continue;
+            }
+            let Some(module_form) = items.get(1) else {
+                continue;
+            };
+            let FormKind::Symbol(module) = &module_form.kind else {
+                continue;
+            };
+            if contains(module_form.span, offset) {
+                return self.module_declaration_location(&module.canonical);
+            }
+            let mut expect_refer = false;
+            for item in &items[2..] {
+                match &item.kind {
+                    FormKind::Keyword(keyword) => {
+                        expect_refer = keyword.canonical == ":refer";
+                    }
+                    FormKind::Vector(members) if expect_refer => {
+                        for member in members {
+                            let FormKind::Symbol(name) = &member.kind else {
+                                continue;
+                            };
+                            if contains(member.span, offset) {
+                                return self
+                                    .imported_binding_location(document, &module.canonical, &name.canonical);
+                            }
+                            if phase_import {
+                                phase_members
+                                    .push((name.canonical.clone(), module.canonical.clone()));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // A referred macro used later in the file: the token is matched by
+        // text, because the expansion consumed the occurrence the semantic
+        // projection would otherwise anchor to. Runtime names stay with the
+        // semantic path, which understands shadowing.
+        let token = identifier_token_at(&document.text, offset)?;
+        let (_, module) = phase_members
+            .iter()
+            .find(|(name, _)| name == &token)?;
+        let module = module.clone();
+        self.imported_binding_location(document, &module, &token)
+    }
+
+    fn imported_binding_location(
+        &self,
+        document: &OpenDocument,
+        module: &str,
+        name: &str,
+    ) -> Option<Location> {
+        for kind in ["macro", "function", "value", "type"] {
+            let id = format!("{module}::{kind}::{name}");
+            if let Some(location) = document.workspace_symbols.definitions.get(&id) {
+                return Some(location.clone());
+            }
+        }
+        None
+    }
+
+    /// The `module` declaration of a workspace module, by its canonical name.
+    fn module_declaration_location(&self, module: &str) -> Option<Location> {
+        let cache = self.workspace_cache.as_ref()?;
+        let buffer = cache.buffers.iter().find(|buffer| {
+            buffer
+                .options
+                .expected_module_name
+                .as_deref()
+                .is_some_and(|name| name == module)
+        })?;
+        Some(Location {
+            uri: buffer.uri.clone(),
+            range: Range {
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 0,
+                    character: 0,
+                },
+            },
+        })
     }
 
     #[must_use]
@@ -522,4 +636,25 @@ fn semantic_symbol_accepts_spelling(symbol: &SemanticSymbol, spelling: &str) -> 
         || symbol.names.localized.values().any(|entry| {
             entry.preferred == spelling || entry.aliases.iter().any(|alias| alias == spelling)
         })
+}
+
+/// The identifier the cursor sits in, using the same character class as the
+/// semantic projection's token matching.
+fn identifier_token_at(source: &str, offset: usize) -> Option<String> {
+    fn identifier_char(character: char) -> bool {
+        character.is_alphanumeric() || matches!(character, '_' | '-' | '?' | '!')
+    }
+    let offset = offset.min(source.len());
+    let left = source
+        .get(..offset)?
+        .rsplit(|character| !identifier_char(character))
+        .next()
+        .unwrap_or_default();
+    let right = source
+        .get(offset..)?
+        .split(|character| !identifier_char(character))
+        .next()
+        .unwrap_or_default();
+    let token = format!("{left}{right}");
+    (!token.is_empty()).then_some(token)
 }

@@ -579,3 +579,43 @@ fn agents_rejects_an_unknown_format_as_cli_misuse() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn definition_resolves_imported_macros_and_module_names() {
+    let fixture = SourceFixture::new("(module 示例)\n");
+    fixture.write(
+        "pyproject.toml",
+        "[project]\nname = \"nav\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n",
+    );
+    fixture.write("osiris.jsonc", r#"{"source":["src"],"outDir":"dist"}"#);
+    fixture.write(
+        "src/lib/marks.osr",
+        "(module lib.marks)\n\n^{:doc {:default \"Twice.\"} :export true}\n(defmacro twice [value] `(+ ~value ~value))\n",
+    );
+    let consumer = fixture.write(
+        "src/app/main.osr",
+        "(module app.main)\n(import-for-syntax lib.marks :refer [twice])\n\n^{:doc \"Uses the macro.\"}\n(defn ^Int doubled [^Int value] (twice value))\n",
+    );
+
+    // The module name in the import form goes to the module's file.
+    let at_module = format!("{}:2:21", path_argument(&consumer));
+    let output = osr(&["lsc", "definition", "--at", &at_module]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("lib/marks.osr"),
+        "module name must resolve to the defining file: {stdout}"
+    );
+
+    // A `:refer` member and a later macro call both go to the `defmacro`.
+    for at in [
+        format!("{}:2:39", path_argument(&consumer)),
+        format!("{}:5:34", path_argument(&consumer)),
+    ] {
+        let output = osr(&["lsc", "definition", "--at", &at]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("lib/marks.osr:4"),
+            "macro reference at {at} must resolve to its defmacro: {stdout}"
+        );
+    }
+}
