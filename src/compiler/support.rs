@@ -144,21 +144,26 @@ pub(super) fn imported_phase_modules(
                 alias.canonical.as_str()
             });
         for imported_macro in &interface.macros {
-            descriptor.macro_names.insert(
-                format!("{qualifier}/{}", imported_macro.canonical),
-                imported_macro.canonical.clone(),
-            );
-            descriptor.macro_names.insert(
-                format!("{qualifier}.{}", imported_macro.canonical),
-                imported_macro.canonical.clone(),
-            );
+            // The canonical spelling and every `:osiris/names` spelling reach
+            // the same macro (OEP-0001-R062A) — qualified or referred alike.
+            for spelling in
+                std::iter::once(&imported_macro.canonical).chain(imported_macro.aliases.iter())
+            {
+                descriptor.macro_names.insert(
+                    format!("{qualifier}/{spelling}"),
+                    imported_macro.canonical.clone(),
+                );
+                descriptor.macro_names.insert(
+                    format!("{qualifier}.{spelling}"),
+                    imported_macro.canonical.clone(),
+                );
+            }
         }
         for member in &import.members {
-            if let Some(imported_macro) = interface
-                .macros
-                .iter()
-                .find(|imported_macro| imported_macro.canonical == member.canonical)
-            {
+            if let Some(imported_macro) = interface.macros.iter().find(|imported_macro| {
+                imported_macro.canonical == member.canonical
+                    || imported_macro.aliases.contains(&member.canonical)
+            }) {
                 descriptor
                     .macro_names
                     .insert(member.canonical.clone(), imported_macro.canonical.clone());

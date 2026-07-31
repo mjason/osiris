@@ -4,13 +4,28 @@ pub(super) fn strict_map(
     form: &Form,
     expected: &[&str],
 ) -> InterfaceResult<BTreeMap<String, Form>> {
+    strict_map_with_optional(form, expected, &[])
+}
+
+/// Like [`strict_map`], but `optional` keys are accepted without being
+/// required — for fields absent from interfaces written before the field
+/// existed, or omitted to keep alias-free interfaces byte-stable.
+pub(super) fn strict_map_with_optional(
+    form: &Form,
+    expected: &[&str],
+    optional: &[&str],
+) -> InterfaceResult<BTreeMap<String, Form>> {
     let FormKind::Map(entries) = &form.kind else {
         return Err(InterfaceError::new("OSR-I0041", "expected interface map"));
     };
     if entries.len() % 2 != 0 {
         return Err(InterfaceError::new("OSR-I0041", "unmatched map key"));
     }
-    let allowed = expected.iter().copied().collect::<BTreeSet<_>>();
+    let allowed = expected
+        .iter()
+        .chain(optional.iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
     let mut values = BTreeMap::new();
     for pair in entries.chunks_exact(2) {
         let key = expect_keyword(&pair[0], "map key")?.to_owned();

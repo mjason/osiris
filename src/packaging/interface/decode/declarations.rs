@@ -188,7 +188,7 @@ pub(super) fn decode_operator_instance(form: &Form) -> InterfaceResult<OperatorI
 }
 
 pub(super) fn decode_macro_interface(form: &Form) -> InterfaceResult<MacroInterface> {
-    let values = strict_map(
+    let values = strict_map_with_optional(
         form,
         &[
             "id",
@@ -201,6 +201,9 @@ pub(super) fn decode_macro_interface(form: &Form) -> InterfaceResult<MacroInterf
             "helper-bindings",
             "phase-1-ir",
         ],
+        // Absent from alias-free macros and from interfaces written before
+        // the field existed (OEP-0001-R062A).
+        &["aliases"],
     )?;
     require_public(get(&values, "visibility")?)?;
     if expect_keyword(get(&values, "phase")?, "macro phase")? != "macro" {
@@ -212,6 +215,10 @@ pub(super) fn decode_macro_interface(form: &Form) -> InterfaceResult<MacroInterf
     Ok(MacroInterface {
         id: expect_string(get(&values, "id")?, "macro id")?,
         canonical: expect_string(get(&values, "canonical")?, "macro name")?,
+        aliases: match values.get("aliases") {
+            Some(form) => decode_strings(form, "macro aliases")?,
+            None => Vec::new(),
+        },
         parameters: get(&values, "parameters")?.clone(),
         minimum_arity: expect_usize(get(&values, "minimum-arity")?, "macro minimum arity")?,
         variadic: expect_bool(get(&values, "variadic")?, "macro variadic")?,

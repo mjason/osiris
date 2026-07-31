@@ -377,6 +377,7 @@ pub(crate) fn collect_phase_interface(
             id: BindingId::new(module, &name, BindingKind::Macro)
                 .as_str()
                 .to_owned(),
+            aliases: crate::syntax::metadata_aliases(&phase_ir.metadata, &name),
             canonical: name,
             parameters: normalize_form(parameters),
             minimum_arity,

@@ -219,6 +219,18 @@ impl Expander {
             match kind {
                 PhaseDeclarationKind::Macro => {
                     imported_macros.insert(definition.source_name.clone(), definition.name.clone());
+                    // A local macro answers to its `:osiris/names` spellings
+                    // too (OEP-0001-R062A). The canonical name keeps priority:
+                    // an alias never displaces an existing visible name.
+                    if namespace.is_none() {
+                        for alias in
+                            crate::syntax::metadata_aliases(&form.metadata, &definition.source_name)
+                        {
+                            self.macro_exports
+                                .entry(alias)
+                                .or_insert_with(|| definition.name.clone());
+                        }
+                    }
                     self.macros.insert(definition.name.clone(), definition);
                 }
                 PhaseDeclarationKind::Function => {

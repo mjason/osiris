@@ -145,6 +145,11 @@ pub struct FieldInterface {
 pub struct MacroInterface {
     pub id: String,
     pub canonical: String,
+    /// Localized spellings from `:osiris/names` — preferred and migration
+    /// alike — that resolve to this macro (OEP-0001-R062A). Absent from the
+    /// serialized interface when empty, so alias-free interfaces keep their
+    /// bytes and hashes.
+    pub aliases: Vec<String>,
     pub parameters: Form,
     pub minimum_arity: usize,
     pub variadic: bool,

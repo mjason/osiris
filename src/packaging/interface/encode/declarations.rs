@@ -134,9 +134,16 @@ pub(super) fn macro_interface_form(
     macro_: &MacroInterface,
     projection: MetadataProjection,
 ) -> Form {
-    map(vec![
+    let mut entries = vec![
         ("id", string(&macro_.id)),
         ("canonical", string(&macro_.canonical)),
+    ];
+    // Absent when empty: an alias-free macro keeps its serialized bytes and
+    // therefore its hashes.
+    if !macro_.aliases.is_empty() {
+        entries.push(("aliases", strings_form(&macro_.aliases)));
+    }
+    entries.extend([
         ("phase", keyword("macro")),
         ("visibility", keyword("public")),
         ("parameters", macro_.parameters.clone()),
@@ -147,7 +154,8 @@ pub(super) fn macro_interface_form(
             "phase-1-ir",
             project_form_metadata(&macro_.phase_ir, projection),
         ),
-    ])
+    ]);
+    map(entries)
 }
 
 pub(super) fn phase_helper_form(
