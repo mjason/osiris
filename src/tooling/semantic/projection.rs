@@ -212,7 +212,14 @@ impl SemanticDocument {
     #[must_use]
     pub fn symbol_at_source(&self, offset: usize, source: &str) -> Option<&SemanticSymbol> {
         fn identifier_char(character: char) -> bool {
-            character.is_alphanumeric() || matches!(character, '_' | '-' | '?' | '!')
+            // Osiris symbol characters, operators included — `<=` is a macro
+            // name, and a tokenizer that cannot spell it can never match it.
+            // Kept in step with `identifier_token_at` in the LSP navigation.
+            character.is_alphanumeric()
+                || matches!(
+                    character,
+                    '_' | '-' | '?' | '!' | '<' | '>' | '=' | '+' | '*' | '%' | '&' | '$' | '|'
+                )
         }
         let offset = offset.min(source.len());
         let left = source
@@ -228,6 +235,35 @@ impl SemanticDocument {
             .and_then(|suffix| suffix.split(|character| !identifier_char(character)).next())
             .unwrap_or_default();
         let token = format!("{left}{right}");
+        let qualified_span = {
+            // Second tokenization with `/` included: the cursor may sit on the
+            // namespace side of a qualified reference, whose symbol records
+            // the member. The qualified token's exact span must equal an
+            // occurrence — equality, not containment, so this cannot revive
+            // the enclosing-symbol noise removed below.
+            fn qualified_char(character: char) -> bool {
+                identifier_char(character) || character == '/'
+            }
+            let left = source
+                .get(..offset)
+                .and_then(|prefix| prefix.rsplit(|c| !qualified_char(c)).next())
+                .unwrap_or_default();
+            let right = source
+                .get(offset..)
+                .and_then(|suffix| suffix.split(|c| !qualified_char(c)).next())
+                .unwrap_or_default();
+            let start = offset - left.len();
+            (left.contains('/') || right.contains('/'))
+                .then_some((start, start + left.len() + right.len()))
+        };
+        // A token that matches nothing answers nothing — including the empty
+        // token on punctuation. The enclosing-symbol fallback this replaces
+        // made every position inside a macro call answer as the expansion's
+        // product: its occurrence covers the whole call, so hovering any
+        // argument showed a generated binding instead of what the cursor is
+        // on, and each caller's own more informed fallback never ran. A
+        // qualified reference matches by its segments: the cursor sits on one
+        // side of the `/`, and either side names the same binding.
         let exact = self.symbols.iter().find(|symbol| {
             symbol
                 .occurrences
@@ -235,9 +271,21 @@ impl SemanticDocument {
                 .any(|span| contains(*span, offset))
                 && (symbol.canonical == token
                     || symbol.source_spelling == token
+                    || symbol
+                        .source_spelling
+                        .split('/')
+                        .any(|segment| segment == token)
                     || symbol.aliases.iter().any(|alias| alias.spelling == token))
         });
-        exact.or_else(|| self.symbol_at(offset))
+        exact.or_else(|| {
+            let (start, end) = qualified_span?;
+            self.symbols.iter().find(|symbol| {
+                symbol
+                    .occurrences
+                    .iter()
+                    .any(|span| span.start == start && span.end == end)
+            })
+        })
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {

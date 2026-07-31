@@ -9,6 +9,18 @@ impl LspState {
             &self.display_locale,
         );
         let Some(symbol) = document.semantic.symbol_at_source(offset, &document.text) else {
+            // A name the file referred through `import-for-syntax`, used
+            // inside another macro's arguments: the expansion consumed its
+            // occurrence, so it answers by its written name.
+            if let Some((module, name)) = self.referred_member_at(document, offset) {
+                for kind in ["macro", "function", "value", "type"] {
+                    let id = format!("{module}::{kind}::{name}");
+                    if let Some((hover, _)) = self.hover_for_binding(uri, &id, Some(locale))
+                    {
+                        return Some(hover);
+                    }
+                }
+            }
             // Nothing here is a binding of its own. Inside a macro call the
             // useful answer is the macro: its clause keywords and shape are
             // documented there, and they exist nowhere else to point at.

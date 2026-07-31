@@ -144,6 +144,49 @@ impl LspState {
         })
     }
 
+    /// The `:refer` member the token at `offset` names, with its module —
+    /// checked against every `import`/`import-for-syntax` in the file.
+    pub(super) fn referred_member_at(
+        &self,
+        document: &OpenDocument,
+        offset: usize,
+    ) -> Option<(String, String)> {
+        let token = identifier_token_at(&document.text, offset)?;
+        for form in &document.analysis.document.forms {
+            let FormKind::List(items) = &form.kind else {
+                continue;
+            };
+            let Some(FormKind::Symbol(head)) = items.first().map(|item| &item.kind) else {
+                continue;
+            };
+            if head.canonical != "import" && head.canonical != "import-for-syntax" {
+                continue;
+            }
+            let Some(FormKind::Symbol(module)) = items.get(1).map(|item| &item.kind) else {
+                continue;
+            };
+            let mut expect_refer = false;
+            for item in &items[2..] {
+                match &item.kind {
+                    FormKind::Keyword(keyword) => {
+                        expect_refer = keyword.canonical == ":refer";
+                    }
+                    FormKind::Vector(members) if expect_refer => {
+                        for member in members {
+                            if let FormKind::Symbol(name) = &member.kind
+                                && name.canonical == token
+                            {
+                                return Some((module.canonical.clone(), token));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
     #[must_use]
     pub fn references(&self, uri: &str, position: Position) -> Vec<Location> {
         let Some(document) = self.document(uri) else {
@@ -642,7 +685,12 @@ fn semantic_symbol_accepts_spelling(symbol: &SemanticSymbol, spelling: &str) -> 
 /// semantic projection's token matching.
 fn identifier_token_at(source: &str, offset: usize) -> Option<String> {
     fn identifier_char(character: char) -> bool {
-        character.is_alphanumeric() || matches!(character, '_' | '-' | '?' | '!')
+        // Kept in step with the semantic projection's token matching.
+        character.is_alphanumeric()
+            || matches!(
+                character,
+                '_' | '-' | '?' | '!' | '<' | '>' | '=' | '+' | '*' | '%' | '&' | '$' | '|'
+            )
     }
     let offset = offset.min(source.len());
     let left = source

@@ -555,3 +555,30 @@ fn a_request_settles_deferred_edits_before_it_is_answered() {
     );
     assert_eq!(machine.state.document_version(URI), Some(2));
 }
+
+#[test]
+fn hover_inside_a_macro_call_answers_the_macro_not_the_expansion() {
+    let mut state = LspState::new();
+    state.did_open(
+        URI,
+        4,
+        "(module demo)\n\n^{:doc {:default \"Answers one, whatever the clause says.\"}}\n(defmacro pick [clause] 1)\n\n^{:doc \"Uses it.\"}\n(defn ^Int run [] (pick (keep 2)))\n",
+    );
+    // `keep` is the macro's own clause word — no binding of its own, and the
+    // expansion consumed it. The macro's documentation is the answer, never a
+    // generated binding whose occurrence covers the whole call.
+    let hover = state.hover(
+        URI,
+        Position {
+            line: 6,
+            character: 25,
+        },
+        None,
+    );
+    let value = hover.expect("macro-call hover").contents.value;
+    assert!(value.contains("pick"), "{value}");
+    assert!(
+        !value.contains("run"),
+        "the enclosing defn is not the answer: {value}"
+    );
+}
