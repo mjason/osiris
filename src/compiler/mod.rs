@@ -44,7 +44,28 @@ pub struct CompileOptions {
     /// the filesystem (OEP-0001-R006CC). A reference with no entry here is a
     /// diagnostic, never a silently empty provider.
     pub embedded_sources: BTreeMap<String, String>,
+    /// Where compiler-linked runtime support lives in this build's output
+    /// (OEP-0002-R017C). A project build shares one
+    /// `<outDir>/__osiris_runtime__` tree; a distribution build keeps the
+    /// per-owning-package layout a wheel needs to be co-installable.
+    pub runtime_layout: RuntimeLayout,
 }
+
+/// See [`CompileOptions::runtime_layout`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RuntimeLayout {
+    /// Runtime support beneath each owning top-level package — the only
+    /// layout a wheel can install without top-level name collisions. The
+    /// default, and what published `.osri` runtime identities use.
+    #[default]
+    PerPackage,
+    /// One `__osiris_runtime__` tree at the output root, shared by the whole
+    /// build — the project-build layout (OEP-0002-R017C).
+    Shared,
+}
+
+/// The shared runtime package name at the output root.
+pub const SHARED_RUNTIME_PACKAGE: &str = "__osiris_runtime__";
 
 impl CompileOptions {
     #[must_use]
@@ -59,9 +80,17 @@ impl CompileOptions {
             target_python,
             strict: true,
             embedded_sources: BTreeMap::new(),
+            runtime_layout: RuntimeLayout::default(),
             trust_policy: dependency::contract_trust_policy(&[], &[])
                 .expect("empty trust policy is valid"),
         }
+    }
+
+    /// Selects where this build's runtime support lives (OEP-0002-R017C).
+    #[must_use]
+    pub const fn with_runtime_layout(mut self, layout: RuntimeLayout) -> Self {
+        self.runtime_layout = layout;
+        self
     }
 
     /// Supplies the content behind every `py/embed` reference in this source.
@@ -417,7 +446,17 @@ fn finish_compile_with_model(
         if analysis.has_errors() || interface.is_none() || records.is_none() {
             (None, None)
         } else {
-            match backend::compile_module(&analysis.hir, options.target_python) {
+            let generated = match options.runtime_layout {
+                RuntimeLayout::PerPackage => {
+                    backend::compile_module(&analysis.hir, options.target_python)
+                }
+                RuntimeLayout::Shared => backend::compile_module_with_runtime(
+                    &analysis.hir,
+                    options.target_python,
+                    SHARED_RUNTIME_PACKAGE,
+                ),
+            };
+            match generated {
                 Ok(generated) => {
                     let generated_name = python_module_path(&analysis.hir.name)
                         .to_string_lossy()

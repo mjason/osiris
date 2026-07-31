@@ -51,7 +51,10 @@ the source entry and propagates the target program's status.
 `osr compile <file>...` is the lower-level explicit compiler entry. Its default
 artifacts are readable Python, `.osri` interfaces, and `.py.map` source maps.
 Use `--out-dir` to select an output directory and `--emit` to select artifact
-kinds. Project and explicit builds link reachable support into the owning
+kinds. A project build (`osr build`, `osr run`) emits all compiler-linked
+runtime support into one shared `<outDir>/__osiris_runtime__` tree; bare
+`osr compile` defaults to the per-package layout wheels need, and
+`--runtime-layout shared|package` selects explicitly. Project and explicit builds link reachable support into the owning
 Python package's private `__osiris_runtime__` package.
 
 ## Project Configuration

@@ -12,8 +12,8 @@ areas:
   - CLI
   - Python
 created: 2026-07-23
-updated: 2026-07-30
-revision: 23
+updated: 2026-07-31
+revision: 24
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -233,6 +233,24 @@ and MUST NOT be delegated — a harness exercising a freshly built compiler must
 not be handed to whatever an enclosing project pinned. Self-delegation MUST be
 prevented by executable identity, and `OSR_NO_DELEGATE` MUST opt out. A failed
 handover MUST be an error, not a fallback to running in place.
+
+**OEP-0002-R017C:** A project build MUST emit all compiler-linked runtime
+support — standard-library helpers, first-party embedded providers, and
+runtime linked from external extensions — into one shared
+`<outDir>/__osiris_runtime__` tree, and generated project code MUST import it
+there. Provenance stays visible: linked files keep their
+`packages/<provider-id>/…` paths inside the shared tree. One application build
+owns its whole output, so one tree suffices, and a per-package copy in every
+top-level package multiplies identical files and scatters generated
+directories through the output for no benefit.
+
+A built distribution is the opposite case and MUST keep OEP-0002-R033's
+per-owning-package layout: a wheel's top-level names install into
+site-packages, where a shared top-level `__osiris_runtime__` from two
+distributions would collide. Generated code therefore differs between a
+project build and a wheel of the same sources in exactly one way — where its
+runtime support lives — and each layout is the only one installable in its
+destination.
 
 **OEP-0002-R018:** `osr check [path]` MUST discover the applicable project,
 parse and expand the selected module graph, validate names, types, contracts,
@@ -733,6 +751,10 @@ A conforming implementation provides evidence that:
 
 ## Change History
 
+- Revision 24, 2026-07-31: Added OEP-0002-R017C: a project build emits all
+  compiler-linked runtime support into one shared `<outDir>/__osiris_runtime__`
+  tree; wheels keep OEP-0002-R033's per-owning-package layout because a shared
+  top-level runtime package cannot be co-installed into site-packages.
 - Revision 23, 2026-07-30: Added OEP-0002-R017B: every invocation prefers the
   project's own osr — activated `VIRTUAL_ENV`, then an ancestor `.venv` — and
   hands over unchanged. Recorded because a stale global install twice reported

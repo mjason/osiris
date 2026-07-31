@@ -33,6 +33,10 @@ pub(super) struct CompileArguments<'a> {
     pub(super) site_roots: Vec<&'a str>,
     pub(super) emit: BTreeSet<EmitKind>,
     pub(super) explicit_emit: bool,
+    /// OEP-0002-R017C: `osr build`/`osr run` share one runtime tree at the
+    /// output root; bare `osr compile` keeps the per-package layout wheels
+    /// need, which is why the flag rather than a default covers both.
+    pub(super) runtime_layout: compiler::RuntimeLayout,
 }
 
 pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
@@ -117,6 +121,7 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
     };
     for (_, _, options) in &mut sources {
         options.trust_policy = loaded.trust_policy.clone();
+        options.runtime_layout = arguments.runtime_layout;
     }
     let out_dir = arguments
         .out_dir
@@ -434,6 +439,7 @@ pub(super) fn parse_compile_arguments(
     let mut site_roots = Vec::new();
     let mut emit = BTreeSet::from([EmitKind::Python, EmitKind::Interface, EmitKind::SourceMap]);
     let mut saw_emit = false;
+    let mut runtime_layout = compiler::RuntimeLayout::PerPackage;
     let mut index = 0;
 
     while let Some(argument) = arguments.get(index) {
@@ -488,6 +494,21 @@ pub(super) fn parse_compile_arguments(
                 site_roots.push(value.as_str());
                 index += 1;
             }
+            "--runtime-layout" => {
+                let Some(value) = arguments.get(index + 1) else {
+                    return Err("missing value for '--runtime-layout'".to_owned());
+                };
+                runtime_layout = match value.as_str() {
+                    "shared" => compiler::RuntimeLayout::Shared,
+                    "package" => compiler::RuntimeLayout::PerPackage,
+                    other => {
+                        return Err(format!(
+                            "unsupported '--runtime-layout {other}'; expected 'shared' or 'package'"
+                        ));
+                    }
+                };
+                index += 1;
+            }
             option if option.starts_with('-') => {
                 return Err(format!("unknown option '{option}' for 'compile'"));
             }
@@ -505,6 +526,7 @@ pub(super) fn parse_compile_arguments(
         site_roots,
         emit,
         explicit_emit: saw_emit,
+        runtime_layout,
     })
 }
 

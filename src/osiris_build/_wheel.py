@@ -319,6 +319,25 @@ def _collect_compiler_output(
         }
         if excluded_modules and len(excluded_modules) == len(interface_projections):
             raise _error("[tool.osiris].wheel-exclude removes every module from the wheel")
+        # A top-level package whose every module is excluded takes its private
+        # `__osiris_runtime__` tree with it: the support exists only for those
+        # modules, and its manifest names source maps the exclusion removed.
+        all_top = {python_module_identifier(p.module).split(".")[0] for p in interface_projections}
+        kept_top = {
+            python_module_identifier(p.module).split(".")[0]
+            for p in interface_projections
+            if p.module not in excluded_modules
+        }
+        excluded_top = all_top - kept_top
+        excluded_runtime = tuple(f"{top}/__osiris_runtime__/" for top in sorted(excluded_top))
+        for path in [p for p in list(static_files) if p.startswith(excluded_runtime)]:
+            del static_files[path]
+        for path in [p for p in list(source_maps) if p.startswith(excluded_runtime)]:
+            del source_maps[path]
+        support_manifests = [
+            manifest for manifest in support_manifests
+            if not manifest.startswith(excluded_runtime)
+        ]
         for projection in interface_projections:
             # Osiris-spelled module → Python-spelled archive paths (R005B).
             base = python_module_identifier(projection.module).replace(".", "/")

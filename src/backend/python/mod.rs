@@ -114,7 +114,7 @@ pub fn compile_module(
 }
 
 /// Lower a module for a distribution-private standard-library location.
-pub(crate) fn compile_module_with_runtime(
+pub fn compile_module_with_runtime(
     module: &hir::Module,
     target: impl Into<PythonVersion>,
     runtime_module: impl Into<String>,

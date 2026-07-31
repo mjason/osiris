@@ -13,10 +13,10 @@ areas:
   - Python
 created: 2026-07-23
 updated: 2026-07-30
-revision: 23
+revision: 24
 language: zh-CN
 source: ../../0002-package-system.md
-source-revision: 23
+source-revision: 24
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -185,6 +185,18 @@ declared name 与翻译后的 archive path 字面相等。Source root 之下的�
 不得被委派——测试新构建编译器的 harness 不能被移交给外层项目锁定的任何东西。自我
 委派必须以可执行文件同一性防止，`OSR_NO_DELEGATE` 必须可以退出该行为。移交失败必须
 是错误，不得回退为就地运行。
+
+**OEP-0002-R017C：** 项目构建必须把全部编译器链接的运行时支持——标准库 helper、
+第一方嵌入 provider、从外部扩展链接来的运行时——发射进**一棵**共享的
+`<outDir>/__osiris_runtime__` 树，生成的项目代码必须从那里导入。出处保持可见：
+链接文件在共享树内保留 `packages/<provider-id>/…` 路径。一次应用构建拥有它的
+整个输出，一棵树就够了；在每个顶层包里各放一份只会成倍复制相同文件、把生成目录
+撒满输出，没有任何收益。
+
+构建出的 distribution 是相反的情形，必须保持 OEP-0002-R033 的按属主包布局：
+wheel 的顶层名字装进 site-packages，两个 distribution 的共享顶层
+`__osiris_runtime__` 会相撞。因此同一份源码的项目构建与 wheel 生成代码恰好在
+一处不同——运行时支持住在哪里——而每种布局都是其目的地里唯一可安装的那种。
 
 **OEP-0002-R018：** `osr check [path]` 必须发现适用 project，parse/expand 所选 module
 graph，验证 name、type、contract、interface、extension record 和 target compatibility，
@@ -582,6 +594,9 @@ distribution 只有一个 backend；复杂 native package 可以拆分 distribut
 
 ## 修订历史 (Change History)
 
+- Revision 24，2026-07-31：新增 OEP-0002-R017C：项目构建把全部编译器链接的运行时
+  支持发射进一棵共享的 `<outDir>/__osiris_runtime__` 树；wheel 保持 OEP-0002-R033
+  的按属主包布局，因为共享顶层运行时包无法共同安装进 site-packages。
 - Revision 23，2026-07-30：新增 OEP-0002-R017B：每次调用先选项目自己的 osr——激活的
   `VIRTUAL_ENV`，再沿祖先路径找 `.venv`——并原样移交。记录在案的原因：陈旧的全局安装
   两次报出锁定编译器早已修复的错误，输出里没有任何东西说明是哪个二进制在说话。

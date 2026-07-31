@@ -22,7 +22,13 @@ pub(super) fn resolve_provider_names(
             name.canonical.as_str()
         });
     let provider_id = provider_id(options);
-    let runtime_root = runtime_root(module_name);
+    // OEP-0002-R017C: a project build's providers live in the one shared tree.
+    let runtime_root = match options.runtime_layout {
+        crate::compiler::RuntimeLayout::PerPackage => runtime_root(module_name),
+        crate::compiler::RuntimeLayout::Shared => {
+            crate::compiler::SHARED_RUNTIME_PACKAGE.to_owned()
+        }
+    };
     let mut providers = BTreeMap::new();
     let mut lowered_handles = BTreeMap::<String, String>::new();
 

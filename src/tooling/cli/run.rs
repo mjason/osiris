@@ -18,6 +18,11 @@ pub(super) fn run_program(arguments: &[String]) -> CliOutcome {
         Err(message) => return CliOutcome::failure(1, String::new(), format!("osr: {message}\n")),
     };
     sources.install_trust_policy(&loaded.trust_policy);
+    // `osr run` stages a project-shaped tree, so it uses the project layout
+    // (OEP-0002-R017C).
+    for unit in &mut sources.units {
+        unit.options.runtime_layout = compiler::RuntimeLayout::Shared;
+    }
     let inputs = workspace_compile_inputs(&sources);
     let workspace = compiler::compile_workspace(&inputs, &loaded.interfaces);
     if workspace.has_errors() {

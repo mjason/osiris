@@ -24,7 +24,14 @@ pub(super) fn run_project_build(path: &Path, site_roots: &[String]) -> CliOutcom
             return CliOutcome::failure(1, String::new(), format!("osr: {message}\n"));
         }
     };
-    let mut arguments = vec![entry.display().to_string()];
+    // A project build shares one runtime tree at the output root
+    // (OEP-0002-R017C); only the wheel backend's bare `osr compile` keeps the
+    // per-package layout.
+    let mut arguments = vec![
+        entry.display().to_string(),
+        "--runtime-layout".to_owned(),
+        "shared".to_owned(),
+    ];
     for root in site_roots {
         arguments.extend(["--site-root".to_owned(), root.clone()]);
     }

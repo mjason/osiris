@@ -151,3 +151,31 @@ fn a_workspace_internal_provider_keeps_its_same_build_import() {
         "nothing external to link inside one workspace"
     );
 }
+
+#[test]
+fn the_shared_layout_relocates_under_the_output_root() {
+    use osiris::compiler::RuntimeLayout;
+
+    let provider = provider_interface();
+    let options = CompileOptions::new("app.main", PythonVersion::new(3, 11))
+        .with_expected_module_name("app.main")
+        .with_provider("app", "1.0")
+        .with_runtime_layout(RuntimeLayout::Shared);
+    let inputs = [CompileInput::new(CONSUMER_SOURCE, &options)];
+    let external = BTreeMap::from([("prov.core".to_owned(), provider)]);
+    let workspace = compile_workspace(&inputs, &external);
+    assert!(!workspace.has_errors(), "{:?}", workspace.diagnostics);
+    let generated = workspace.units[0].python.as_ref().expect("python");
+    // OEP-0002-R017C: one tree at the output root, provenance preserved.
+    assert!(
+        generated
+            .source
+            .contains("from __osiris_runtime__.packages.prov_"),
+        "shared layout must root the runtime at the output top:\n{}",
+        generated.source
+    );
+    let support = generated.runtime_support.as_ref().expect("support");
+    let (relocated, original) = support.external_modules.iter().next().expect("link");
+    assert!(relocated.starts_with("__osiris_runtime__.packages.prov_"));
+    assert!(original.starts_with("prov.__osiris_runtime__.packages.prov_"));
+}
