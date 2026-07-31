@@ -25,6 +25,7 @@ pub(in crate::interface) fn project_metadata(
                 // every dependent.
                 !(key == "doc"
                     || key == "export"
+                    || key == "osiris/clauses"
                     || key == "osiris/content-references"
                     || key == "since"
                     || key == "deprecated"

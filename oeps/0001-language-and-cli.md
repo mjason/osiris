@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-28
-revision: 30
+revision: 31
 requires: [0]
 replaces: []
 superseded-by: null
@@ -906,6 +906,15 @@ MUST be scoped to their owning signature or structure and MUST lower to the
 canonical Python keyword or attribute. They MUST NOT define a global keyword
 translation table.
 
+**OEP-0001-R062B:** A macro MAY document its clause words through
+`:osiris/clauses`: a map from the clause symbol as authored to either a string
+or a `{:default …, "<bcp47>" …}` documentation map, on the macro's declaration
+metadata. Tooling hovering a clause word inside that macro's call MUST answer
+with the clause's documentation, falling back to the macro's own documentation
+for undocumented words. The key is presentation data and MUST NOT enter the
+semantic interface projection — editing clause documentation changes no
+dependent's compilation.
+
 **OEP-0001-R062A:** A reference authored with a spelling from `:aliases` MUST
 continue to resolve to the canonical identity, but compiler CLI, LSC, and LSP
 diagnostics MUST report a non-failing migration advisory. The replacement MUST
@@ -1411,6 +1420,10 @@ A conforming implementation provides evidence that:
   operations continue to work without network access.
 
 ## Change History
+
+- Revision 31, 2026-07-31: Added OEP-0001-R062B, `:osiris/clauses`: a
+  macro documents its clause words; hover inside a call answers with the
+  clause, and the key never enters the semantic projection.
 
 - Revision 30, 2026-07-30: Required one shared entry point for deciding whether a
   declaration is published, and a test holding components that must agree

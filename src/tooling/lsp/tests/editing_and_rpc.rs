@@ -582,3 +582,38 @@ fn hover_inside_a_macro_call_answers_the_macro_not_the_expansion() {
         "the enclosing defn is not the answer: {value}"
     );
 }
+
+#[test]
+fn clause_words_answer_with_their_own_documentation() {
+    let mut state = LspState::new();
+    state.did_open(
+        URI,
+        4,
+        "(module demo)\n\n^{:doc {:default \"Picks things.\"}\n  :osiris/clauses {keep {:default \"Keep matching rows.\" \"zh-CN\" \"保留匹配的行。\"}}}\n(defmacro pick [clause] 1)\n\n^{:doc \"Uses it.\"}\n(defn ^Int run [] (pick (keep 2)))\n",
+    );
+    let hover = state.hover(
+        URI,
+        Position {
+            line: 7,
+            character: 25,
+        },
+        Some("en"),
+    );
+    let value = hover.expect("clause hover").contents.value;
+    assert!(value.contains("keep"), "{value}");
+    assert!(
+        value.contains("Keep matching rows."),
+        "the clause answers with its own documentation: {value}"
+    );
+    // Chinese locale selects the zh text.
+    let hover = state.hover(
+        URI,
+        Position {
+            line: 7,
+            character: 25,
+        },
+        Some("zh-CN"),
+    );
+    let value = hover.expect("clause hover").contents.value;
+    assert!(value.contains("保留匹配的行。"), "{value}");
+}

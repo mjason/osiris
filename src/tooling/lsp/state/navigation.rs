@@ -683,7 +683,7 @@ fn semantic_symbol_accepts_spelling(symbol: &SemanticSymbol, spelling: &str) -> 
 
 /// The identifier the cursor sits in, using the same character class as the
 /// semantic projection's token matching.
-fn identifier_token_at(source: &str, offset: usize) -> Option<String> {
+pub(super) fn identifier_token_at(source: &str, offset: usize) -> Option<String> {
     fn identifier_char(character: char) -> bool {
         // Kept in step with the semantic projection's token matching.
         character.is_alphanumeric()

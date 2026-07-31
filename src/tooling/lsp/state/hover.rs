@@ -146,6 +146,26 @@ impl LspState {
             .filter(|trace| span_contains(trace.call_span, offset))
             .min_by_key(|trace| trace.call_span.end.saturating_sub(trace.call_span.start))?;
         let entry = workspace_symbol_for_binding(document, &trace.macro_binding_id)?;
+        // The macro may document its own clause words through
+        // `:osiris/clauses`; the word under the cursor then answers with its
+        // clause, and only a word the macro left undocumented answers with
+        // the macro itself.
+        if let Some(token) = identifier_token_at(&document.text, offset)
+            && let Some(clause) = clause_documentation(&entry.symbol, &token, locale)
+        {
+            return Some(Hover {
+                contents: MarkupContent {
+                    kind: "markdown".to_owned(),
+                    value: format!(
+                        "**{}** · {}\n\n{}",
+                        escape_markdown(&token),
+                        localized_clause_label(locale, &entry.symbol.canonical),
+                        escape_markdown(&clause)
+                    ),
+                },
+                range: None,
+            });
+        }
         Some(render_symbol_hover(
             document,
             &entry.symbol,
@@ -305,4 +325,81 @@ impl LspState {
     }
 
 
+}
+
+fn localized_clause_label(locale: &str, macro_name: &str) -> String {
+    if locale == "zh" || locale.starts_with("zh-") {
+        format!("`{macro_name}` 的子句")
+    } else {
+        format!("clause of `{macro_name}`")
+    }
+}
+
+/// The documentation `:osiris/clauses` declares for one clause word, selected
+/// by locale. The metadata survives as the reader's serialized form: a map of
+/// symbol keys to either a string or a `{:default … "zh-CN" …}` map.
+fn clause_documentation(
+    symbol: &SemanticSymbol,
+    clause: &str,
+    locale: &str,
+) -> Option<String> {
+    let clauses = symbol.metadata.authored.iter().find_map(|entry| {
+        (entry.key_text == ":osiris/clauses").then_some(&entry.value)
+    })?;
+    let pairs = form_value_pairs(clauses)?;
+    for (key, value) in pairs {
+        if form_symbol_text(key).as_deref() == Some(clause) {
+            return form_documentation_text(value, locale);
+        }
+    }
+    None
+}
+
+/// `[k1, v1, k2, v2, …]` of a serialized reader map form.
+fn form_value_pairs(form: &JsonValue) -> Option<Vec<(&JsonValue, &JsonValue)>> {
+    if form.get("kind")?.as_str()? != "map" {
+        return None;
+    }
+    let items = form.get("value")?.as_array()?;
+    Some(items.chunks_exact(2).map(|pair| (&pair[0], &pair[1])).collect())
+}
+
+fn form_symbol_text(form: &JsonValue) -> Option<String> {
+    match form.get("kind")?.as_str()? {
+        "symbol" | "keyword" => Some(
+            form.get("value")?
+                .get("canonical")?
+                .as_str()?
+                .trim_start_matches(':')
+                .to_owned(),
+        ),
+        "string" => Some(form.get("value")?.as_str()?.to_owned()),
+        _ => None,
+    }
+}
+
+fn form_documentation_text(form: &JsonValue, locale: &str) -> Option<String> {
+    match form.get("kind")?.as_str()? {
+        "string" => Some(form.get("value")?.as_str()?.to_owned()),
+        "map" => {
+            let pairs = form_value_pairs(form)?;
+            let mut fallback = None;
+            for (key, value) in pairs {
+                let key = form_symbol_text(key)?;
+                let text = form
+                    .get("kind")
+                    .and_then(|_| value.get("value"))
+                    .and_then(JsonValue::as_str);
+                let Some(text) = text else { continue };
+                if key == locale || (locale.starts_with("zh") && key.starts_with("zh")) {
+                    return Some(text.to_owned());
+                }
+                if key == "default" {
+                    fallback = Some(text.to_owned());
+                }
+            }
+            fallback
+        }
+        _ => None,
+    }
 }

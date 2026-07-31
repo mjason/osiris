@@ -201,6 +201,24 @@ Do not pre-translate a directory name to `_` yourself — the compiler rejects a
 source path that does not match the declared module name, and `osr lsc name`
 shows what any name becomes on the Python side.
 
+### Documenting macro clause words
+
+A macro whose calls carry clause forms — `(选股定义 name (因子 …) (输出 …))` —
+documents those words with `:osiris/clauses` on its declaration:
+
+```clojure
+^{:doc {:default "Define a selection strategy."}
+  :osiris/clauses
+  {因子 {:default "Declare one factor input." "zh-CN" "声明一个因子输入。"}
+   输出 {:default "The output expression." "zh-CN" "输出表达式。"}}}
+(defmacro 选股定义 [name & clauses] …)
+```
+
+Hovering a clause word inside a call then answers with that clause's
+documentation; words the macro leaves undocumented answer with the macro
+itself. The key is presentation data and never enters the semantic interface,
+so editing clause documentation recompiles no dependents.
+
 ## Publishing a Declaration
 
 Nothing is public unless it says so, and there are two explicit ways to say it.
