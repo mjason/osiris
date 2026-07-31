@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.29
+
+- Go-to-definition resolves the module name in an `import`/`import-for-syntax` and macros referred through `import-for-syntax` — both at the `:refer` member and at later call sites.
+- Generated Python jumps back to its `.osr` source: the extension reads the sibling `.py.map` and resolves the narrowest covering mapping. Python files without a map are untouched.
+
 ## 0.3.28
 
 - A compile-time-only module — all macros and phase-1 helpers, no runtime binding — no longer leaves an empty `.py` shell and source map in a project build; its `.osri` is the module. Wheels keep the shell their extension entries reference.
