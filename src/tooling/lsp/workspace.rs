@@ -40,7 +40,7 @@ pub(super) fn collect_workspace_sources(
                 .path()
                 .extension()
                 .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| matches!(extension, "osr" | "oxr"))
+                .is_some_and(|extension| matches!(extension, "osr" | "ois"))
         {
             paths.push(entry.path());
         }

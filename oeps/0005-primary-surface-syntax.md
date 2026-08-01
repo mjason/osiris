@@ -1,7 +1,7 @@
 ---
 oep: 5
 title: Primary Surface Syntax
-description: The Elixir-flavoured surface syntax (.oxr) as the one authoring surface of Osiris, its grammar, its mapping onto forms, and the S-expression notation's retreat to internal representation.
+description: The Elixir-flavoured surface syntax (.ois) as the one authoring surface of Osiris, its grammar, its mapping onto forms, and the S-expression notation's retreat to internal representation.
 author: MJ
 status: Draft
 type: Standards Track
@@ -25,7 +25,7 @@ translations:
 ## Abstract
 
 Osiris is written in the Elixir-flavoured surface syntax, carried by the
-`.oxr` extension. This is a full migration, not a coexistence: `.oxr` is the
+`.ois` extension. This is a full migration, not a coexistence: `.ois` is the
 one authoring surface, and every editor, formatter, LSP feature, template,
 and document targets it. The S-expression notation retreats to what it
 always was underneath — the form data structure macros operate on. It
@@ -44,7 +44,7 @@ exchangeable without touching the macro system, the interface format, the
 alias machinery (OEP-0001-R060…R062C), or the documentation pipeline.
 
 The prototype (branch `explore/elixir-surface`, now merged) validated this
-end to end: a `.oxr` strategy using the unmodified qlab `defselect` macro —
+end to end: a `.ois` strategy using the unmodified qlab `defselect` macro —
 called through its `:osiris/names` spelling, with kebab-case factor names —
 translates, expands, type-checks, and emits the same Python as its
 S-expression twin.
@@ -53,7 +53,7 @@ S-expression twin.
 
 ### R001 — One authoring surface
 
-`.oxr` carries the authoring surface of Osiris, defined by this OEP. The
+`.ois` carries the authoring surface of Osiris, defined by this OEP. The
 S-expression notation of OEP-0001 is the language's internal form
 representation: it is what macros receive, what `osr expand` prints, and
 what `.osr` transitional inputs contain. Both notations read to the same
@@ -64,13 +64,13 @@ name derives from its path identically for both.
 
 ### R002 — Full migration
 
-All user-facing material presents `.oxr`: `osr init` templates,
+All user-facing material presents `.ois`: `osr init` templates,
 documentation examples, tooling snippets, and diagnostics. Tooling —
-formatter, LSP, editor extensions, sourcemaps — MUST treat `.oxr` as its
+formatter, LSP, editor extensions, sourcemaps — MUST treat `.ois` as its
 target surface. Existing `.osr` sources keep compiling as transitional
 inputs so projects can be rewritten by hand at their own pace; they receive
 no new surface features. Macro authoring stays in `.osr` only until R012's
-quote mapping lands, at which point new macros are authored in `.oxr` too.
+quote mapping lands, at which point new macros are authored in `.ois` too.
 
 ### R003 — Everything is a call
 
@@ -171,32 +171,32 @@ form. (S-expression `;;` comments are unchanged in `.osr`.)
 ### R011 — Diagnostics and provenance
 
 Translation failures MUST report the source line. Compilation diagnostics
-against a `.oxr` unit MUST name the `.oxr` path. Until the reader
+against a `.ois` unit MUST name the `.ois` path. Until the reader
 integrates natively (see Roadmap), spans inside translated units refer to
 the translated text; implementations SHOULD carry a line map so user-facing
-positions land in `.oxr` coordinates.
+positions land in `.ois` coordinates.
 
 ### R012 — What the primary surface does not yet define
 
 `quote`/`unquote` (the Elixir `quote do … end` ↔ syntax-quote mapping),
 destructuring parameters, `defstruct`, embedded providers, and general
 metadata attributes are not yet part of the primary surface. Macros
-requiring them are authored in `.osr`; consuming those macros from `.oxr`
+requiring them are authored in `.osr`; consuming those macros from `.ois`
 is fully supported. Each lands as a revision to this OEP before
 
 implementation, per OEP-0000.
 
 ## Roadmap
 
-1. **Translate-at-load (done):** `.oxr` sources translate to canonical
+1. **Translate-at-load (done):** `.ois` sources translate to canonical
    text at workspace load and enter the unchanged pipeline. `osr sketch
-   FILE` exposes the translation for inspection. `osr init` emits `.oxr`.
+   FILE` exposes the translation for inspection. `osr init` emits `.ois`.
 2. **Editor migration (this revision):** the VS Code extension and LSP
-   recognise `.oxr`; diagnostics carry `.oxr` positions at line fidelity
+   recognise `.ois`; diagnostics carry `.ois` positions at line fidelity
    until the native reader lands.
 3. **Native reader:** the translator becomes a first-class reader producing
-   forms with real `.oxr` spans; diagnostics, LSP hover/definition/rename,
-   and sourcemaps gain full fidelity. `osr fmt` formats `.oxr`.
+   forms with real `.ois` spans; diagnostics, LSP hover/definition/rename,
+   and sourcemaps gain full fidelity. `osr fmt` formats `.ois`.
 4. **Macro authoring:** quote/unquote mapping so `defmacro` on the
    authoring surface reaches full parity; `.osr` transitional inputs can
    then be retired project by project.
@@ -210,19 +210,21 @@ surface-independent.
 
 ## Change History
 
-- Revision 3, 2026-08-01: Full migration: `.osrx` becomes `.oxr`, the one
+- Revision 3, 2026-08-01: Full migration: `.osrx` becomes `.ois`, the one
   authoring surface; the S-expression notation retreats to internal form
   representation with `.osr` as transitional input, rewritten by hand.
   R004 gains the backtick escape for operator-named members; R005 gains
-  localized `@doc`; tooling (LSP, editor extensions) targets `.oxr`.
+  localized `@doc`; tooling (LSP, editor extensions) targets `.ois`.
   (`.ox` was considered and rejected: it is the source extension of the Ox
-  econometrics language, whose users overlap Osiris's quant audience.)
+  econometrics language, whose users overlap Osiris's quant audience.
+  `.oxr` was briefly chosen before `.ois` — the natural contraction of
+  Osiris — whose only known use is an OriginLab internal theme file.)
 
 - Revision 2, 2026-08-01: R004 extends the yield rule to `/`: slash glues
   into identifiers (`py/import`, slash-qualified names), division requires
-  surrounding whitespace. `osr init` templates emit `.oxr` per R002.
+  surrounding whitespace. `osr init` templates emit `.ois` per R002.
 
 - Revision 1, 2026-08-01: Initial version: the Elixir-flavoured surface as
-  primary (`.oxr`), everything-is-a-call translation, infix-yields-to-
+  primary (`.ois`), everything-is-a-call translation, infix-yields-to-
   kebab-case identifiers, first-argument pipe, do-blocks as named-body macro
   calls, coexistence and roadmap.

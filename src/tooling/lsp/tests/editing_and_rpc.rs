@@ -618,13 +618,13 @@ fn clause_words_answer_with_their_own_documentation() {
     assert!(value.contains("保留匹配的行。"), "{value}");
 }
 
-/// OEP-0005 R011: a `.oxr` document compiles through translation and every
+/// OEP-0005 R011: a `.ois` document compiles through translation and every
 /// diagnostic lands on the authored line — here the unknown name on line 4.
 #[test]
-fn oxr_documents_report_diagnostics_on_authored_lines() {
+fn ois_documents_report_diagnostics_on_authored_lines() {
     let mut state = LspState::new();
     let clean = state.did_open(
-        "file:///workspace/app.oxr",
+        "file:///workspace/app.ois",
         1,
         "module demo\n\ndef f(value :: Int) :: Int do\n  value + 1\nend\n",
     );
@@ -632,7 +632,7 @@ fn oxr_documents_report_diagnostics_on_authored_lines() {
 
     let broken = state
         .did_change_full(
-            "file:///workspace/app.oxr",
+            "file:///workspace/app.ois",
             2,
             "module demo\n\ndef f(value :: Int) :: Int do\n  missing + 1\nend\n",
         )
@@ -645,7 +645,7 @@ fn oxr_documents_report_diagnostics_on_authored_lines() {
     );
 
     let unparsable = state
-        .did_change_full("file:///workspace/app.oxr", 3, "def broken(\n")
+        .did_change_full("file:///workspace/app.ois", 3, "def broken(\n")
         .expect("new version");
     assert!(
         unparsable

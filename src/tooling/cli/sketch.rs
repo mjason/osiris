@@ -1,6 +1,6 @@
 use super::*;
 
-/// EXPLORATORY — translate Elixir-flavoured surface text (`.oxrr`) into
+/// EXPLORATORY — translate Elixir-flavoured surface text (`.oisr`) into
 /// canonical Osiris source. `osr sketch FILE [-o OUT]`; without `-o` the
 /// translation goes to stdout.
 pub(super) fn run_sketch(arguments: &[String]) -> CliOutcome {

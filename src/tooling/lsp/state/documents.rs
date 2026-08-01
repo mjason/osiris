@@ -225,7 +225,7 @@ impl LspState {
     }
 
     fn analyze_document(&mut self, uri: String, version: i64, text: String) -> OpenDocument {
-        if uri.ends_with(".oxr") {
+        if uri.ends_with(".ois") {
             return self.analyze_surface_document(uri, version, text);
         }
         let snapshot = self.documents.get(&uri).map_or_else(
@@ -253,7 +253,7 @@ impl LspState {
         OpenDocument::from_analysis(uri, version, text, identifier_lints, frontend)
     }
 
-    /// Analyze a primary-surface (`.oxr`) document: translate, compile the
+    /// Analyze a primary-surface (`.ois`) document: translate, compile the
     /// canonical text, and remap every diagnostic back to the authored line
     /// (OEP-0005 R011 — line fidelity until the native reader lands). Hover
     /// and navigation stay silent for these documents in this phase.
@@ -349,12 +349,12 @@ impl LspState {
             } else {
                 fs::read_to_string(&path).ok()?
             };
-            // `.oxr` units are authored in the primary surface (OEP-0005);
+            // `.ois` units are authored in the primary surface (OEP-0005);
             // the workspace compiles their canonical translation. A unit that
             // fails to translate is skipped: the editor open on that file
             // reports the error while the rest of the workspace stays alive.
             let source = if path.extension().and_then(|extension| extension.to_str())
-                == Some("oxr")
+                == Some("ois")
             {
                 match crate::sketch::translate(&source) {
                     Ok(translated) => translated,
@@ -604,7 +604,7 @@ fn span_of_line(text: &str, line: usize) -> crate::source::Span {
     crate::source::Span::new(start, text.len())
 }
 
-/// Map an offset in the translated text to the span of the authored `.oxr`
+/// Map an offset in the translated text to the span of the authored `.ois`
 /// line that produced it.
 fn surface_line_span(
     surface: &str,

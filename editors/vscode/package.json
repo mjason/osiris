@@ -54,12 +54,12 @@
         "id": "osiris-surface",
         "aliases": [
           "Osiris Surface",
-          "oxr"
+          "ois"
         ],
         "extensions": [
-          ".oxr"
+          ".ois"
         ],
-        "configuration": "./language-configuration-oxr.json"
+        "configuration": "./language-configuration-ois.json"
       }
     ],
     "grammars": [
@@ -71,7 +71,7 @@
       {
         "language": "osiris-surface",
         "scopeName": "source.osiris-surface",
-        "path": "./syntaxes/oxr.tmLanguage.json"
+        "path": "./syntaxes/ois.tmLanguage.json"
       }
     ],
     "jsonValidation": [
