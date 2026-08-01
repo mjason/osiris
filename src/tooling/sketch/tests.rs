@@ -127,3 +127,14 @@ fn kebab_case_identifiers_survive_and_subtraction_needs_spaces() {
         "(import-for-syntax macros.select :refer [if-else])\n"
     );
 }
+
+#[test]
+fn slash_qualified_names_glue_and_division_needs_spaces() {
+    // OEP-0005 R004 (revision 2): `/` follows the same yield rule as `-`.
+    assert_eq!(
+        translated("py/import builtins, as: py"),
+        "(py/import builtins :as py)\n"
+    );
+    assert_eq!(translated("a / b"), "(/ a b)\n");
+    assert_eq!(translated("value / 2"), "(/ value 2)\n");
+}

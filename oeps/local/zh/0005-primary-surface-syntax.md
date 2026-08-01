@@ -12,10 +12,10 @@ areas:
   - Tooling
 created: 2026-08-01
 updated: 2026-08-01
-revision: 1
+revision: 2
 language: zh-CN
 source: ../../0005-primary-surface-syntax.md
-source-revision: 1
+source-revision: 2
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -84,12 +84,13 @@ OEP-0001 定义的 S 表达式表层。两者读入同一 form 数据结构。�
 
 ### R004 —— 标识符：中缀让位给 kebab-case
 
-标识符由字母（任意文字系统）、数字（非首位）、`_`、`-`、`?`、`!` 组
-成。`-` 后紧跟名字字符（无空白）时属于标识符；减法必须用空白包围。
-`pct-rank` 是一个名字；`a - b` 是减法；`x-1` 是一个名字，与 S 表达式表
-层完全一致。这一取舍让既有 kebab-case 导出在主表层全部直接可调——无需
-别名、改名或限定名绕行。下划线拼写（`import_for_syntax`、
-`defn_for_syntax`）是对应连字符核心形式的可接受写法。
+标识符由字母（任意文字系统）、数字（非首位）、`_`、`-`、`/`、`?`、`!`
+组成。`-` 或 `/` 后紧跟名字字符（无空白）时属于标识符；减法与除法必须
+用空白包围。`pct-rank` 和 `py/import` 都是单个名字；`a - b` 是减法、
+`a / b` 是除法；`x-1` 是一个名字，与 S 表达式表层完全一致。这一取舍让
+既有 kebab-case 导出与所有斜杠限定名在主表层全部直接可调——无需别名、
+改名或绕行。下划线拼写（`import_for_syntax`、`defn_for_syntax`）是对应
+连字符核心形式的可接受写法。
 
 ### R005 —— 定义
 
@@ -167,6 +168,10 @@ OEP-0000 以本 OEP 修订形式先行定义、后实现。
 切换日。混合项目按文件粒度支持。
 
 ## 修订历史 (Change History)
+
+- Revision 2，2026-08-01：R004 让位规则扩展到 `/`：斜杠并入标识符
+  （`py/import`、斜杠限定名），除法必须空白包围。`osr init` 模板按
+  R002 生成 `.osrx`。
 
 - Revision 1，2026-08-01：初版：Elixir 风格表层为主（`.osrx`）、一切皆
   调用的翻译、中缀让位 kebab-case 标识符、首参插入管道、do 块即

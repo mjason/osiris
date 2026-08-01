@@ -18,7 +18,7 @@ translation locale is Simplified Chinese at `local/zh/`.
 | [0002](0002-package-system.md) | Project and Package System | Standards Track | Draft | 6 | [zh](local/zh/0002-package-system.md) |
 | [0003](0003-standard-library.md) | Standard Library Architecture and Initial API | Standards Track | Draft | 8 | [zh](local/zh/0003-standard-library.md) |
 | [0004](0004-documentation-and-tooling-presentation.md) | Documentation Metadata and Tooling Presentation | Standards Track | Draft | 5 | [zh](local/zh/0004-documentation-and-tooling-presentation.md) |
-| [0005](0005-primary-surface-syntax.md) | Primary Surface Syntax | Standards Track | Draft | 1 | [zh](local/zh/0005-primary-surface-syntax.md) |
+| [0005](0005-primary-surface-syntax.md) | Primary Surface Syntax | Standards Track | Draft | 2 | [zh](local/zh/0005-primary-surface-syntax.md) |
 
 Use [template.md](template.md) for new English proposals. Translation rules
 and lifecycle requirements are defined by OEP-0000.

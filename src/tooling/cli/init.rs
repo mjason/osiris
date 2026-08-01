@@ -9,25 +9,27 @@ use toml_edit::{Array, DocumentMut, Item, Table, Value, value};
 
 use super::*;
 
-const STARTER_SOURCE: &str = r#"(module main)
+const STARTER_SOURCE: &str = r#"module main
 
-;; Python 互操作保持显式；编译阶段不会导入或执行 Python 模块。
-(py/import builtins :as py)
+# Python 互操作保持显式；编译阶段不会导入或执行 Python 模块。
+py/import builtins, as: py
 
-;; `uv run osr run src/main.osr` 会编译并执行顶层表达式。
-(py.print "Hello from Osiris")
+# `uv run osr run src/main.osrx` 会编译并执行顶层表达式。
+py.print("Hello from Osiris")
 "#;
 
 fn package_starter_source(module: &str) -> String {
     format!(
-        r#"(module {module}.core)
+        r#"module {module}.core
 
-;; 公开声明会进入 wheel 内的 .osri 接口，并可由下游 Osiris 项目导入。
-(export [identity])
+# 公开声明会进入 wheel 内的 .osri 接口，并可由下游 Osiris 项目导入。
+# 需要本地化文档等更丰富的元数据时，可将声明写在 .osr 表层（OEP-0005 R012）。
+export [identity]
 
-^{{:doc {{:default "Return the input value."
-          "zh-CN" "返回输入值。"}}}}
-(defn ^Any identity [^Any value] value)
+@doc "Return the input value."
+def identity(value :: Any) :: Any do
+  value
+end
 "#
     )
 }
@@ -135,7 +137,7 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     let next = if arguments.package {
         "uv lock && uv build --python 3.11"
     } else {
-        "uv run osr run src/main.osr"
+        "uv run osr run src/main.osrx"
     };
     CliOutcome::success(format!(
         "Initialized Osiris project in {}\nRun: cd {} && {next}\n",
@@ -425,16 +427,19 @@ fn create_starter(
     package_module: Option<&str>,
 ) -> std::io::Result<()> {
     let (relative, contents) = package_module.map_or_else(
-        || (PathBuf::from("main.osr"), STARTER_SOURCE.to_owned()),
+        || (PathBuf::from("main.osrx"), STARTER_SOURCE.to_owned()),
         |module| {
             (
-                PathBuf::from(module).join("core.osr"),
+                PathBuf::from(module).join("core.osrx"),
                 package_starter_source(module),
             )
         },
     );
     let source = root.join(source_root).join(relative);
-    if source.exists() {
+    // An existing starter in EITHER surface wins: creating the `.osrx` twin
+    // beside a hand-written `.osr` would declare the same module twice.
+    let twin = source.with_extension("osr");
+    if source.exists() || twin.exists() {
         return Ok(());
     }
     fs::create_dir_all(source.parent().expect("starter source has a parent"))?;

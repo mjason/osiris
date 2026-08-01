@@ -60,7 +60,7 @@ exit 9
         fs::read_to_string(project.join(".uv-add-invocation")).unwrap(),
         "add --dev osiris-lang>=0.3,<0.4\n"
     );
-    let starter = project.join("src/main.osr");
+    let starter = project.join("src/main.osrx");
     assert!(starter.is_file());
     let check = osr(&["check", path_argument(&starter)]);
     assert!(
@@ -119,10 +119,10 @@ exit 9
     assert!(pyproject.contains("[build-system]"));
     assert!(pyproject.contains("requires = [\"osiris-lang>=0.3,<0.4\"]"));
     assert!(pyproject.contains("build-backend = \"osiris_build\""));
-    let starter = project.join("src/new_ext/core.osr");
+    let starter = project.join("src/new_ext/core.osrx");
     let source = fs::read_to_string(&starter).unwrap();
-    assert!(source.contains("(module new_ext.core)"));
-    assert!(source.contains("(export [identity])"));
+    assert!(source.contains("module new_ext.core"));
+    assert!(source.contains("export [identity]"));
     let check = osr(&["check", path_argument(&starter)]);
     assert!(
         check.status.success(),
@@ -193,7 +193,7 @@ keep = "unchanged"
     assert!(configured.contains("requests>=2"));
     assert!(configured.contains("keep = \"unchanged\""));
     assert!(fixture.directory.join("osiris.jsonc").is_file());
-    assert!(fixture.directory.join("src/main.osr").is_file());
+    assert!(fixture.directory.join("src/main.osrx").is_file());
 }
 
 #[test]
@@ -232,6 +232,6 @@ fn init_existing_uses_the_configured_source_root() {
     let output = osr(&["init", "--existing", path_argument(&fixture.directory)]);
 
     assert!(output.status.success());
-    assert!(fixture.directory.join("lisp/main.osr").is_file());
-    assert!(!fixture.directory.join("src/main.osr").exists());
+    assert!(fixture.directory.join("lisp/main.osrx").is_file());
+    assert!(!fixture.directory.join("src/main.osrx").exists());
 }

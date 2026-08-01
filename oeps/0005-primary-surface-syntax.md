@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-08-01
 updated: 2026-08-01
-revision: 1
+revision: 2
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -95,14 +95,15 @@ the end of the line or to a `do` block. Expression keywords (`if`, `not`,
 ### R004 — Identifiers: infix yields to kebab-case
 
 Identifiers consist of letters (any script), digits (non-initial), `_`, `-`,
-`?`, and `!`. A `-` is part of the identifier when a name character follows
-it without intervening whitespace; subtraction MUST therefore be written
-with surrounding whitespace. `pct-rank` is one name; `a - b` subtracts;
+`/`, `?`, and `!`. A `-` or `/` is part of the identifier when a name
+character follows it without intervening whitespace; subtraction and
+division MUST therefore be written with surrounding whitespace. `pct-rank`
+and `py/import` are single names; `a - b` subtracts and `a / b` divides;
 `x-1` is one name exactly as in the S-expression surface. This choice keeps
-every existing kebab-case export callable from the primary surface with no
-alias, no rename, and no qualified detour. Underscore names (`import_for_syntax`,
-`defn_for_syntax`) are accepted spellings of the corresponding hyphenated
-core forms.
+every existing kebab-case export and every slash-qualified name callable
+from the primary surface with no alias, no rename, and no detour.
+Underscore names (`import_for_syntax`, `defn_for_syntax`) are accepted
+spellings of the corresponding hyphenated core forms.
 
 ### R005 — Definitions
 
@@ -195,6 +196,10 @@ unchanged. The new extension is additive; no flag days. Mixed projects are
 supported at file granularity.
 
 ## Change History
+
+- Revision 2, 2026-08-01: R004 extends the yield rule to `/`: slash glues
+  into identifiers (`py/import`, slash-qualified names), division requires
+  surrounding whitespace. `osr init` templates emit `.osrx` per R002.
 
 - Revision 1, 2026-08-01: Initial version: the Elixir-flavoured surface as
   primary (`.osrx`), everything-is-a-call translation, infix-yields-to-

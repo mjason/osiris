@@ -313,10 +313,11 @@ fn lex_word(characters: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String
             word.push(characters.next().expect("peeked"));
             continue;
         }
-        // Infix yields to the ecosystem's kebab-case names (OEP-0005): a `-`
-        // glues into the identifier when a name character follows without a
-        // space — `pct-rank` is one name; subtraction is written `a - b`.
-        if characters.peek() == Some(&'-') {
+        // Infix yields to ecosystem names (OEP-0005 R004): `-` and `/` glue
+        // into the identifier when a name character follows without a space —
+        // `pct-rank` and `py/import` are single names; subtraction and
+        // division are written `a - b` and `a / b`.
+        if matches!(characters.peek(), Some('-' | '/')) {
             let mut lookahead = characters.clone();
             lookahead.next();
             if lookahead
