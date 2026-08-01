@@ -30,7 +30,10 @@ end
 export [小市值示范, 折算, half]
 "#;
     let fixture = SourceFixture::new(strategy_sketch);
-    let sketch_path = fixture.write("src/app/strategy.osrx", strategy_sketch);
+    // Outside the source roots: this test exercises the manual `osr sketch`
+    // step, so the translated `.osr` must be the only copy the workspace
+    // discovers (a `.osrx` under `src/` compiles directly and would collide).
+    let sketch_path = fixture.write("drafts/strategy.osrx", strategy_sketch);
     fixture.write(
         "src/macros/select.osr",
         r#"(module macros.select)
@@ -56,6 +59,8 @@ export [小市值示范, 折算, half]
     .expect("Osiris configuration should be written");
 
     let translated_path = fixture.directory.join("src/app/strategy.osr");
+    fs::create_dir_all(translated_path.parent().expect("translated parent"))
+        .expect("translated directory should be created");
     let output = osr(&[
         "sketch",
         path_argument(&sketch_path),
@@ -98,6 +103,71 @@ export [小市值示范, 折算, half]
     assert!(generated.contains("return 100 - 市值 * 2"), "{generated}");
     assert!(
         generated.contains("小市值示范:市值升序打分。"),
+        "{generated}"
+    );
+}
+
+#[test]
+fn osrx_sources_compile_directly_inside_a_project() {
+    // OEP-0005: `.osrx` is a first-class source extension — the workspace
+    // discovers it, translates it, and compiles it with no manual step.
+    // Kebab-case names cross the surface boundary untouched.
+    let strategy_sketch = r#"module app.strategy
+
+import-for-syntax macros.select, refer: [选股]
+
+@doc "直接编译的 .osrx 策略。"
+选股 直选 do
+  slot 市值
+  select 100 - 市值 * 2
+end
+
+export [直选]
+"#;
+    let fixture = SourceFixture::new(strategy_sketch);
+    let sketch_path = fixture.write("src/app/strategy.osrx", strategy_sketch);
+    fixture.write(
+        "src/macros/select.osr",
+        r#"(module macros.select)
+
+^{:doc {:default "Tiny defselect."}
+  :osiris/names {"zh-CN" {:preferred 选股}}}
+(defmacro defselect [name slot-clause select-clause]
+  `(defn ^Float ~name [^Float ~(first (rest slot-clause))]
+     ~(first (rest select-clause))))
+
+(export [defselect])
+"#,
+    );
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"osrx-demo\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+
+    let out_dir = fixture.directory.join("osrx-build");
+    let output = osr(&[
+        "compile",
+        path_argument(&sketch_path),
+        "--out-dir",
+        path_argument(&out_dir),
+        "--emit",
+        "py,osri",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated =
+        fs::read_to_string(out_dir.join("app/strategy.py")).expect("generated Python should exist");
+    assert!(
+        generated.contains("def 直选(市值: float) -> float:"),
         "{generated}"
     );
 }

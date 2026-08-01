@@ -1,6 +1,6 @@
 # 探索:Elixir 风格表层语法(sketch)
 
-> 状态:分支实验(`explore/elixir-surface`),非正式特性。
+> 状态:已转正——见 OEP-0005(主表层语法)。本文保留为探索记录。
 > 原型:`src/tooling/sketch/`,CLI `osr sketch FILE [-o OUT]`,
 > 端到端测试 `tests/cli/sketch.rs`。
 

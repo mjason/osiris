@@ -36,6 +36,7 @@ pub(super) fn load_workspace_sources(
     let Some(project) = &context.project else {
         let source = fs::read_to_string(entry_path)
             .map_err(|error| format!("could not read '{}': {error}", entry_path.display()))?;
+        let source = surface_to_canonical(entry_path, source)?;
         return Ok(WorkspaceSources {
             units: vec![WorkspaceSource {
                 path: entry_path.to_path_buf(),
@@ -65,6 +66,7 @@ pub(super) fn load_workspace_sources(
             .map_err(|error| error.to_string())?;
         let source = fs::read_to_string(&path)
             .map_err(|error| format!("could not read '{}': {error}", path.display()))?;
+        let source = surface_to_canonical(&path, source)?;
         if canonical == entry {
             entry_index = Some(units.len());
         }
@@ -90,6 +92,22 @@ pub(super) fn load_workspace_sources(
         )
     })?;
     Ok(WorkspaceSources { units, entry_index })
+}
+
+/// `.osrx` sources are authored in the primary surface syntax (OEP-0005) and
+/// translate to canonical S-expression text before reading; `.osr` sources
+/// pass through unchanged.
+pub(super) fn surface_to_canonical(path: &Path, source: String) -> Result<String, String> {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("osrx") {
+        return Ok(source);
+    }
+    crate::sketch::translate(&source).map_err(|errors| {
+        let mut message = format!("could not translate '{}':", path.display());
+        for error in errors {
+            message.push_str(&format!("\n  {error}"));
+        }
+        message
+    })
 }
 
 pub(super) fn collect_osiris_sources(
@@ -122,11 +140,13 @@ pub(super) fn collect_osiris_sources(
         if file_type.is_dir() {
             collect_osiris_sources(&entry.path(), project, paths)?;
         } else if file_type.is_file()
-            && entry
-                .path()
-                .extension()
-                .and_then(|extension| extension.to_str())
-                == Some("osr")
+            && matches!(
+                entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str()),
+                Some("osr" | "osrx")
+            )
         {
             paths.push(entry.path());
         }

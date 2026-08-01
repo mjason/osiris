@@ -8,9 +8,9 @@
 //! very same named-body macros the S-expression surface uses.
 //!
 //! Deliberate boundaries of the sketch:
-//! - identifiers use `_`, CJK, `?`, `!` — never `-`, which is subtraction
-//!   here; hyphenated ecosystem names need an `:osiris/names` spelling or a
-//!   qualified reference
+//! - identifiers use `_`, `-`, CJK, `?`, `!`; infix yields to kebab-case
+//!   (OEP-0005) — `pct-rank` is one name, subtraction requires spaces
+//!   (`a - b`)
 //! - `|>` inserts the piped value as the FIRST argument (Elixir semantics)
 //! - `quote`/`unquote` inside `defmacro` are not implemented; macro bodies
 //!   are limited to plain phase-1 expressions
@@ -305,11 +305,29 @@ fn is_ident_continue(character: char) -> bool {
 
 fn lex_word(characters: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
     let mut word = String::new();
-    while characters
-        .peek()
-        .is_some_and(|&next| is_ident_continue(next))
-    {
-        word.push(characters.next().expect("peeked"));
+    loop {
+        if characters
+            .peek()
+            .is_some_and(|&next| is_ident_continue(next))
+        {
+            word.push(characters.next().expect("peeked"));
+            continue;
+        }
+        // Infix yields to the ecosystem's kebab-case names (OEP-0005): a `-`
+        // glues into the identifier when a name character follows without a
+        // space — `pct-rank` is one name; subtraction is written `a - b`.
+        if characters.peek() == Some(&'-') {
+            let mut lookahead = characters.clone();
+            lookahead.next();
+            if lookahead
+                .peek()
+                .is_some_and(|&next| is_ident_continue(next))
+            {
+                word.push(characters.next().expect("peeked"));
+                continue;
+            }
+        }
+        break;
     }
     word
 }

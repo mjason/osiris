@@ -104,6 +104,12 @@ pub(super) fn run_compile(arguments: &[String]) -> CliOutcome {
                 Ok(source) => source,
                 Err(error) => return io_error(path, &error),
             };
+            let source = match surface_to_canonical(Path::new(path), source) {
+                Ok(source) => source,
+                Err(message) => {
+                    return CliOutcome::failure(1, String::new(), format!("osr: {message}\n"));
+                }
+            };
             sources.push(((*path).to_owned(), source, unit_context.options));
         }
         sources

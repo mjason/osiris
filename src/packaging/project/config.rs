@@ -262,9 +262,12 @@ impl ProjectConfig {
     /// rejected so the same source cannot acquire an environment-dependent
     /// identity.
     pub fn module_name_for_source(&self, source: &Path) -> Result<String, ConfigError> {
-        if source.extension().and_then(|extension| extension.to_str()) != Some("osr") {
+        if !matches!(
+            source.extension().and_then(|extension| extension.to_str()),
+            Some("osr" | "osrx")
+        ) {
             return Err(ConfigError::Invalid(format!(
-                "source `{}` must use the .osr extension",
+                "source `{}` must use the .osr or .osrx extension",
                 source.display()
             )));
         }

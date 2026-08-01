@@ -33,6 +33,11 @@
       "source": "0004-documentation-and-tooling-presentation.md",
       "translations": { "zh-CN": "local/zh/0004-documentation-and-tooling-presentation.md" }
     },
+    {
+      "number": 5,
+      "source": "0005-primary-surface-syntax.md",
+      "translations": { "zh-CN": "local/zh/0005-primary-surface-syntax.md" }
+    },
   ],
   "manuals": [
     {

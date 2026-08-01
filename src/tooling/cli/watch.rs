@@ -197,7 +197,10 @@ fn should_recompile(project: &ProjectConfig, site_roots: &[String], path: &Path)
         .iter()
         .any(|root| path.starts_with(root))
     {
-        return path.extension().and_then(|value| value.to_str()) == Some("osr");
+        return matches!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("osr" | "osrx")
+        );
     }
     let in_extension_root = project
         .installed_package_roots()

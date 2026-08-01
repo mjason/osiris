@@ -109,3 +109,21 @@ export [加倍再加一, 加倍, 加一]
         document.diagnostics
     );
 }
+
+#[test]
+fn kebab_case_identifiers_survive_and_subtraction_needs_spaces() {
+    // OEP-0005: infix yields to the ecosystem's kebab-case names. `-` glues
+    // into an identifier when a name character follows without space.
+    assert_eq!(
+        translated("pct-rank(short-mom) <= keep-n"),
+        "(<= (pct-rank short-mom) keep-n)\n"
+    );
+    assert_eq!(translated("a - b"), "(- a b)\n");
+    assert_eq!(translated("100 - 市值 * 2"), "(- 100 (* 市值 2))\n");
+    // Glued: one identifier, exactly like Lisp's `x-1`.
+    assert_eq!(translated("x-1"), "x-1\n");
+    assert_eq!(
+        translated("import-for-syntax macros.select, refer: [if-else]"),
+        "(import-for-syntax macros.select :refer [if-else])\n"
+    );
+}
