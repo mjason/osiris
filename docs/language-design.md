@@ -1,20 +1,22 @@
 # Osiris 语言设计规范（草案）
 
 - 状态：实现基线（持续演进）
-- 文档版本：0.8
+- 文档版本：0.9
 - 日期：2026-07-23
 - 项目：`osiris`
 - 编译器命令：`osr`
-- 源文件：`.osr`
+- 源文件：`.ois`（书写表层，OEP-0005）；`.osr`（form 层，过渡输入）
 - 编译接口：`.osri`
 
 本文描述 Osiris 语言、编译器、扩展系统和工具链的设计与当前实现边界。规范性要求以 `oeps/` 下的英文 OEP 为准；本文是与当前 Draft OEP 和实现同步的中文设计总览。
+
+自 OEP-0005 起，Osiris 的书写表层是 Elixir 风格的 `.ois`（一切皆调用、中缀运算、`|>` 管道、`do…end` 块）；本文成稿于该决定之前，示例保持 S 表达式——那是语言的 **form 层**（宏的输入、`osr expand` 的输出），语义不变。表层与 form 的对应见 `osr syntax` 与 OEP-0005。
 
 文中的“必须”“应当”和“可以”分别表示强制约束、默认选择和可选能力。设计问题通过 OEP 修订处理，本文不维护第二份开放问题清单。
 
 ## 1. 定位
 
-Osiris 是一门以数据处理为中心、AOT 编译到 Python 的静态类型 Lisp。它与 Python 的关系接近 TypeScript 与 JavaScript，但生成的 Python 会保留完整类型标注，并且必须适合人直接阅读、调试和继续使用。
+Osiris 是一门以数据处理为中心、AOT 编译到 Python 的静态类型语言：书写表层是 Elixir 风格（OEP-0005），语义核心是 Lisp 的 form 与卫生宏体系。它与 Python 的关系接近 TypeScript 与 JavaScript，但生成的 Python 会保留完整类型标注，并且必须适合人直接阅读、调试和继续使用。
 
 Osiris 吸收 Clojure 的以下设计经验：
 

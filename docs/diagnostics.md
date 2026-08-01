@@ -18,7 +18,7 @@ clients should use.
 
 Text diagnostics identify the source path and one-based line and column. LSC
 JSON and LSP use structured ranges and include the analyzed document version.
-Backend source maps relate generated Python spans to the packaged `.osr` source
+Backend source maps relate generated Python spans to the packaged source
 and its hash.
 
 The reported column counts characters, which is what an editor expects, while
@@ -139,7 +139,7 @@ before output is written.
 ## Reporting a Diagnostic Bug
 
 Include the `osr --version` output, diagnostic code, target Python, minimal
-formatted `.osr` source, and the JSON result from `osr lsc diagnostics`. Do not
+formatted source, and the JSON result from `osr lsc diagnostics`. Do not
 remove binding IDs, source spans, interface hashes, or macro origins needed to
 reproduce identity and phase behavior. Remove unrelated private source and
 credentials.

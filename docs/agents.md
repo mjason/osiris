@@ -2,7 +2,7 @@
 document-id: tooling/agents
 title: Working with Osiris as an Agent
 language: en
-revision: 4
+revision: 5
 ---
 
 # Working with Osiris as an Agent
@@ -14,8 +14,17 @@ access.
 
 This manual is operational. The normative requirements are OEP-0001-R054
 through OEP-0001-R056; where this document and an accepted OEP disagree, the OEP
-governs. Read it before editing `.osr` source, not after a diagnostic surprises
-you.
+governs. Read it before editing Osiris source, not after a diagnostic
+surprises you.
+
+Osiris is authored on the OEP-0005 surface (`.ois`): calls are `f(a, b)`,
+operators are infix, `|>` pipes into the first argument, and `head args do
+… end` is a named-body macro call — see the "The Authoring Surface" section
+of `osr syntax`. The S-expression notation below is the **form level**: what
+macros receive, what `osr expand` prints, and what transitional `.osr`
+sources contain. An agent edits `.ois` for application code and reads or
+writes form notation when working on macros, rich metadata, `defstruct`,
+or embedded blocks (OEP-0005 R012).
 
 Three other manuals carry the material this one deliberately omits: `osr syntax`
 for the language, `osr doc` for released documents including the command manual
@@ -46,8 +55,8 @@ dependencies use `import-for-syntax`, and Python modules use `py/import`; these
 are three distinct operations and none of them executes Python at compile time.
 
 Source files and directories are spelled the Osiris way: the path is the
-module name as written, `-` included — `(module osiris-test.core)` lives at
-`src/osiris-test/core.osr`, and the compiler rejects a path that disagrees
+module name as written, `-` included — `module osiris-test.core` lives at
+`src/osiris-test/core.ois`, and the compiler rejects a path that disagrees
 with the declaration. Only generated output uses the Python spelling
 (`dist/osiris_test/core.py`), so never pre-translate `-` to `_` when creating
 a file; check any translation with `osr lsc name`.

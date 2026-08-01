@@ -112,7 +112,9 @@ unchanged files reuse hashes from a persistent input manifest, so hot validation
 does not reread the workspace. `osr lsc cache rebuild` remains available as a
 full recovery rebuild.
 
-With that configuration and [`examples/hello.osr`](examples/hello.osr):
+[`examples/surface.ois`](examples/surface.ois) is the authoring-surface
+tour. With that configuration and the form-level
+[`examples/hello.osr`](examples/hello.osr):
 
 ```console
 cargo run --bin osr -- check examples/hello.osr

@@ -1,0 +1,31 @@
+module surface
+
+# `.ois` 是 Osiris 的书写表层(OEP-0005):一切皆调用、中缀运算、`|>` 首参
+# 管道、`do…end` 块。本文件与 form 层教程(tutorial/*.osr)编译进同一个
+# 项目,互相导入没有任何差别——接口层(.osri)与表层无关。
+
+import tutorial.transforms, as: transforms, refer: [sum-values]
+import-for-syntax tutorial.macros, refer: [unless]
+py/import math, as: math
+
+export [incremented-total, waiting-label, hypotenuse]
+
+# transforms.全部加一 是 increment-all 通过 :osiris/names 发布的中文拼写,
+# 生成的 Python 仍调用 increment_all,不产生任何包装层。
+@doc default: "Increment every value, then sum.", zh-CN: "逐项加一后求和。"
+def incremented-total(values :: Any) :: Int do
+  values |> transforms.全部加一() |> sum-values()
+end
+
+# :refer 引入的宏就是普通调用;unless 展开为 if/do/none。
+@doc default: "Return a waiting label when not ready, otherwise none."
+def waiting-label(ready :: Bool) :: Any do
+  unless(ready, "waiting")
+end
+
+# Python 互操作零封装:静态限定名链(math.sqrt)与动态成员链
+# (OEP-0001-R079)都不需要 extern 声明。
+@doc default: "Chained Python interop without extern.", zh-CN: "零封装的 Python 链式调用。"
+def hypotenuse(a :: Float, b :: Float) :: Any do
+  math.sqrt(a * a + b * b)
+end

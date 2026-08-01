@@ -1,20 +1,19 @@
-//! EXPLORATORY — Elixir-flavoured surface syntax for Osiris.
+//! The Osiris authoring surface (OEP-0005, `.ois`).
 //!
-//! This module is a branch experiment, not a shipped feature. It translates
-//! an Elixir-looking surface (`def`, `do … end`, `f(a, b)`, infix operators,
-//! `|>`, keyword arguments) into canonical Osiris S-expression text. The
-//! macro system is untouched: everything except `def`/`defmacro`, `@doc`,
-//! and `if` is an ordinary call, so `defselect 名字 do … end` reaches the
-//! very same named-body macros the S-expression surface uses.
+//! Translates the Elixir-flavoured surface (`def`, `do … end`, `f(a, b)`,
+//! infix operators, `|>`, keyword arguments, postfix member chains) into
+//! canonical form text. The macro system is untouched: everything except
+//! `def`/`defmacro`/`@doc`/`if` is an ordinary call, so
+//! `defselect 名字 do … end` reaches the very same named-body macros.
 //!
-//! Deliberate boundaries of the sketch:
-//! - identifiers use `_`, `-`, CJK, `?`, `!`; infix yields to kebab-case
-//!   (OEP-0005) — `pct-rank` is one name, subtraction requires spaces
-//!   (`a - b`)
+//! Current boundaries (OEP-0005 R012):
+//! - identifiers include `-` and `/`; infix yields to names, so subtraction
+//!   and division need surrounding spaces; backticks spell operator names
 //! - `|>` inserts the piped value as the FIRST argument (Elixir semantics)
 //! - `quote`/`unquote` inside `defmacro` are not implemented; macro bodies
 //!   are limited to plain phase-1 expressions
-//! - no reader macros, no metadata other than `@doc`
+//! - no reader macros; metadata is limited to `@doc` (localized form
+//!   included)
 
 /// One translation failure, positioned by 1-based source line.
 #[derive(Debug)]

@@ -1,5 +1,15 @@
 # Osiris examples
 
+[`surface.ois`](surface.ois) is the authoring-surface tour (OEP-0005): the
+`.ois` syntax every new module uses — calls, infix operators, `|>`, macro
+consumption, and wrapper-free Python chains — importing the form-level
+tutorial modules from the same project. Start there.
+
+The `.osr` files below demonstrate **form-level** constructs the surface
+does not carry yet (OEP-0005 R012): rich metadata, documentation example
+blocks, `fn`/`forv`/`let`, macro definitions, and embedded Python
+providers. A `.ois` consumer imports them with no difference.
+
 [`demo-project`](demo-project) is the canonical runnable example. It is a
 complete `uv` project with its own `pyproject.toml`, `osiris.jsonc`, source
 root, multiple imported modules, and embedded Python boundary:

@@ -3,7 +3,7 @@ document-id: tooling/agents
 title: 以 Agent 身份使用 Osiris
 language: zh-CN
 source: ../../agents.md
-source-revision: 4
+source-revision: 5
 translation-status: Current
 ---
 
@@ -16,7 +16,14 @@ translation-status: Current
 即可打印它。
 
 本手册是操作性的。规范性要求是 OEP-0001-R054 到 OEP-0001-R056；本文档与已接受
-OEP 冲突时，以 OEP 为准。请在修改 `.osr` 之前阅读，而不是在被诊断绊倒之后。
+OEP 冲突时，以 OEP 为准。请在修改 Osiris 源码之前阅读，而不是在被诊断绊倒之后。
+
+Osiris 在 OEP-0005 表层（`.ois`）上书写：调用是 `f(a, b)`，运算符是中缀，
+`|>` 管道进第一个实参，`头 实参 do … end` 是 named-body 宏调用——见
+`osr syntax` 的「书写表层」一节。下文的 S 表达式记法是 **form 层**：宏收
+到的东西、`osr expand` 打印的东西、过渡期 `.osr` 源文件包含的东西。Agent
+写应用代码时编辑 `.ois`；写宏、富元数据、`defstruct`、嵌入块
+（OEP-0005 R012）时读写 form 记法。
 
 另有三份手册承载本文刻意省略的内容：`osr syntax` 讲语言，`osr doc` 提供已发布
 文档（含命令手册 `tooling/cli`），诊断手册讲错误码。
@@ -43,7 +50,7 @@ Osiris 沿用了 Clojure 的 reader、宏模型和大部分核心词汇，因此
 编译期执行 Python。
 
 源码文件与目录按 Osiris 方式拼写：路径就是模块名本身，`-` 原样写——
-`(module osiris-test.core)` 位于 `src/osiris-test/core.osr`，路径与声明不一致时
+`module osiris-test.core` 位于 `src/osiris-test/core.ois`，路径与声明不一致时
 编译器会拒绝。只有生成产物用 Python 拼写（`dist/osiris_test/core.py`），所以建文件
 时不要自己预先把 `-` 翻译成 `_`；任何名字的翻译结果可用 `osr lsc name` 查看。
 
