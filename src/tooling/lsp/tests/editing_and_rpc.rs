@@ -617,3 +617,42 @@ fn clause_words_answer_with_their_own_documentation() {
     let value = hover.expect("clause hover").contents.value;
     assert!(value.contains("保留匹配的行。"), "{value}");
 }
+
+/// OEP-0005 R011: a `.oxr` document compiles through translation and every
+/// diagnostic lands on the authored line — here the unknown name on line 4.
+#[test]
+fn oxr_documents_report_diagnostics_on_authored_lines() {
+    let mut state = LspState::new();
+    let clean = state.did_open(
+        "file:///workspace/app.oxr",
+        1,
+        "module demo\n\ndef f(value :: Int) :: Int do\n  value + 1\nend\n",
+    );
+    assert!(clean.diagnostics.is_empty(), "{:?}", clean.diagnostics);
+
+    let broken = state
+        .did_change_full(
+            "file:///workspace/app.oxr",
+            2,
+            "module demo\n\ndef f(value :: Int) :: Int do\n  missing + 1\nend\n",
+        )
+        .expect("new version");
+    assert!(!broken.diagnostics.is_empty());
+    assert_eq!(
+        broken.diagnostics[0].range.start.line, 3,
+        "diagnostic should land on authored line 4 (0-based 3): {:?}",
+        broken.diagnostics
+    );
+
+    let unparsable = state
+        .did_change_full("file:///workspace/app.oxr", 3, "def broken(\n")
+        .expect("new version");
+    assert!(
+        unparsable
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "OSR-X0001"),
+        "{:?}",
+        unparsable.diagnostics
+    );
+}

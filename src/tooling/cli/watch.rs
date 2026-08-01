@@ -199,7 +199,7 @@ fn should_recompile(project: &ProjectConfig, site_roots: &[String], path: &Path)
     {
         return matches!(
             path.extension().and_then(|value| value.to_str()),
-            Some("osr" | "osrx")
+            Some("osr" | "oxr")
         );
     }
     let in_extension_root = project

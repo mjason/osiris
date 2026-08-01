@@ -138,3 +138,26 @@ fn slash_qualified_names_glue_and_division_needs_spaces() {
     assert_eq!(translated("a / b"), "(/ a b)\n");
     assert_eq!(translated("value / 2"), "(/ value 2)\n");
 }
+
+#[test]
+fn backtick_names_spell_operator_members() {
+    // OEP-0005 R004: backticks spell names the identifier grammar cannot
+    // carry — refer lists of operator macros, operator-named call heads.
+    assert_eq!(
+        translated("import-for-syntax macros.pandas, refer: [`>`, `<=`, if-else]"),
+        "(import-for-syntax macros.pandas :refer [> <= if-else])\n"
+    );
+    assert_eq!(translated("`+`(a, b, c)"), "(+ a b c)\n");
+}
+
+#[test]
+fn doc_attributes_carry_localized_text() {
+    let source = r#"@doc default: "Return the input.", zh-CN: "返回输入。"
+def identity(value :: Any) :: Any do
+  value
+end"#;
+    assert_eq!(
+        translated(source),
+        "^{:doc {:default \"Return the input.\" \"zh-CN\" \"返回输入。\"}}\n(defn ^Any identity [^Any value]\n  value)\n"
+    );
+}

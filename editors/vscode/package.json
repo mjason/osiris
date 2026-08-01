@@ -32,6 +32,7 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:osiris",
+    "onLanguage:osiris-surface",
     "onCommand:osiris.restartLanguageServer",
     "onLanguage:python"
   ],
@@ -48,6 +49,17 @@
           ".osri"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "osiris-surface",
+        "aliases": [
+          "Osiris Surface",
+          "oxr"
+        ],
+        "extensions": [
+          ".oxr"
+        ],
+        "configuration": "./language-configuration-oxr.json"
       }
     ],
     "grammars": [
@@ -55,6 +67,11 @@
         "language": "osiris",
         "scopeName": "source.osiris",
         "path": "./syntaxes/osiris.tmLanguage.json"
+      },
+      {
+        "language": "osiris-surface",
+        "scopeName": "source.osiris-surface",
+        "path": "./syntaxes/oxr.tmLanguage.json"
       }
     ],
     "jsonValidation": [

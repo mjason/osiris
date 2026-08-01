@@ -117,7 +117,9 @@ function createClient(): LanguageClient {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { language: "osiris", scheme: "file" },
-      { language: "osiris", scheme: "untitled" }
+      { language: "osiris", scheme: "untitled" },
+      { language: "osiris-surface", scheme: "file" },
+      { language: "osiris-surface", scheme: "untitled" }
     ],
     synchronize: {
       configurationSection: "osiris",

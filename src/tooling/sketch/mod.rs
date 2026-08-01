@@ -31,6 +31,13 @@ impl std::fmt::Display for SketchError {
 
 /// Translate Elixir-flavoured surface text into Osiris S-expression text.
 pub fn translate(source: &str) -> Result<String, Vec<SketchError>> {
+    translate_with_lines(source).map(|(text, _)| text)
+}
+
+/// Translate and report, for every line of the OUTPUT, the 1-based source
+/// line of the statement that produced it (0 when synthetic). Transitional
+/// diagnostics mapping until the native reader lands (OEP-0005 R011).
+pub fn translate_with_lines(source: &str) -> Result<(String, Vec<usize>), Vec<SketchError>> {
     let tokens = lex(source)?;
     let mut parser = Parser {
         tokens,
@@ -184,6 +191,32 @@ fn lex(source: &str) -> Result<Vec<Positioned>, Vec<SketchError>> {
                             line,
                         });
                     }
+                }
+            }
+            '`' => {
+                characters.next();
+                let mut word = String::new();
+                let mut closed = false;
+                for next in characters.by_ref() {
+                    if next == '`' {
+                        closed = true;
+                        break;
+                    }
+                    if next == '\n' {
+                        break;
+                    }
+                    word.push(next);
+                }
+                if closed && !word.is_empty() {
+                    tokens.push(Positioned {
+                        token: Token::Ident(word),
+                        line,
+                    });
+                } else {
+                    errors.push(SketchError {
+                        line,
+                        message: "expected a name between backticks".to_owned(),
+                    });
                 }
             }
             '|' => {
@@ -344,6 +377,10 @@ enum Sx {
     Vector(Vec<Sx>),
     /// `^{…} form` — metadata pairs attached to a form.
     Meta(Vec<(Sx, Sx)>, Box<Sx>),
+    /// `{k v k v}` — an even, flat map literal.
+    MapLit(Vec<Sx>),
+    /// A statement with its 1-based source line, for the output line map.
+    Stmt(Box<Sx>, usize),
 }
 
 struct Parser {
@@ -412,7 +449,7 @@ impl Parser {
 
     fn parse_program(&mut self) -> Result<Vec<Sx>, Vec<SketchError>> {
         let mut forms = Vec::new();
-        let mut pending_doc: Option<String> = None;
+        let mut pending_doc: Option<Sx> = None;
         loop {
             self.skip_newlines();
             if self.peek().is_none() {
@@ -420,24 +457,54 @@ impl Parser {
             }
             if matches!(self.peek(), Some(Token::AtDoc)) {
                 self.advance();
-                match self.advance() {
-                    Some(Token::Str(text)) => pending_doc = Some(text),
-                    other => {
-                        return self.error(format!("expected string after @doc, found {other:?}"));
-                    }
-                }
+                pending_doc = Some(self.parse_doc_value()?);
                 continue;
             }
+            let line = self.line();
             let mut form = self.parse_statement()?;
             if let Some(doc) = pending_doc.take() {
-                form = Sx::Meta(
-                    vec![(Sx::Kw("doc".to_owned()), Sx::Str(doc))],
-                    Box::new(form),
-                );
+                form = Sx::Meta(vec![(Sx::Kw("doc".to_owned()), doc)], Box::new(form));
             }
-            forms.push(form);
+            forms.push(Sx::Stmt(Box::new(form), line));
         }
         Ok(forms)
+    }
+
+    /// `@doc "…"` or `@doc default: "…", zh-CN: "…"` — the keyword form
+    /// builds the localized `:doc` map (OEP-0005 R005, revision 3).
+    fn parse_doc_value(&mut self) -> Result<Sx, Vec<SketchError>> {
+        if let Some(Token::KeyArg(_)) = self.peek() {
+            let mut pairs = Vec::new();
+            loop {
+                let Some(Token::KeyArg(key)) = self.peek().cloned() else {
+                    return self.error("expected `key: \"…\"` in @doc");
+                };
+                self.advance();
+                let value = match self.advance() {
+                    Some(Token::Str(text)) => Sx::Str(text),
+                    other => {
+                        return self.error(format!("expected string in @doc, found {other:?}"));
+                    }
+                };
+                let key = if key == "default" {
+                    Sx::Kw("default".to_owned())
+                } else {
+                    Sx::Str(key)
+                };
+                pairs.push(key);
+                pairs.push(value);
+                if matches!(self.peek(), Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            return Ok(Sx::MapLit(pairs));
+        }
+        match self.advance() {
+            Some(Token::Str(text)) => Ok(Sx::Str(text)),
+            other => self.error(format!("expected string after @doc, found {other:?}")),
+        }
     }
 
     /// One statement: a definition, a paren-less call, or a bare expression.
@@ -572,7 +639,9 @@ impl Parser {
             if self.peek().is_none() {
                 return self.error("missing `end`");
             }
-            items.push(self.parse_statement()?);
+            let line = self.line();
+            let statement = self.parse_statement()?;
+            items.push(Sx::Stmt(Box::new(statement), line));
         }
     }
 
@@ -786,50 +855,105 @@ fn pipe_into(value: Sx, callee: Sx) -> Result<Sx, String> {
     }
 }
 
-fn render_program(forms: &[Sx]) -> String {
-    let mut output = String::new();
+fn render_program(forms: &[Sx]) -> (String, Vec<usize>) {
+    let mut sink = Sink {
+        text: String::new(),
+        lines: Vec::new(),
+        current: 0,
+    };
     for (index, form) in forms.iter().enumerate() {
         if index > 0 {
-            output.push('\n');
+            sink.newline();
         }
-        render_top(form, &mut output);
-        output.push('\n');
+        render_top(form, &mut sink);
+        sink.newline();
     }
-    output
+    let Sink {
+        text, mut lines, ..
+    } = sink;
+    lines.push(0);
+    (text, lines)
+}
+
+/// Rendered text plus, per finished line, the source line that produced it.
+struct Sink {
+    text: String,
+    lines: Vec<usize>,
+    current: usize,
+}
+
+impl Sink {
+    fn push_str(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    fn push(&mut self, character: char) {
+        self.text.push(character);
+    }
+
+    fn newline(&mut self) {
+        self.text.push('\n');
+        self.lines.push(self.current);
+    }
 }
 
 /// Definitions and do-block calls render with their body one clause per
 /// line; short forms stay flat.
-fn render_top(form: &Sx, output: &mut String) {
+fn render_top(form: &Sx, sink: &mut Sink) {
     match form {
+        Sx::Stmt(inner, line) => {
+            sink.current = *line;
+            render_top(inner, sink);
+        }
         Sx::Meta(pairs, inner) => {
-            render_metadata(pairs, output);
-            output.push('\n');
-            render_top(inner, output);
+            let mut metadata = String::new();
+            render_metadata(pairs, &mut metadata);
+            sink.push_str(&metadata);
+            sink.newline();
+            render_top(inner, sink);
         }
         Sx::List(items)
             if items.len() > 3
                 && (matches!(items.first(), Some(Sx::Sym(head)) if head == "defn" || head == "defmacro")
-                    || items.iter().skip(2).all(|item| matches!(item, Sx::List(_)))) =>
+                    || items
+                        .iter()
+                        .skip(2)
+                        .all(|item| matches!(item, Sx::List(_) | Sx::Stmt(_, _)))) =>
         {
             let (header, body) = match items.first() {
                 Some(Sx::Sym(head)) if head == "defn" || head == "defmacro" => (3, &items[3..]),
                 _ => (2, &items[2..]),
             };
-            output.push('(');
+            sink.push('(');
             for (index, item) in items[..header.min(items.len())].iter().enumerate() {
                 if index > 0 {
-                    output.push(' ');
+                    sink.push(' ');
                 }
-                render_flat(item, output);
+                let mut flat = String::new();
+                render_flat(item, &mut flat);
+                sink.push_str(&flat);
             }
             for item in body {
-                output.push_str("\n  ");
-                render_flat(item, output);
+                sink.newline();
+                sink.push_str("  ");
+                if let Sx::Stmt(inner, line) = item {
+                    sink.current = *line;
+                    let mut flat = String::new();
+                    render_flat(inner, &mut flat);
+                    sink.push_str(&flat);
+                } else {
+                    let mut flat = String::new();
+                    render_flat(item, &mut flat);
+                    sink.push_str(&flat);
+                }
             }
-            output.push(')');
+            sink.push(')');
         }
-        other => render_flat(other, output),
+        other => {
+            let mut flat = String::new();
+            render_flat(other, &mut flat);
+            sink.push_str(&flat);
+        }
     }
 }
 
@@ -885,6 +1009,17 @@ fn render_flat(form: &Sx, output: &mut String) {
                 render_flat(item, output);
             }
             output.push(']');
+        }
+        Sx::Stmt(inner, _) => render_flat(inner, output),
+        Sx::MapLit(items) => {
+            output.push('{');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    output.push(' ');
+                }
+                render_flat(item, output);
+            }
+            output.push('}');
         }
         Sx::Meta(pairs, inner) => {
             // Inline type marks render as `^Type name`; general metadata as

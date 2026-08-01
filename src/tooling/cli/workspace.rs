@@ -94,11 +94,11 @@ pub(super) fn load_workspace_sources(
     Ok(WorkspaceSources { units, entry_index })
 }
 
-/// `.osrx` sources are authored in the primary surface syntax (OEP-0005) and
+/// `.oxr` sources are authored in the primary surface syntax (OEP-0005) and
 /// translate to canonical S-expression text before reading; `.osr` sources
 /// pass through unchanged.
 pub(super) fn surface_to_canonical(path: &Path, source: String) -> Result<String, String> {
-    if path.extension().and_then(|extension| extension.to_str()) != Some("osrx") {
+    if path.extension().and_then(|extension| extension.to_str()) != Some("oxr") {
         return Ok(source);
     }
     crate::sketch::translate(&source).map_err(|errors| {
@@ -145,7 +145,7 @@ pub(super) fn collect_osiris_sources(
                     .path()
                     .extension()
                     .and_then(|extension| extension.to_str()),
-                Some("osr" | "osrx")
+                Some("osr" | "oxr")
             )
         {
             paths.push(entry.path());

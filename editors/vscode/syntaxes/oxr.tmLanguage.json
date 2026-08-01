@@ -1,0 +1,76 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Osiris Surface",
+  "scopeName": "source.osiris-surface",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#backtick-names" },
+    { "include": "#doc-attribute" },
+    { "include": "#definitions" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#atoms" },
+    { "include": "#keyword-arguments" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#calls" }
+  ],
+  "repository": {
+    "comments": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.osiris-surface"
+    },
+    "strings": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.osiris-surface",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.osiris-surface" }
+      ]
+    },
+    "backtick-names": {
+      "match": "`[^`\\n]+`",
+      "name": "variable.other.constant.osiris-surface"
+    },
+    "doc-attribute": {
+      "match": "@doc\\b",
+      "name": "keyword.other.attribute.osiris-surface"
+    },
+    "definitions": {
+      "match": "\\b(def|defmacro)\\s+([^\\s(,]+)",
+      "captures": {
+        "1": { "name": "keyword.declaration.osiris-surface" },
+        "2": { "name": "entity.name.function.osiris-surface" }
+      }
+    },
+    "keywords": {
+      "match": "(?<![\\w?!/-])(module|import-for-syntax|import_for_syntax|import|export|do|end|if|else|not|and|or)(?![\\w?!/-])",
+      "name": "keyword.control.osiris-surface"
+    },
+    "constants": {
+      "match": "(?<![\\w?!/-])(true|false|nil)(?![\\w?!/-])",
+      "name": "constant.language.osiris-surface"
+    },
+    "atoms": {
+      "match": ":[\\w?!-]+",
+      "name": "constant.other.symbol.osiris-surface"
+    },
+    "keyword-arguments": {
+      "match": "[\\p{L}_][\\w?!-]*(?=:\\s)",
+      "name": "variable.parameter.osiris-surface"
+    },
+    "numbers": {
+      "match": "(?<![\\w?!-])\\d[\\d_]*(\\.\\d+)?([eE][+-]?\\d+)?(?![\\w?!-])",
+      "name": "constant.numeric.osiris-surface"
+    },
+    "operators": {
+      "match": "\\|>|::|==|!=|<=|>=|(?<=\\s)[+*/<>-](?=\\s)",
+      "name": "keyword.operator.osiris-surface"
+    },
+    "calls": {
+      "match": "[\\p{L}_][\\w?!./-]*(?=\\()",
+      "name": "entity.name.function.call.osiris-surface"
+    }
+  }
+}

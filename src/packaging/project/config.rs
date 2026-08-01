@@ -264,10 +264,10 @@ impl ProjectConfig {
     pub fn module_name_for_source(&self, source: &Path) -> Result<String, ConfigError> {
         if !matches!(
             source.extension().and_then(|extension| extension.to_str()),
-            Some("osr" | "osrx")
+            Some("osr" | "oxr")
         ) {
             return Err(ConfigError::Invalid(format!(
-                "source `{}` must use the .osr or .osrx extension",
+                "source `{}` must use the .osr or .oxr extension",
                 source.display()
             )));
         }

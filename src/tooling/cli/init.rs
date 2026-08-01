@@ -14,7 +14,7 @@ const STARTER_SOURCE: &str = r#"module main
 # Python 互操作保持显式；编译阶段不会导入或执行 Python 模块。
 py/import builtins, as: py
 
-# `uv run osr run src/main.osrx` 会编译并执行顶层表达式。
+# `uv run osr run src/main.oxrr` 会编译并执行顶层表达式。
 py.print("Hello from Osiris")
 "#;
 
@@ -137,7 +137,7 @@ pub(super) fn run_init(arguments: &[String]) -> CliOutcome {
     let next = if arguments.package {
         "uv lock && uv build --python 3.11"
     } else {
-        "uv run osr run src/main.osrx"
+        "uv run osr run src/main.oxr"
     };
     CliOutcome::success(format!(
         "Initialized Osiris project in {}\nRun: cd {} && {next}\n",
@@ -427,16 +427,16 @@ fn create_starter(
     package_module: Option<&str>,
 ) -> std::io::Result<()> {
     let (relative, contents) = package_module.map_or_else(
-        || (PathBuf::from("main.osrx"), STARTER_SOURCE.to_owned()),
+        || (PathBuf::from("main.oxr"), STARTER_SOURCE.to_owned()),
         |module| {
             (
-                PathBuf::from(module).join("core.osrx"),
+                PathBuf::from(module).join("core.oxr"),
                 package_starter_source(module),
             )
         },
     );
     let source = root.join(source_root).join(relative);
-    // An existing starter in EITHER surface wins: creating the `.osrx` twin
+    // An existing starter in EITHER surface wins: creating the `.oxr` twin
     // beside a hand-written `.osr` would declare the same module twice.
     let twin = source.with_extension("osr");
     if source.exists() || twin.exists() {

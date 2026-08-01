@@ -225,6 +225,9 @@ impl LspState {
     }
 
     fn analyze_document(&mut self, uri: String, version: i64, text: String) -> OpenDocument {
+        if uri.ends_with(".oxr") {
+            return self.analyze_surface_document(uri, version, text);
+        }
         let snapshot = self.documents.get(&uri).map_or_else(
             || reader::read(&text),
             |previous| reader::read_incremental(&text, &previous.analysis.document),
@@ -248,6 +251,56 @@ impl LspState {
             });
         frontend.analysis.document = snapshot;
         OpenDocument::from_analysis(uri, version, text, identifier_lints, frontend)
+    }
+
+    /// Analyze a primary-surface (`.oxr`) document: translate, compile the
+    /// canonical text, and remap every diagnostic back to the authored line
+    /// (OEP-0005 R011 — line fidelity until the native reader lands). Hover
+    /// and navigation stay silent for these documents in this phase.
+    fn analyze_surface_document(&mut self, uri: String, version: i64, text: String) -> OpenDocument {
+        let fallback_frontend = |analysis: Analysis| {
+            let workspace_symbols = WorkspaceSymbolIndex::default();
+            ProjectDocumentAnalysis {
+                analysis,
+                function_interfaces: Arc::new(BTreeMap::new()),
+                macro_interfaces: Arc::new(BTreeMap::new()),
+                display_locale: None,
+                workspace_symbols: Arc::new(workspace_symbols),
+            }
+        };
+        let options = CompileOptions::new(fallback_module_name(&uri), self.target_python)
+            .with_source_name(uri.clone());
+        let mut frontend = match crate::sketch::translate_with_lines(&text) {
+            Ok((translated, line_map)) => {
+                let mut frontend = self
+                    .analyze_project_document(&uri, &translated)
+                    .unwrap_or_else(|| fallback_frontend(compiler::analyze(&translated, &options)));
+                for diagnostic in &mut frontend.analysis.diagnostics {
+                    diagnostic.span =
+                        surface_line_span(&text, &translated, &line_map, diagnostic.span.start);
+                }
+                for advisory in &mut frontend.analysis.migration_advisories {
+                    advisory.span =
+                        surface_line_span(&text, &translated, &line_map, advisory.span.start);
+                }
+                frontend
+            }
+            Err(errors) => {
+                let mut frontend = fallback_frontend(compiler::analyze("", &options));
+                for error in errors {
+                    frontend.analysis.diagnostics.push(crate::diagnostic::Diagnostic::error(
+                        "OSR-X0001",
+                        error.message,
+                        span_of_line(&text, error.line),
+                    ));
+                }
+                frontend
+            }
+        };
+        // The form snapshot stays empty: spans inside the translated text
+        // would otherwise masquerade as positions in the authored file.
+        frontend.analysis.document = reader::read("");
+        OpenDocument::from_analysis(uri, version, text, Vec::new(), frontend)
     }
 
     fn analyze_project_document(&mut self, uri: &str, text: &str) -> Option<ProjectDocumentAnalysis> {
@@ -295,6 +348,20 @@ impl LspState {
                 open.clone()
             } else {
                 fs::read_to_string(&path).ok()?
+            };
+            // `.oxr` units are authored in the primary surface (OEP-0005);
+            // the workspace compiles their canonical translation. A unit that
+            // fails to translate is skipped: the editor open on that file
+            // reports the error while the rest of the workspace stays alive.
+            let source = if path.extension().and_then(|extension| extension.to_str())
+                == Some("oxr")
+            {
+                match crate::sketch::translate(&source) {
+                    Ok(translated) => translated,
+                    Err(_) => continue,
+                }
+            } else {
+                source
             };
             buffers.push(WorkspaceBuffer {
                 uri: if canonical == target_path {
@@ -516,4 +583,39 @@ fn workspace_fingerprint(
         material.push_str(&buffer.source);
     }
     crate::hash::sha256(material.as_bytes())
+}
+
+/// Byte span of one 1-based line of `text` (the whole line, newline excluded).
+fn span_of_line(text: &str, line: usize) -> crate::source::Span {
+    let mut start = 0;
+    let mut current = 1;
+    for (offset, character) in text.char_indices() {
+        if current == line.max(1) {
+            let end = text[offset..]
+                .find('\n')
+                .map_or(text.len(), |relative| offset + relative);
+            return crate::source::Span::new(offset, end);
+        }
+        if character == '\n' {
+            current += 1;
+            start = offset + 1;
+        }
+    }
+    crate::source::Span::new(start, text.len())
+}
+
+/// Map an offset in the translated text to the span of the authored `.oxr`
+/// line that produced it.
+fn surface_line_span(
+    surface: &str,
+    translated: &str,
+    line_map: &[usize],
+    offset: usize,
+) -> crate::source::Span {
+    let translated_line = translated[..offset.min(translated.len())]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count();
+    let source_line = line_map.get(translated_line).copied().unwrap_or(0).max(1);
+    span_of_line(surface, source_line)
 }

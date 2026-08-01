@@ -1,5 +1,5 @@
 //! EXPLORATORY — end-to-end proof for the Elixir-flavoured surface sketch:
-//! `.osrx` text translates with `osr sketch`, expands through the unchanged
+//! `.oxr` text translates with `osr sketch`, expands through the unchanged
 //! macro system (called by its `:osiris/names` spelling), type-checks, and
 //! emits Python.
 
@@ -32,8 +32,8 @@ export [小市值示范, 折算, half]
     let fixture = SourceFixture::new(strategy_sketch);
     // Outside the source roots: this test exercises the manual `osr sketch`
     // step, so the translated `.osr` must be the only copy the workspace
-    // discovers (a `.osrx` under `src/` compiles directly and would collide).
-    let sketch_path = fixture.write("drafts/strategy.osrx", strategy_sketch);
+    // discovers (a `.oxr` under `src/` compiles directly and would collide).
+    let sketch_path = fixture.write("drafts/strategy.oxr", strategy_sketch);
     fixture.write(
         "src/macros/select.osr",
         r#"(module macros.select)
@@ -108,15 +108,15 @@ export [小市值示范, 折算, half]
 }
 
 #[test]
-fn osrx_sources_compile_directly_inside_a_project() {
-    // OEP-0005: `.osrx` is a first-class source extension — the workspace
+fn oxr_sources_compile_directly_inside_a_project() {
+    // OEP-0005: `.oxr` is a first-class source extension — the workspace
     // discovers it, translates it, and compiles it with no manual step.
     // Kebab-case names cross the surface boundary untouched.
     let strategy_sketch = r#"module app.strategy
 
 import-for-syntax macros.select, refer: [选股]
 
-@doc "直接编译的 .osrx 策略。"
+@doc "直接编译的 .oxr 策略。"
 选股 直选 do
   slot 市值
   select 100 - 市值 * 2
@@ -125,7 +125,7 @@ end
 export [直选]
 "#;
     let fixture = SourceFixture::new(strategy_sketch);
-    let sketch_path = fixture.write("src/app/strategy.osrx", strategy_sketch);
+    let sketch_path = fixture.write("src/app/strategy.oxr", strategy_sketch);
     fixture.write(
         "src/macros/select.osr",
         r#"(module macros.select)
@@ -141,7 +141,7 @@ export [直选]
     );
     fs::write(
         fixture.directory.join("pyproject.toml"),
-        "[project]\nname = \"osrx-demo\"\nversion = \"0.1.0\"\n",
+        "[project]\nname = \"oxr-demo\"\nversion = \"0.1.0\"\n",
     )
     .expect("project configuration should be written");
     fs::write(
@@ -150,7 +150,7 @@ export [直选]
     )
     .expect("Osiris configuration should be written");
 
-    let out_dir = fixture.directory.join("osrx-build");
+    let out_dir = fixture.directory.join("oxr-build");
     let output = osr(&[
         "compile",
         path_argument(&sketch_path),
