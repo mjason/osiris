@@ -783,6 +783,25 @@ impl Parser {
             self.parse_call_arguments_into(&mut items, /* parenless */ false)?;
             base = Sx::List(items);
         }
+        // Postfix member chains (OEP-0005 R008A): once the base is an
+        // evaluated expression, `.name(args)` is the member call
+        // `(.name base args…)` and bare `.name` the member access
+        // `(.-name base)`. Plain name paths never reach here — their dots
+        // were glued into the qualified symbol above.
+        while matches!(self.peek(), Some(Token::Dot))
+            && matches!(self.peek_at(1), Some(Token::Ident(_)))
+        {
+            self.advance();
+            let member = self.expect_ident("member name")?;
+            if matches!(self.peek(), Some(Token::Open('('))) {
+                self.advance();
+                let mut items = vec![Sx::Sym(format!(".{member}")), base];
+                self.parse_call_arguments_into(&mut items, /* parenless */ false)?;
+                base = Sx::List(items);
+            } else {
+                base = Sx::List(vec![Sx::Sym(format!(".-{member}")), base]);
+            }
+        }
         Ok(base)
     }
 

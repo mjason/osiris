@@ -34,7 +34,7 @@ impl<'a> Lowerer<'a> {
         }
 
         if let Some((base, members)) = split_access_name(&name.canonical) {
-            let mut value = if let Some(id) = scope
+            let value = if let Some(id) = scope
                 .resolve(base)
                 .cloned()
                 .or_else(|| self.resolve_global_name(base))
@@ -65,38 +65,10 @@ impl<'a> Lowerer<'a> {
                 );
                 return Expr::error(span);
             }
-            for member in members {
-                let member_name = member.to_owned();
-                let (attribute, ty) = match self.struct_field_type(&value.ty, &member_name) {
-                    Some((attribute, ty)) => (attribute, ty),
-                    None if matches!(&value.ty, Type::Nominal { binding, .. } if self
-                            .struct_fields
-                            .contains_key(binding)) =>
-                    {
-                        self.error(
-                            "OSR-T0016",
-                            format!("unknown field `{member_name}` on type `{}`", value.ty),
-                            span,
-                        );
-                        return Expr::error(span);
-                    }
-                    None => {
-                        let summaries = value.summaries.join(&CallSummaries::unknown());
-                        value.summaries = summaries;
-                        (python_identifier(&member_name), Type::Any)
-                    }
-                };
-                value = Expr {
-                    span,
-                    ty,
-                    summaries: value.summaries.clone(),
-                    kind: ExprKind::Attribute {
-                        value: Box::new(value),
-                        attribute,
-                    },
-                };
-            }
-            return value;
+            return match self.fold_member_access(value, members, span) {
+                Some(value) => value,
+                None => Expr::error(span),
+            };
         }
 
         self.error(
@@ -136,6 +108,51 @@ impl<'a> Lowerer<'a> {
             canonical: target.name.canonical.clone(),
             preferred_names: preferred_names.clone(),
         });
+    }
+
+    /// Fold member accesses over an evaluated subject: typed struct fields
+    /// keep their checks (unknown fields are OSR-T0016 and yield `None`);
+    /// anything else is a dynamic Python attribute of type `Any` with
+    /// unknown effect summaries. Shared by symbol member chains and the
+    /// `.name` member forms (OEP-0001-R079).
+    pub(in crate::hir) fn fold_member_access<'m>(
+        &mut self,
+        mut value: Expr,
+        members: impl IntoIterator<Item = &'m str>,
+        span: Span,
+    ) -> Option<Expr> {
+        for member in members {
+            let member_name = member.to_owned();
+            let (attribute, ty) = match self.struct_field_type(&value.ty, &member_name) {
+                Some((attribute, ty)) => (attribute, ty),
+                None if matches!(&value.ty, Type::Nominal { binding, .. } if self
+                        .struct_fields
+                        .contains_key(binding)) =>
+                {
+                    self.error(
+                        "OSR-T0016",
+                        format!("unknown field `{member_name}` on type `{}`", value.ty),
+                        span,
+                    );
+                    return None;
+                }
+                None => {
+                    let summaries = value.summaries.join(&CallSummaries::unknown());
+                    value.summaries = summaries;
+                    (python_identifier(&member_name), Type::Any)
+                }
+            };
+            value = Expr {
+                span,
+                ty,
+                summaries: value.summaries.clone(),
+                kind: ExprKind::Attribute {
+                    value: Box::new(value),
+                    attribute,
+                },
+            };
+        }
+        Some(value)
     }
 
     pub(in crate::hir) fn lower_global_binding_read(

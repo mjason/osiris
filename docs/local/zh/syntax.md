@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 15
+revision: 16
 source: ../../syntax.md
-source-revision: 15
+source-revision: 16
 translation-status: Current
 ---
 
@@ -78,6 +78,21 @@ export [小市值, 折算]
 器、配置块——就是普通宏调用。
 
 **`if`。** `if 条件 do 结果 else 备选 end`；`else` 可省略。
+
+**成员链。** 后缀表达式可以用 `.name` 与 `.name(args…)` 继续。纯名字路径
+上点号仍属于一个静态解析的名字（`df.iloc.values`）；一旦基座是已求值表达
+式——调用结果或括号表达式——链就是动态成员访问，翻译为 form 层成员形式
+`(.name 基座 args…)` 与 `(.-name 基座)`（OEP-0001-R079）。在 `Any` 上这
+就是免封装的 Python：
+
+```elixir
+def 动量(df :: Any, 窗口 :: Int) :: Any do
+  df.rolling(窗口).mean().pct-change()
+end
+```
+
+生成 `df.rolling(窗口).mean().pct_change()`，不需要任何 `extern` 声明。
+有类型的 struct 主体保持静态字段检查。
 
 表层尚不能表达（OEP-0005 R012）：`quote`/`unquote` 宏体、`let` 与解构、
 `defstruct`、嵌入语言块、`extern`、`@doc` 之外的元数据。需要它们的声明

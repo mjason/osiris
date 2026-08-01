@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-31
-revision: 33
+revision: 34
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 33
+source-revision: 34
 translation-status: Current
 requires: [0]
 replaces: []
@@ -1004,6 +1004,15 @@ generated-artifact metadata 必须在判断 compatibility 的位置记录 langua
 version。Compiler package 的 patch/minor release 不得仅因 package version 改变就隐式改变
 language compatibility。
 
+**OEP-0001-R079：** head symbol 以 `.` 开头的 list 是作用于已求值主体的成
+员形式。`(.name subject args…)` 求值 `subject`、访问成员 `name` 并以其余
+实参调用它；`(.-name subject)` 只做成员访问，不接受更多实参。带点的 head
+（`.a.b`）自左向右折叠成员访问后再执行末端行为。struct 类型主体上成员按
+类型化字段解析，与 symbol 成员访问完全一致（未知字段报 OSR-T0016）；
+`Any` 主体上是动态 Python attribute 访问，effect summary 未知、结果类型
+`Any`。这组形式让链式 Python 互操作无需 `extern` 封装或 `let` 中转即可表
+达——`(.mean (df.rolling 5))`——也是 OEP-0005 表层后缀链的翻译目标。
+
 ### 已撤回的 Language Server Agent 实验
 
 实验性的联网 Language Server Agent 和 `osr lsa` command 已在语言定型前撤回，不属于
@@ -1175,6 +1184,11 @@ format/validate。
   diagnostic、format 并验证 source file；所有 operation 在没有 network 时仍可工作。
 
 ## 修订历史 (Change History)
+
+- Revision 34，2026-08-01：新增 OEP-0001-R079，作用于已求值主体的成员形
+  式：`(.name subject args…)` 调用成员，`(.-name subject)` 访问成员。
+  struct 字段保持类型检查；`Any` 主体是动态 Python attribute 访问。这是
+  免封装 Python 链缺的那一块。
 
 - Revision 33，2026-08-01：厘清本提案自 OEP-0005 起的定位：它规定 form 层
   ——宏接收什么、`.osr` 过渡输入包含什么、`osr expand` 打印什么——源码

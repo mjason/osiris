@@ -171,3 +171,51 @@ export [直选]
         "{generated}"
     );
 }
+
+#[test]
+fn member_chains_reach_python_without_wrappers() {
+    // OEP-0005 R008A + OEP-0001-R079: a pandas-style chain in `.ois` needs
+    // no extern declaration and emits the same chain in Python, kebab-case
+    // names translated.
+    let source = r#"module app.chain
+
+export [momentum]
+
+@doc "Rolling momentum."
+def momentum(df :: Any, window :: Int) :: Any do
+  df.rolling(window).mean().pct-change()
+end
+"#;
+    let fixture = SourceFixture::new(source);
+    let sketch_path = fixture.write("src/app/chain.ois", source);
+    fs::write(
+        fixture.directory.join("pyproject.toml"),
+        "[project]\nname = \"chain-demo\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("project configuration should be written");
+    fs::write(
+        fixture.directory.join("osiris.jsonc"),
+        r#"{"source":["src"]}"#,
+    )
+    .expect("Osiris configuration should be written");
+    let out_dir = fixture.directory.join("chain-build");
+    let output = osr(&[
+        "compile",
+        path_argument(&sketch_path),
+        "--out-dir",
+        path_argument(&out_dir),
+        "--emit",
+        "py",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let generated =
+        fs::read_to_string(out_dir.join("app/chain.py")).expect("generated Python should exist");
+    assert!(
+        generated.contains("df.rolling(window).mean().pct_change()"),
+        "{generated}"
+    );
+}

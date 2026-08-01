@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 15
+revision: 16
 ---
 
 # Osiris Syntax
@@ -86,6 +86,22 @@ ordinary macro calls.
 
 **`if`.** `if condition do consequent else alternative end`; `else` is
 optional.
+
+**Member chains.** A postfix expression continues with `.name` and
+`.name(args…)`. On a plain name path the dots stay part of one statically
+resolved name (`df.iloc.values`); once the base is an evaluated expression
+— a call result or parenthesized expression — the chain is dynamic member
+access, translating to the form-level member forms `(.name base args…)`
+and `(.-name base)` (OEP-0001-R079). On `Any` this is wrapper-free Python:
+
+```elixir
+def momentum(df :: Any, window :: Int) :: Any do
+  df.rolling(window).mean().pct-change()
+end
+```
+
+emits `df.rolling(window).mean().pct_change()` with no `extern`
+declaration. Typed struct subjects keep their static field checks.
 
 Not yet expressible on the surface (OEP-0005 R12): `quote`/`unquote` macro
 bodies, `let` and destructuring, `defstruct`, embedded language blocks,

@@ -12,7 +12,7 @@ areas:
   - Tooling
 created: 2026-08-01
 updated: 2026-08-01
-revision: 3
+revision: 4
 requires: [0, 1]
 replaces: []
 superseded-by: null
@@ -158,6 +158,26 @@ defselect 小市值 do
 end
 ```
 
+### R008A — Postfix member chains
+
+A postfix expression continues with `.name` and `.name(args…)`. While the
+base is still a plain name path, dots extend the statically resolved
+qualified name exactly as before (`df.iloc.values`, `m.f(x)`). Once the
+base is an evaluated expression — a call result or a parenthesized
+expression — `.name(args…)` translates to the member call
+`(.name base args…)` and a bare `.name` to the member access
+`(.-name base)` (OEP-0001-R079):
+
+```elixir
+df.rolling(5).mean().pct-change()   # (.pct-change (.mean (df.rolling 5)))
+df.rolling(5).values                # (.-values (df.rolling 5))
+(a + b).hex()                       # (.hex (+ a b))
+```
+
+On `Any`-typed subjects this is wrapper-free Python: chains reach any
+attribute or method with no `extern` declaration, typed as `Any` at the
+dynamic boundary. Typed subjects keep their static field checks.
+
 ### R009 — `if`
 
 `if condition do consequent else alternative end` translates to
@@ -209,6 +229,10 @@ granularity; rewriting is by hand and per file. Interfaces and caches are
 surface-independent.
 
 ## Change History
+
+- Revision 4, 2026-08-01: Added R008A, postfix member chains:
+  `df.rolling(5).mean()` translates to OEP-0001-R079 member forms, making
+  Python interop wrapper-free on `Any` subjects.
 
 - Revision 3, 2026-08-01: Full migration: `.osrx` becomes `.ois`, the one
   authoring surface; the S-expression notation retreats to internal form

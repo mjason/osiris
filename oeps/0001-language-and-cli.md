@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-31
-revision: 33
+revision: 34
 requires: [0]
 replaces: []
 superseded-by: null
@@ -1229,6 +1229,19 @@ record the language compatibility version where compatibility is evaluated.
 A compiler package patch or minor release MUST NOT implicitly change language
 compatibility merely because the package version changed.
 
+**OEP-0001-R079:** A list whose head symbol begins with `.` is a member form
+on an evaluated subject. `(.name subject args…)` evaluates `subject`,
+accesses member `name`, and calls it with the remaining arguments;
+`(.-name subject)` is the member access alone and accepts no further
+arguments. A dotted head (`.a.b`) folds member accesses left to right before
+the terminal behavior. On a struct-typed subject the member resolves as a
+typed field exactly like symbol member access (unknown fields are
+OSR-T0016); on `Any` the access is a dynamic Python attribute with unknown
+effect summaries and result type `Any`. These forms make chained Python
+interop expressible without `extern` wrappers or `let` intermediaries —
+`(.mean (df.rolling 5))` — and are what OEP-0005 surface postfix chains
+translate to.
+
 ### Withdrawn Language Server Agent experiment
 
 The experimental network-backed Language Server Agent and `osr lsa` command
@@ -1436,6 +1449,12 @@ A conforming implementation provides evidence that:
   operations continue to work without network access.
 
 ## Change History
+
+- Revision 34, 2026-08-01: Added OEP-0001-R079, member forms on evaluated
+  subjects: `(.name subject args…)` calls a member, `(.-name subject)`
+  accesses one. Typed struct fields keep their checks; `Any` subjects are
+  dynamic Python attribute access. The missing piece for wrapper-free
+  Python chains.
 
 - Revision 33, 2026-08-01: Clarified this proposal's standing since
   OEP-0005: it specifies the form level — what macros receive, what `.osr`

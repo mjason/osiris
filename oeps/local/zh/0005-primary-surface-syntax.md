@@ -12,10 +12,10 @@ areas:
   - Tooling
 created: 2026-08-01
 updated: 2026-08-01
-revision: 3
+revision: 4
 language: zh-CN
 source: ../../0005-primary-surface-syntax.md
-source-revision: 3
+source-revision: 4
 translation-status: Current
 requires: [0, 1]
 replaces: []
@@ -138,6 +138,24 @@ defselect 小市值 do
 end
 ```
 
+### R008A —— 后缀成员链
+
+后缀表达式可以用 `.name` 与 `.name(args…)` 继续。当基座还是纯名字路径
+时，点号照旧延伸静态解析的限定名（`df.iloc.values`、`m.f(x)`）。一旦基
+座成为已求值表达式——调用结果或括号表达式——`.name(args…)` 翻译为成员
+调用 `(.name 基座 args…)`，裸 `.name` 翻译为成员访问 `(.-name 基座)`
+（OEP-0001-R079）：
+
+```elixir
+df.rolling(5).mean().pct-change()   # (.pct-change (.mean (df.rolling 5)))
+df.rolling(5).values                # (.-values (df.rolling 5))
+(a + b).hex()                       # (.hex (+ a b))
+```
+
+在 `Any` 类型主体上这就是免封装的 Python：链可以触达任意 attribute 或方
+法，无需 `extern` 声明，在动态边界处类型为 `Any`。有类型的主体保持静态
+字段检查。
+
 ### R009 —— `if`
 
 `if 条件 do 结果 else 备选 end` 翻译为 `(if 条件 结果 备选)`；`else`
@@ -179,6 +197,9 @@ OEP-0000 以本 OEP 修订形式先行定义、后实现。
 文件粒度支持；改写为手工、按文件进行。接口与缓存与表层无关。
 
 ## 修订历史 (Change History)
+
+- Revision 4，2026-08-01：新增 R008A 后缀成员链：`df.rolling(5).mean()`
+  翻译为 OEP-0001-R079 成员形式，`Any` 主体上的 Python 互操作免封装。
 
 - Revision 3，2026-08-01：全面迁移：`.osrx` 改为 `.ois`，成为唯一书写表
   层；S 表达式记法退居内部 form 表示，`.osr` 作为过渡输入、由手工改写。

@@ -8,6 +8,11 @@ impl<'a> Lowerer<'a> {
         scope: &mut Scope,
     ) -> Expr {
         if let Some(name) = call.callee.name().map(|name| name.canonical.as_str()) {
+            if name.starts_with('.')
+                && let Some(lowered) = self.lower_member_form(name, call, span, scope)
+            {
+                return lowered;
+            }
             if let Some(lowered) = self.lower_known_call(name, call, span, scope) {
                 return lowered;
             }
@@ -220,6 +225,73 @@ impl<'a> Lowerer<'a> {
 
     fn lower_indirect_call(&mut self, call: &ast::CallExpr, span: Span, scope: &mut Scope) -> Expr {
         let callee = self.lower_expr(&call.callee, scope);
+        self.lower_indirect_call_with(callee, call, span, scope)
+    }
+
+    /// `(.name subject args…)` calls a member of an evaluated subject;
+    /// `(.-name subject)` accesses one (OEP-0001-R079). A dotted head folds
+    /// accesses left to right before the terminal call.
+    fn lower_member_form(
+        &mut self,
+        name: &str,
+        call: &ast::CallExpr,
+        span: Span,
+        scope: &mut Scope,
+    ) -> Option<Expr> {
+        let attribute_only = name.starts_with(".-");
+        let path = if attribute_only {
+            &name[2..]
+        } else {
+            &name[1..]
+        };
+        if path.is_empty() || path.split('.').any(str::is_empty) {
+            return None;
+        }
+        let Some(subject) = call.positional.first() else {
+            self.error(
+                "OSR-T0022",
+                format!("member form `{name}` requires a subject expression"),
+                span,
+            );
+            return Some(Expr::error(span));
+        };
+        let subject = self.lower_expr(subject, scope);
+        let Some(target) = self.fold_member_access(subject, path.split('.'), span) else {
+            return Some(Expr::error(span));
+        };
+        if attribute_only {
+            if call.positional.len() != 1 || !call.keywords.is_empty() {
+                self.error(
+                    "OSR-T0022",
+                    format!("member access `{name}` accepts only its subject"),
+                    span,
+                );
+                return Some(Expr::error(span));
+            }
+            return Some(target);
+        }
+        // The subject leaves the argument list; the member becomes the callee.
+        let mut stripped = call.clone();
+        let mut removed = false;
+        stripped.args.retain(|argument| {
+            if !removed && matches!(argument, AstCallArg::Positional(_)) {
+                removed = true;
+                false
+            } else {
+                true
+            }
+        });
+        stripped.positional.remove(0);
+        Some(self.lower_indirect_call_with(target, &stripped, span, scope))
+    }
+
+    fn lower_indirect_call_with(
+        &mut self,
+        callee: Expr,
+        call: &ast::CallExpr,
+        span: Span,
+        scope: &mut Scope,
+    ) -> Expr {
         let callable = self.callable_for_expr(&callee);
         let mut arguments = Vec::new();
         let mut summaries = callee.summaries.clone();

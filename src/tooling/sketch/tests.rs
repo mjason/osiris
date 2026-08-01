@@ -161,3 +161,24 @@ end"#;
         "^{:doc {:default \"Return the input.\" \"zh-CN\" \"返回输入。\"}}\n(defn ^Any identity [^Any value]\n  value)\n"
     );
 }
+
+#[test]
+fn postfix_member_chains_translate_to_member_forms() {
+    // OEP-0005 R008A: chains on evaluated bases become OEP-0001-R079 member
+    // forms; plain name paths stay statically qualified symbols.
+    assert_eq!(
+        translated("df.rolling(5).mean().pct-change()"),
+        "(.pct-change (.mean (df.rolling 5)))\n"
+    );
+    assert_eq!(
+        translated("df.rolling(5).values"),
+        "(.-values (df.rolling 5))\n"
+    );
+    assert_eq!(translated("(a + b).hex()"), "(.hex (+ a b))\n");
+    assert_eq!(
+        translated("df.rolling(window: 5).mean()"),
+        "(.mean (df.rolling :window 5))\n"
+    );
+    // No chain: still one statically resolved qualified name.
+    assert_eq!(translated("df.iloc.values"), "df.iloc.values\n");
+}
