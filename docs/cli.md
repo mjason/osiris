@@ -109,13 +109,13 @@ uv publish dist/*
 `osr init --existing --package .` converts an existing compatible uv package.
 The scaffold selects `osiris_build`, pins a compatible `osiris-lang` build
 requirement, creates a canonical public module, and leaves package metadata in
-`pyproject.toml`. The wheel contains authored `.osr` source, compiled Python,
+`pyproject.toml`. The wheel contains authored `.ois`/`.osr` source, compiled Python,
 `.osri` interfaces, source maps, static metadata, and only the reachable private
 runtime support it needs. Consumers install it like any other dependency:
 
 ```console
 uv add acme-text
-uv run osr check src/main.osr
+uv run osr check src/main.ois
 ```
 
 Do not create a separate Osiris registry or list packages in `osiris.jsonc`.

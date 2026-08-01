@@ -14,7 +14,7 @@ translation locale is Simplified Chinese at `local/zh/`.
 | OEP | Title | Type | Status | Revision | Chinese |
 | --- | --- | --- | --- | --- | --- |
 | [0000](0000-oep-process.md) | OEP Purpose and Process | Process | Draft | 5 | [zh](local/zh/0000-oep-process.md) |
-| [0001](0001-language-and-cli.md) | Language and CLI Documentation Foundation | Standards Track | Draft | 7 | [zh](local/zh/0001-language-and-cli.md) |
+| [0001](0001-language-and-cli.md) | Language and CLI Documentation Foundation | Standards Track | Draft | 33 | [zh](local/zh/0001-language-and-cli.md) |
 | [0002](0002-package-system.md) | Project and Package System | Standards Track | Draft | 6 | [zh](local/zh/0002-package-system.md) |
 | [0003](0003-standard-library.md) | Standard Library Architecture and Initial API | Standards Track | Draft | 8 | [zh](local/zh/0003-standard-library.md) |
 | [0004](0004-documentation-and-tooling-presentation.md) | Documentation Metadata and Tooling Presentation | Standards Track | Draft | 5 | [zh](local/zh/0004-documentation-and-tooling-presentation.md) |

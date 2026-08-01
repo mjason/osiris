@@ -13,7 +13,7 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-31
-revision: 32
+revision: 33
 requires: [0]
 replaces: []
 superseded-by: null
@@ -32,6 +32,13 @@ and binding identity, the compiler kernel, macro phases, Rich Metadata, type
 annotations, `defstruct`, Python generation principles, diagnostics, and
 semantic queries. It also makes canonical source formatting a core tooling
 contract rather than an editor preference.
+
+Since OEP-0005, the notation this proposal specifies is the language's
+**form level**: the data structure macros receive, the `.osr` transitional
+input, and the `osr expand` output. Osiris source is authored on the
+OEP-0005 surface (`.ois`), which reads to exactly these forms. Examples in
+this document deliberately remain in form notation — it is the semantics
+being specified.
 
 It also defines a structured CLI command model and two deliberately separate
 documentation systems. Every native `osr` executable embeds a content-addressed,
@@ -1429,6 +1436,12 @@ A conforming implementation provides evidence that:
   operations continue to work without network access.
 
 ## Change History
+
+- Revision 33, 2026-08-01: Clarified this proposal's standing since
+  OEP-0005: it specifies the form level — what macros receive, what `.osr`
+  transitional inputs contain, what `osr expand` prints — while source is
+  authored on the OEP-0005 surface (`.ois`). Examples stay in form
+  notation deliberately.
 
 - Revision 32, 2026-07-31: Added OEP-0001-R062C: an explicit `:refer` member
   names an export, not a spelling — referring any spelling makes the

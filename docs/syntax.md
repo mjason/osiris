@@ -2,7 +2,7 @@
 document-id: language/syntax
 title: Osiris Syntax
 language: en
-revision: 14
+revision: 15
 ---
 
 # Osiris Syntax
@@ -13,13 +13,92 @@ This is the concise, release-versioned syntax manual for Osiris. The native
 
 ## Source Files
 
-Osiris source files use the `.osr` extension and UTF-8. A semicolon starts a
-comment that continues to the end of the line. Commas outside strings are
-whitespace, so `[1, 2]` and `[1 2]` have the same meaning.
+Osiris is written in the authoring surface defined by OEP-0005, carried by
+the `.ois` extension, UTF-8 encoded. A `#` starts a comment that continues to
+the end of the line.
 
-The reader recognizes data. A list is interpreted later as a core form, macro
-invocation, or function call. Packages cannot add reader syntax; they extend the
-language with ordinary functions and hygienic macros.
+Underneath the surface, every construct is a **form** — the data structure
+macros receive and transform. The form notation (S-expressions, `.osr`)
+remains what `osr expand` prints and what transitional `.osr` sources
+contain; constructs the surface cannot yet express (OEP-0005 R012) are
+authored in it. Later sections of this manual that document those constructs
+use form notation and say so.
+
+## The Authoring Surface
+
+A module reads like ordinary code: statements are calls, operators are
+infix, and blocks open with `do` and close with `end`.
+
+```elixir
+module app.策略
+
+import-for-syntax macros.select, refer: [选股]
+
+@doc "小市值:市值升序打分。"
+选股 小市值 do
+  slot 市值
+  select 100 - 市值 * 2
+end
+
+@doc "Pipeline demonstration."
+def 折算(市值 :: Float) :: Float do
+  市值 |> 小市值() |> half()
+end
+
+export [小市值, 折算]
+```
+
+The surface has exactly four special forms: `def`, `defmacro`, `@doc`, and
+`if`. Everything else is a call — `module`, `import`, and `export` included.
+
+**Calls.** `f(a, b)` and qualified `m.f(a)`. A statement-position name
+followed by an argument is a paren-less call whose arguments run to the end
+of the line: `import lib.marks, refer: [加倍]`. Keyword arguments are
+written `key: value` and reach the callee as `:key value`.
+
+**Operators.** `+ - * / == != < <= > >= and or not` translate to prefix
+calls on the corresponding names (`==` is `=`, `!=` is `not=`). Precedence
+from loosest to tightest: `|>`; comparisons; `+ -`; `* /`; unary. Operators
+are names like any other — a module that imports `<=` as a macro receives
+the infix spelling.
+
+**The pipe.** `x |> f(a)` inserts the piped value as the FIRST argument:
+`f(x, a)`. Chains read left to right.
+
+**Identifiers.** Letters in any script, digits (non-initial), `_`, `-`,
+`/`, `?`, `!`. Infix yields to names: `-` or `/` followed immediately by a
+name character belongs to the identifier — `pct-rank` and `py/import` are
+single names — so subtraction and division require surrounding spaces.
+Backticks spell a name the identifier grammar cannot carry:
+``refer: [`>`, `<=`]`` refers operator-named macros, and `` `+`(a, b, c) ``
+calls one outside its binary infix shape.
+
+**Definitions.** `def name(param :: Type, …) :: Ret do body end`. A
+preceding `@doc "…"` documents the definition;
+`@doc default: "…", zh-CN: "…"` carries localized documentation.
+`defmacro` uses the same shape (macro bodies beyond plain expressions are
+authored in form notation until the quote mapping lands).
+
+**do-blocks.** `head args do statements end` passes each inner statement to
+`head` as one clause form. This is the named-body macro shape, so
+declarative DSLs — `defselect`, query builders, configuration blocks — are
+ordinary macro calls.
+
+**`if`.** `if condition do consequent else alternative end`; `else` is
+optional.
+
+Not yet expressible on the surface (OEP-0005 R12): `quote`/`unquote` macro
+bodies, `let` and destructuring, `defstruct`, embedded language blocks,
+`extern`, and metadata beyond `@doc`. Declarations that need them are
+authored in `.osr` form notation and consumed from `.ois` normally.
+
+## Form Notation
+
+Everything below the surface is a form. The reader recognizes data; a list
+is interpreted later as a core form, macro invocation, or function call.
+Packages cannot add reader syntax; they extend the language with ordinary
+functions and hygienic macros. In form notation a semicolon starts a
+comment, and commas are whitespace.
 
 ## Data Forms
 
@@ -167,6 +246,19 @@ Distribution names follow Python packaging instead: PEP 503 normalizes
 A module normally starts with its canonical module name and explicit imports
 and exports:
 
+```elixir
+module analytics.pipeline
+
+import analytics.transforms, as: transforms, refer: [sum-values]
+import-for-syntax analytics.macros, as: macros, refer: [unless]
+py/import math, as: math
+
+export [normalize, summarize]
+alias summarize-legacy, summarize
+```
+
+In form notation the same header reads:
+
 ```clojure
 (module analytics.pipeline)
 
@@ -193,7 +285,7 @@ component as written, `-` included, matching the `module` declaration
 literally. Only generated output switches to the Python spelling:
 
 ```text
-src/osiris-test/core.osr        (module osiris-test.core)     ← authored, Osiris spelling
+src/osiris-test/core.ois        module osiris-test.core       ← authored, Osiris spelling
 dist/osiris_test/core.py        import osiris_test.core       ← generated, Python spelling
 ```
 
@@ -260,6 +352,23 @@ names:
 
 ## Definitions and Functions
 
+On the surface, `def` declares a typed named function:
+
+```elixir
+@doc "Add two integers."
+def add(left :: Int, right :: Int) :: Int do
+  left + right
+end
+
+def clamp-low(value :: Int) :: Int do
+  if value < 0 do 0 else value end
+end
+```
+
+The full definition vocabulary lives at the form level, where `defn` defines
+a named function, `def` binds a value, and `fn` creates an anonymous
+function (surface `def` translates to form `defn`):
+
 ```clojure
 (def answer 42)
 
@@ -275,10 +384,10 @@ names:
   (fn [value] (+ value 1)))
 ```
 
-`def` binds a value. `defn` defines a named function and `fn` creates an
-anonymous function. Parameters are a vector. Put `& rest` at the end for a
-variadic parameter. A defaulted parameter uses `[name = expression]`, with any
-type metadata attached to `name` as shown above.
+Parameters are a vector. Put `& rest` at the end for a variadic parameter. A
+defaulted parameter uses `[name = expression]`, with any type metadata
+attached to `name` as shown above. Value bindings, anonymous functions,
+variadics, and defaults are not yet part of the surface (OEP-0005 R012).
 
 Every form is an expression. A function and `do` return their final expression.
 Evaluation is left to right, and an expression with effects is not duplicated
@@ -511,8 +620,10 @@ Vectors and maps can be destructured in binding positions. For example:
 
 ## Hygienic Macros
 
-Define a macro with `defmacro`. It receives syntax and must return syntax that
-expands to normal Osiris forms:
+Define a macro with `defmacro`. It receives syntax — forms — and must return
+syntax that expands to normal Osiris forms. Macro bodies use syntax quoting,
+which the surface does not carry yet (OEP-0005 R012), so macros are authored
+in form notation:
 
 ```clojure
 (defmacro unless [condition & body]
@@ -706,6 +817,10 @@ through that provider, not evidence that the source is embedded in the binary.
 Generated Python still has no runtime dependency on `osiris-lang`.
 
 ## Complete Minimal Module
+
+This module uses `defstruct`, rich metadata, and documentation examples, so
+it is authored in form notation (`.osr`); a consumer written in `.ois`
+imports and calls it with no difference.
 
 ```clojure
 (module sample.stats)

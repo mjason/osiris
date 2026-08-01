@@ -91,7 +91,7 @@ const FILES: ArgumentDefinition = ArgumentDefinition {
     value_type: "path",
     required: true,
     multiple: true,
-    summary: "One or more explicit .osr source files.",
+    summary: "One or more explicit .ois or .osr source files.",
     values: &[],
 };
 const PROJECT: ArgumentDefinition = ArgumentDefinition {
@@ -211,7 +211,7 @@ const COMMANDS: &[CommandDefinition] = &[
         interruption: "Stops promptly with the platform interruption status.",
         requirements: &["OEP-0002-R018"],
         diagnostics: &["OSR-C0001", "OSR-H0001"],
-        examples: &["osr check", "osr check src/main.osr"],
+        examples: &["osr check", "osr check src/main.ois"],
     },
     CommandDefinition {
         id: "cli/build",
@@ -302,7 +302,7 @@ const COMMANDS: &[CommandDefinition] = &[
             },
             SITE_ROOT,
         ],
-        input: "Explicit .osr sources and validated interfaces.",
+        input: "Explicit .ois/.osr sources and validated interfaces.",
         output: "Selected compiler artifacts and private linked support.",
         stdout: "Output directory.",
         stderr: "Compiler diagnostics.",
@@ -315,7 +315,7 @@ const COMMANDS: &[CommandDefinition] = &[
         interruption: "Leaves no partial published artifact.",
         requirements: &["OEP-0002-R020", "OEP-0003-R070"],
         diagnostics: &["OSR-C0001", "OSR-I0001"],
-        examples: &["osr compile src/main.osr --out-dir dist"],
+        examples: &["osr compile src/main.ois --out-dir dist"],
     },
     CommandDefinition {
         id: "cli/watch",
@@ -363,7 +363,7 @@ const COMMANDS: &[CommandDefinition] = &[
         interruption: "Stops the child process; otherwise propagates its exit status.",
         requirements: &["OEP-0002-R023"],
         diagnostics: &["OSR-C0001"],
-        examples: &["osr run src/main.osr -- input.csv"],
+        examples: &["osr run src/main.ois -- input.csv"],
     },
     CommandDefinition {
         id: "cli/fmt",

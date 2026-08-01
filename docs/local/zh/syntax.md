@@ -2,9 +2,9 @@
 document-id: language/syntax
 title: Osiris 语法
 language: zh-CN
-revision: 14
+revision: 15
 source: ../../syntax.md
-source-revision: 14
+source-revision: 15
 translation-status: Current
 ---
 
@@ -16,11 +16,78 @@ translation-status: Current
 
 ## 源文件
 
-Osiris 源文件使用 `.osr` 扩展名和 UTF-8。分号开始一条持续到行尾的注释。字符串
-外的逗号等同于空白，所以 `[1, 2]` 和 `[1 2]` 含义相同。
+Osiris 用 OEP-0005 定义的书写表层书写，扩展名 `.ois`，UTF-8 编码。`#` 开始
+一条持续到行尾的注释。
 
-Reader 只读取数据。List 随后才会被解释成核心形式、宏调用或函数调用。包不能增加
-reader 语法；扩展语言应使用普通函数和卫生宏。
+表层之下，一切构造都是 **form**——宏接收并改写的数据结构。form 记法
+（S 表达式，`.osr`）仍是 `osr expand` 的输出格式和过渡期 `.osr` 源文件的
+内容；表层尚不能表达的构造（OEP-0005 R012）用它书写。本手册后文涉及这些
+构造的章节使用 form 记法并明确说明。
+
+## 书写表层
+
+模块读起来就是普通代码：语句即调用，运算符是中缀，块以 `do` 开、`end` 收。
+
+```elixir
+module app.策略
+
+import-for-syntax macros.select, refer: [选股]
+
+@doc "小市值:市值升序打分。"
+选股 小市值 do
+  slot 市值
+  select 100 - 市值 * 2
+end
+
+@doc "管道示范。"
+def 折算(市值 :: Float) :: Float do
+  市值 |> 小市值() |> half()
+end
+
+export [小市值, 折算]
+```
+
+表层恰有四个特殊形式：`def`、`defmacro`、`@doc`、`if`。其余一切都是调用
+——`module`、`import`、`export` 也是。
+
+**调用。** `f(a, b)` 与限定名 `m.f(a)`。语句位置的名字后跟实参即无括号调
+用，实参延伸到行尾：`import lib.marks, refer: [加倍]`。关键字实参写作
+`key: value`，到达被调方时是 `:key value`。
+
+**运算符。** `+ - * / == != < <= > >= and or not` 翻译为对应名字的前缀调
+用（`==` 即 `=`，`!=` 即 `not=`）。优先级从松到紧：`|>`；比较；`+ -`；
+`* /`；一元。运算符就是普通名字——模块把 `<=` 作为宏导入时，中缀拼写触
+达的就是那个宏。
+
+**管道。** `x |> f(a)` 把被管道值插入**第一个**实参位：`f(x, a)`。链式从
+左到右。
+
+**标识符。** 任意文字系统的字母、数字（非首位）、`_`、`-`、`/`、`?`、
+`!`。中缀让位于名字：`-` 或 `/` 后紧跟名字字符即属于标识符——
+`pct-rank` 和 `py/import` 是单个名字——所以减法和除法必须用空格包围。
+反引号逐字拼写标识符文法无法承载的名字：``refer: [`>`, `<=`]`` 引用运算
+符名宏，`` `+`(a, b, c) `` 在二元中缀形状之外调用。
+
+**定义。** `def 名字(形参 :: 类型, …) :: 返回 do 体 end`。前置
+`@doc "…"` 提供文档；`@doc default: "…", zh-CN: "…"` 携带本地化文档。
+`defmacro` 形状相同（超出普通表达式的宏体在 quote 映射落地前用 form 记
+法书写）。
+
+**do 块。** `头 实参 do 语句… end` 把块内每条语句作为一个子句 form 传给
+`头`。这正是 named-body 宏的形状，声明式 DSL——`defselect`、查询构建
+器、配置块——就是普通宏调用。
+
+**`if`。** `if 条件 do 结果 else 备选 end`；`else` 可省略。
+
+表层尚不能表达（OEP-0005 R012）：`quote`/`unquote` 宏体、`let` 与解构、
+`defstruct`、嵌入语言块、`extern`、`@doc` 之外的元数据。需要它们的声明
+用 `.osr` form 记法书写，从 `.ois` 正常消费。
+
+## Form 记法
+
+表层之下一切皆 form。Reader 只读取数据；list 随后才会被解释成核心形式、
+宏调用或函数调用。包不能增加 reader 语法；扩展语言应使用普通函数和卫生
+宏。form 记法中分号开始注释，逗号等同于空白。
 
 ## 数据形式
 
@@ -154,6 +221,19 @@ PEP 427/625 再在文件名或目录名承载它的地方转义为 `osiris_panda
 
 模块通常以 canonical module name、显式 import 和 export 开始：
 
+```elixir
+module analytics.pipeline
+
+import analytics.transforms, as: transforms, refer: [sum-values]
+import-for-syntax analytics.macros, as: macros, refer: [unless]
+py/import math, as: math
+
+export [normalize, summarize]
+alias 旧汇总, summarize
+```
+
+同一个模块头的 form 记法：
+
 ```clojure
 (module analytics.pipeline)
 
@@ -176,7 +256,7 @@ PEP 427/625 再在文件名或目录名承载它的地方转义为 `osiris_panda
 分量本身，`-` 原样写，与 `module` 声明逐字一致。只有生成产物切换到 Python 拼写：
 
 ```text
-src/osiris-test/core.osr        (module osiris-test.core)     ← 源码，Osiris 拼写
+src/osiris-test/core.ois        (module osiris-test.core)     ← 源码，Osiris 拼写
 dist/osiris_test/core.py        import osiris_test.core       ← 产物，Python 拼写
 ```
 
@@ -218,6 +298,22 @@ dist/osiris_test/core.py        import osiris_test.core       ← 产物，Pytho
 
 ## 定义与函数
 
+表层上 `def` 声明带类型的具名函数：
+
+```elixir
+@doc "Add two integers."
+def add(left :: Int, right :: Int) :: Int do
+  left + right
+end
+
+def clamp-low(value :: Int) :: Int do
+  if value < 0 do 0 else value end
+end
+```
+
+完整的定义词汇在 form 层：`defn` 定义具名函数、`def` 绑定值、`fn` 创建匿
+名函数（表层 `def` 翻译为 form 层 `defn`）：
+
 ```clojure
 (def answer 42)
 
@@ -233,9 +329,9 @@ dist/osiris_test/core.py        import osiris_test.core       ← 产物，Pytho
   (fn [value] (+ value 1)))
 ```
 
-`def` 绑定值，`defn` 定义具名函数，`fn` 创建匿名函数。参数使用 vector。在参数末尾
-使用 `& rest` 表示变参。默认参数写成 `[name = expression]`，类型 metadata 仍附着在
-`name` 上，如上例所示。
+参数使用 vector。在参数末尾使用 `& rest` 表示变参。默认参数写成
+`[name = expression]`，类型 metadata 仍附着在 `name` 上，如上例所示。值绑
+定、匿名函数、变参与默认值尚不属于表层（OEP-0005 R012）。
 
 所有 form 都是表达式。函数和 `do` 返回最后一个表达式。求值顺序为从左到右；宏展开
 和代码生成不得重复求值带 effect 的表达式。
@@ -449,8 +545,9 @@ Vector 和 map 可以在 binding 位置解构：
 
 ## 卫生宏
 
-使用 `defmacro` 定义宏。宏接收 syntax，并且必须返回可以展开成普通 Osiris form 的
-syntax：
+宏用 `defmacro` 定义。它接收语法——form——并须返回展开为普通 Osiris
+form 的语法。宏体使用 syntax quote，表层尚未承载（OEP-0005 R012），所以
+宏用 form 记法书写：
 
 ```clojure
 (defmacro unless [condition & body]
@@ -627,6 +724,9 @@ Compiler 携带完整 standard resource tree 的 SHA-256 identity。Resource 缺
 源码内嵌在 binary 中。Generated Python 仍然不依赖 `osiris-lang` runtime。
 
 ## 完整最小模块
+
+本模块用到 `defstruct`、富元数据与文档示例，因此以 form 记法（`.osr`）
+书写；`.ois` 写的消费方照常导入调用，没有任何差别。
 
 ```clojure
 (module sample.stats)

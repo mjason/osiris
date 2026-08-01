@@ -13,10 +13,10 @@ areas:
   - AI
 created: 2026-07-23
 updated: 2026-07-31
-revision: 32
+revision: 33
 language: zh-CN
 source: ../../0001-language-and-cli.md
-source-revision: 32
+source-revision: 33
 translation-status: Current
 requires: [0]
 replaces: []
@@ -34,6 +34,11 @@ resolution: null
 边界、模块和 binding identity、编译器 kernel、宏阶段、Rich Metadata、类型标注、
 `defstruct`、Python 生成原则、诊断和语义检查。它还把 canonical source formatting
 定义为核心工具契约，而不是 editor preference。
+
+自 OEP-0005 起，本提案规定的记法是语言的 **form 层**：宏接收的数据结构、
+`.osr` 过渡输入、`osr expand` 的输出。Osiris 源码在 OEP-0005 的书写表层
+（`.ois`）上书写，它恰好读入这些 form。本文档的示例有意保持 form 记法
+——被规定的正是这层语义。
 
 它还定义结构化 CLI 命令模型和两套有意分离的文档体系。每个原生 `osr` executable
 都内嵌一份 content-addressed、read-only 的 libSQL snapshot，其中只包含完整 authored
@@ -1170,6 +1175,10 @@ format/validate。
   diagnostic、format 并验证 source file；所有 operation 在没有 network 时仍可工作。
 
 ## 修订历史 (Change History)
+
+- Revision 33，2026-08-01：厘清本提案自 OEP-0005 起的定位：它规定 form 层
+  ——宏接收什么、`.osr` 过渡输入包含什么、`osr expand` 打印什么——源码
+  则在 OEP-0005 表层（`.ois`）书写。示例有意保持 form 记法。
 
 - Revision 32，2026-07-31：新增 OEP-0001-R062C：显式 `:refer` 成员指名 export 而非
   spelling——引任一 spelling 即令 canonical 与全部 `:osiris/names` spelling 可调用，

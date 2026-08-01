@@ -44,7 +44,7 @@ Create a new uv project with an Osiris source root and starter module:
 ```console
 osr init my-project
 cd my-project
-uv run osr run src/main.osr
+uv run osr run src/main.ois
 ```
 
 To add Osiris to an existing uv project, run this from its root (or pass the
@@ -56,7 +56,7 @@ osr init --existing path/to/project
 ```
 
 `init` preserves the existing `pyproject.toml` layout, comments, project
-metadata, and dependencies. It creates `osiris.jsonc` and `src/main.osr` only
+metadata, and dependencies. It creates `osiris.jsonc` and `src/main.ois` only
 when those files do not exist, and asks `uv` to add
 `osiris-lang` to the development dependency group. Re-running the command is
 safe. A new project path must not already exist; use `--existing` when joining
@@ -121,13 +121,14 @@ cargo run --bin osr -- watch
 ```
 
 The multi-file [`examples/tutorial/app.osr`](examples/tutorial/app.osr)
-demonstrates importing another Osiris module with `:as` and `:refer`, importing
-a macro with `import-for-syntax`, and keeping Python `py/import` separate:
+demonstrates importing another Osiris module with `as:` and `refer:`, importing
+a macro with `import-for-syntax`, and keeping Python `py/import` separate. In
+the `.ois` authoring surface (OEP-0005) the header reads:
 
-```clojure
-(import tutorial.transforms :as transforms :refer [sum-values])
-(import-for-syntax tutorial.macros :refer [unless])
-(py/import math :as math)
+```elixir
+import tutorial.transforms, as: transforms, refer: [sum-values]
+import-for-syntax tutorial.macros, refer: [unless]
+py/import math, as: math
 ```
 
 Run `cargo run --bin osr -- check examples/tutorial/app.osr` to analyze the
@@ -137,7 +138,7 @@ for the module-to-path mapping and generated outputs.
 `check` parses and validates the project and leaves the working tree
 unchanged. `build` compiles the complete project described by `osiris.jsonc`,
 prints the output directory (`dist/` by default), and publishes one artifact
-set atomically. `watch` reruns that same build when a non-excluded `.osr`
+set atomically. `watch` reruns that same build when a non-excluded `.ois` or `.osr`
 source changes. `compile` remains the lower-level command for explicit source
 and `--emit` control.
 
